@@ -44,4 +44,8 @@ fi
 echo "==> Running: make lint"
 make lint
 
+# 4. Run unit tests
+echo "==> Running: make test"
+make test
+
 echo "==> All pre-commit checks passed."
