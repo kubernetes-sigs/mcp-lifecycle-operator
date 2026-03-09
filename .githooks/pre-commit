@@ -34,7 +34,7 @@ make fmt vet
 
 if ! git diff --quiet; then
     echo ""
-    echo "ERROR: 'make fmt' reformatted files. Please stage the changes and retry."
+    echo "ERROR: 'make fmt vet' reformatted files. Please stage the changes and retry."
     echo ""
     git diff --stat
     exit 1
