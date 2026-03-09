@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "==> Pre-commit hook: running checks..."
+
+# Stash unstaged changes so we only validate what's being committed
+git stash -q --keep-index --include-untracked || true
+STASHED=true
+
+cleanup() {
+    if [ "$STASHED" = true ]; then
+        git stash pop -q 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
+# 1. Run manifest and code generation, then check for uncommitted diffs.
+#    If these produce changes, the developer forgot to regenerate before committing.
+echo "==> Running: make manifests generate"
+make manifests generate
+
+if ! git diff --quiet; then
+    echo ""
+    echo "ERROR: 'make manifests generate' produced changes not staged for commit."
+    echo "       Please run 'make manifests generate', review the changes, and 'git add' them."
+    echo ""
+    git diff --stat
+    exit 1
+fi
+
+# 2. Run go fmt and go vet
+echo "==> Running: make fmt vet"
+make fmt vet
+
+if ! git diff --quiet; then
+    echo ""
+    echo "ERROR: 'make fmt' reformatted files. Please stage the changes and retry."
+    echo ""
+    git diff --stat
+    exit 1
+fi
+
+# 3. Run linter
+echo "==> Running: make lint"
+make lint
+
+echo "==> All pre-commit checks passed."
