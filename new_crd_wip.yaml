@@ -3,6 +3,46 @@ kind: MCPServer
 metadata:
   name: example
 spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: ghcr.io/example/server:latest
+  server:
+    port: ...
+    arguments:
+      - ...
+    env:
+      - ...
+    envFrom:
+      - ...
+    storage:
+      - mountPath: ...
+        type: ConfigMap
+        configMap:
+          ...
+  runtime:
+    security:
+      serviceAccountName: ...
+      podSecurityContext:
+        ...
+      securityContext:
+        ...
+    resources:
+      requests:
+        ...
+    replicas: 1
+    scheduling:
+      ...
+    health:
+      ...
+    networking:
+      ...
+---
+apiVersion: mcp.x-k8s.io/v1alpha2
+kind: MCPServer
+metadata:
+  name: example
+spec:
 
   # The source section defines where the MCP server's container image (or other source types in the future) is located.
   source:
