@@ -1,0 +1,205 @@
+apiVersion: mcp.x-k8s.io/v1alpha2
+kind: MCPServer
+metadata:
+  name: example
+spec:
+
+  # The source section defines where the MCP server's container image (or other source types in the future) is located.
+  source:
+    type: ContainerImage  # Start with this, might grow to Git, OCI, MCP catalog entry, etc.
+    # having the image details nested under a field named "containerImage" allows us to add more fields related to
+    # the image in the future without breaking compatibility.
+    # ... instead of having the image details at the top level of the source.
+    containerImage:
+      ref: ghcr.io/example/server:latest
+      # future fields could include:
+      #  - imagePullSecrets
+      #  - pullPolicy
+      #  - ...
+
+  # The server section defines how the MCP server should be configured when it runs.
+  server:
+    port: 8080
+
+    arguments:
+      - --config=/etc/config/config.toml
+
+    env:
+      # item types https://pkg.go.dev/k8s.io/api@v0.35.2/core/v1#EnvVar
+      - name: ...
+        # ...
+
+      # direct value
+      - name: EXAMPLE_ENV_VAR
+        value: example-value
+
+      # value from Secret or ConfigMap
+      - name: ANOTHER_ENV_VAR
+        valueFrom:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.2/core/v1#EnvVarSource
+          configMapKeyRef:          # or secretKeyRef for Secrets
+            name: example-configmap
+            key: example-key
+
+      # value from downward API (e.g. pod metadata)
+      - name: POD_NAME
+        valueFrom:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.2/core/v1#EnvVarSource
+          fieldRef:
+            fieldPath: metadata.name
+
+      # value from resource field (e.g. limits.cpu)
+      - name: CPU_LIMIT
+        valueFrom:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35
+          resourceFieldRef:
+            resource: limits.cpu
+
+
+    # envFrom to allow importing all keys from a Secret or ConfigMap as environment variables with a common prefix
+    envFrom:
+      - secretRef:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.2/core/v1#EnvFromSource
+          name: all-env-vars
+        prefix: GITHUB_                        # optional prefix to add to all imported environment variable names (e.g. GITHUB_TOKEN, GITHUB_REPO, etc.)
+      - configMapRef:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.2/core/v1#EnvFromSource
+          name: more-env-vars
+
+    # Storage mounts for ConfigMaps, Secrets, and volumes
+    # Each item uses native Kubernetes volume source types for consistency and feature parity
+    storage:
+      # Mount a single file from a ConfigMap
+      - mountPath: /etc/config/config.toml
+        type: ConfigMap
+        configMap:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.0/core/v1#ConfigMapVolumeSource
+          name: example-configmap
+          items:
+            - key: config.toml
+              path: config.toml  # relative path within the mount
+          optional: false        # Pod fails if ConfigMap/key missing
+          defaultMode: 0644      # file permissions (octal)
+          # ... other fields from ConfigMapVolumeSource
+
+      # Mount multiple files from a ConfigMap into a directory
+      - mountPath: /var/data
+        type: ConfigMap
+        configMap:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.0/core/v1#ConfigMapVolumeSource
+          name: example-data
+          items:  # optional - if omitted, all keys mounted as files
+            - key: myData1.txt
+              path: data1.txt    # rename the file in the mount
+              mode: 0600         # optional per-file permissions override
+          # ... other fields from ConfigMapVolumeSource
+
+      # Mount a single file using subPath (avoids overwriting the parent directory)
+      - mountPath: /app/settings.json
+        type: ConfigMap
+        configMap:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.0/core/v1#ConfigMapVolumeSource
+          name: app-configs
+          items:
+            - key: prod-settings
+              path: settings.json
+          # ... other fields from ConfigMapVolumeSource
+
+        # TODO: do we need these fields?
+        readOnly: ...
+        recursiveReadonly: ...
+        subPath: ...
+        mountPropagation: ...
+        subPathExpr: ...
+        # ... more fields from https://pkg.go.dev/k8s.io/api@v0.35.0/core/v1#VolumeMount
+        # Since we are not separating the volume source (ConfigMap, Secret, PVC, etc.) from the mount configuration
+        # (mountPath, subPath, readOnly, etc.) in this CRD design, we can only include these fields here in the mount
+        # configuration directly
+
+      # Mount a single file from a Secret
+      - mountPath: /etc/config/tls.crt
+        type: Secret
+        secret:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.0/core/v1#SecretVolumeSource
+          secretName: example-tls-secret
+          items:
+            - key: tls.crt
+              path: tls.crt
+          # ... other fields from SecretVolumeSource
+
+      # Mount all keys from a Secret as files in a directory
+      - mountPath: /etc/secrets
+        type: Secret
+        secret:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.0/core/v1#SecretVolumeSource
+          secretName: example-secret
+          # no items specified = mount all keys as files
+          # ... other fields from SecretVolumeSource
+
+      # NOTE: following YAML shows mounting volumes.
+      #       although we don't need to mount volumes for the MCP server right now, we want to design the CRD in a way
+      #       that allows us to easily add support for mounting volumes in the future without breaking compatibility.
+      #       So, the YAML is written to get a feeling of the structure's extensibility, even though we won't implement these features right away.
+      # Temporary scratch space (lifetime of pod)
+      - mountPath: /tmp/scratch
+        type: EmptyDir
+        emptyDir:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.0/core/v1#EmptyDirVolumeSource
+          sizeLimit: 1Gi         # optional size limit
+          # medium: Memory       # optional: use tmpfs (RAM-backed storage)
+
+      # NOTE: following YAML shows mounting volumes.
+      #       although we don't need to mount volumes for the MCP server right now, we want to design the CRD in a way
+      #       that allows us to easily add support for mounting volumes in the future without breaking compatibility.
+      #       So, the YAML is written to get a feeling of the structure's extensibility, even though we won't implement these features right away.
+      # Persistent storage (reference to existing PVC)
+      - mountPath: /data
+        type: PVC
+        persistentVolumeClaim:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.0/core/v1#PersistentVolumeClaimVolumeSource
+          claimName: mcp-server-data  # PVC must exist in same namespace
+          readOnly: false              # PVC-specific readOnly flag
+
+      # NOTE: following YAML shows mounting volumes.
+      #       although we don't need to mount volumes for the MCP server right now, we want to design the CRD in a way
+      #       that allows us to easily add support for mounting volumes in the future without breaking compatibility.
+      #       So, the YAML is written to get a feeling of the structure's extensibility, even though we won't implement these features right away.
+      # Mount from host path (use with caution - security implications)
+      - mountPath: /host-data
+        type: HostPath
+        hostPath:
+          # type: https://pkg.go.dev/k8s.io/api@v0.35.0/core/v1#HostPathVolumeSource
+          path: /data/mcp                  # path on host
+          type: DirectoryOrCreate          # optional: DirectoryOrCreate, Directory, FileOrCreate, File, Socket, CharDevice, BlockDevice
+
+      # TODO: Support for projected volumes (combine multiple volume sources into a single mount)?
+      #       https://kubernetes.io/docs/concepts/storage/projected-volumes/
+
+
+  runtime:
+
+    security:
+      serviceAccountName: example-service-account
+
+      # pod-level security context that applies to the entire pod (as opposed to container-level security context)
+      podSecurityContext:
+        runAsNonRoot: true
+        # ... other security context fields from https://pkg.go.dev/k8s.io/api@v0.35.2/core/v1#SecurityContext
+
+      # container-level security context that applies to the MCP server container (as opposed to the entire pod)
+      securityContext:
+      # ... fields from https://pkg.go.dev/k8s.io/api@v0.35.2/core/v1#PodSecurityContext
+
+    # -------
+    # Rest of the following fields are not needed yet, as the existing CRD doesn't have any relevant fields.
+    # Just writing this out to show how we can expand the spec in the future to include more management options like scheduling and networking.
+    resources:
+      requests: {memory: 256Mi, cpu: 100m}
+    replicas: 1
+    scheduling:
+      nodeSelector: { workload: mcp }
+    health:
+      liveness: { httpGet: { path: /healthz, port: 8080 } }
+    networking:
+      serviceType: ClusterIP
+
