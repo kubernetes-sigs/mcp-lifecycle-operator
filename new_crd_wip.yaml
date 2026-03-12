@@ -1,4 +1,4 @@
-apiVersion: mcp.x-k8s.io/v1alpha2
+apiVersion: mcp.x-k8s.io/v1alpha1
 kind: MCPServer
 metadata:
   name: example
@@ -7,7 +7,7 @@ spec:
     type: ContainerImage
     containerImage:
       ref: ghcr.io/example/server:latest
-  server:
+  config:
     port: ...
     arguments:
       - ...
@@ -38,7 +38,7 @@ spec:
     networking:
       ...
 ---
-apiVersion: mcp.x-k8s.io/v1alpha2
+apiVersion: mcp.x-k8s.io/v1alpha1
 kind: MCPServer
 metadata:
   name: example
@@ -58,7 +58,7 @@ spec:
       #  - ...
 
   # The server section defines how the MCP server should be configured when it runs.
-  server:
+  config:
     port: 8080
 
     arguments:
