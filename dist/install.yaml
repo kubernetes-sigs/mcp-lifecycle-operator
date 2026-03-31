@@ -1749,6 +1749,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: mcp-lifecycle-operator
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
   name: mcp-lifecycle-operator-mcpserver-admin-role
 rules:
 - apiGroups:
@@ -1770,6 +1771,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: mcp-lifecycle-operator
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
   name: mcp-lifecycle-operator-mcpserver-editor-role
 rules:
 - apiGroups:
@@ -1797,6 +1799,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: mcp-lifecycle-operator
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
   name: mcp-lifecycle-operator-mcpserver-viewer-role
 rules:
 - apiGroups:
