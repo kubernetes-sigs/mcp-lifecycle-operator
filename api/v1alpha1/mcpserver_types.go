@@ -360,10 +360,11 @@ type MCPServerAddress struct {
 
 // MCPServerStatus defines the observed state of MCPServer.
 type MCPServerStatus struct {
-	// Phase represents the current lifecycle phase of the MCPServer.
-	// Possible values: Pending, Running, Failed
+	// ObservedGeneration reflects the generation most recently observed by the controller.
+	// This allows users to determine if the status reflects the latest spec changes.
+	// When observedGeneration matches metadata.generation, the status is up-to-date.
 	// +optional
-	Phase string `json:"phase,omitempty"`
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// DeploymentName is the name of the Deployment created for this MCPServer.
 	// +optional
@@ -377,15 +378,27 @@ type MCPServerStatus struct {
 	// +optional
 	Address *MCPServerAddress `json:"address,omitempty"`
 
-	// Conditions represent the current state of the MCPServer resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
+	// Conditions represent the latest available observations of the MCPServer's state.
 	//
-	// Standard condition types include "Ready", "Progressing", and "Degraded".
-	// The "Ready" condition indicates the resource is fully functional and available.
-	// The "Progressing" condition indicates the resource is being created or updated.
-	// The "Degraded" condition indicates the resource failed to reach or maintain its desired state.
+	// Standard condition types:
+	// - "Accepted": Configuration is valid and all referenced resources exist
+	// - "Ready": MCP server is operational and ready to serve requests
 	//
-	// The status of each condition is one of True, False, or Unknown.
+	// The "Accepted" condition validates configuration before creating resources.
+	// Reasons: Valid (True), Invalid (False with details in message)
+	//
+	// The "Ready" condition indicates overall server readiness.
+	// Status=True means at least one instance is healthy and serving requests.
+	// Reasons:
+	//   - Available: Server is ready (Status=True)
+	//   - ConfigurationInvalid: Accepted=False, cannot proceed
+	//   - DeploymentUnavailable: No healthy instances (all deployment/pod issues)
+	//   - ScaledToZero: Deployment scaled to 0 replicas
+	//   - Initializing: Waiting for initial status
+	//
+	// Note: Specific failure details (ImagePullBackOff, OOMKilled, CrashLoop, etc.)
+	// are included in the condition message, not the reason.
+	//
 	// +listType=map
 	// +listMapKey=type
 	// +optional
@@ -395,7 +408,8 @@ type MCPServerStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:ac:generate=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Accepted",type=string,JSONPath=`.status.conditions[?(@.type=="Accepted")].status`
 // +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.source.containerImage.ref`
 // +kubebuilder:printcolumn:name="Port",type=integer,JSONPath=`.spec.config.port`
 // +kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.status.address.url`

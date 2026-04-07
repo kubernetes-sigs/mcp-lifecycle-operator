@@ -15,8 +15,11 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.phase
-      name: Phase
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Accepted")].status
+      name: Accepted
       type: string
     - jsonPath: .spec.source.containerImage.ref
       name: Image
@@ -1531,15 +1534,26 @@ spec:
                 type: object
               conditions:
                 description: |-
-                  Conditions represent the current state of the MCPServer resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+                  Conditions represent the latest available observations of the MCPServer's state.
 
-                  Standard condition types include "Ready", "Progressing", and "Degraded".
-                  The "Ready" condition indicates the resource is fully functional and available.
-                  The "Progressing" condition indicates the resource is being created or updated.
-                  The "Degraded" condition indicates the resource failed to reach or maintain its desired state.
+                  Standard condition types:
+                  - "Accepted": Configuration is valid and all referenced resources exist
+                  - "Ready": MCP server is operational and ready to serve requests
 
-                  The status of each condition is one of True, False, or Unknown.
+                  The "Accepted" condition validates configuration before creating resources.
+                  Reasons: Valid (True), Invalid (False with details in message)
+
+                  The "Ready" condition indicates overall server readiness.
+                  Status=True means at least one instance is healthy and serving requests.
+                  Reasons:
+                    - Available: Server is ready (Status=True)
+                    - ConfigurationInvalid: Accepted=False, cannot proceed
+                    - DeploymentUnavailable: No healthy instances (all deployment/pod issues)
+                    - ScaledToZero: Deployment scaled to 0 replicas
+                    - Initializing: Waiting for initial status
+
+                  Note: Specific failure details (ImagePullBackOff, OOMKilled, CrashLoop, etc.)
+                  are included in the condition message, not the reason.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -1602,11 +1616,13 @@ spec:
                 description: DeploymentName is the name of the Deployment created
                   for this MCPServer.
                 type: string
-              phase:
+              observedGeneration:
                 description: |-
-                  Phase represents the current lifecycle phase of the MCPServer.
-                  Possible values: Pending, Running, Failed
-                type: string
+                  ObservedGeneration reflects the generation most recently observed by the controller.
+                  This allows users to determine if the status reflects the latest spec changes.
+                  When observedGeneration matches metadata.generation, the status is up-to-date.
+                format: int64
+                type: integer
               serviceName:
                 description: ServiceName is the name of the Service created for this
                   MCPServer.

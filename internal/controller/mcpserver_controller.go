@@ -22,6 +22,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -42,13 +44,39 @@ import (
 	acv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1/applyconfiguration/api/v1alpha1"
 )
 
-// Phase constants for MCPServer status.
 const (
-	PhasePending = "Pending"
-	PhaseRunning = "Running"
-	PhaseFailed  = "Failed"
-
 	fieldManager = "mcpserver-controller"
+)
+
+// Condition types for MCPServer status.
+const (
+	// ConditionTypeAccepted indicates the MCPServer configuration is valid.
+	ConditionTypeAccepted = "Accepted"
+	// ConditionTypeReady indicates the MCPServer is ready to serve requests.
+	ConditionTypeReady = "Ready"
+)
+
+// Reasons for Accepted condition.
+const (
+	ReasonValid   = "Valid"
+	ReasonInvalid = "Invalid"
+	ReasonUnknown = "Unknown"
+)
+
+// Reasons for Ready condition.
+const (
+	ReasonAvailable             = "Available"
+	ReasonConfigurationInvalid  = "ConfigurationInvalid"
+	ReasonDeploymentUnavailable = "DeploymentUnavailable"
+	ReasonServiceUnavailable    = "ServiceUnavailable"
+	ReasonScaledToZero          = "ScaledToZero"
+	ReasonInitializing          = "Initializing"
+)
+
+// Reconciliation constants.
+const (
+	// requeueDelayDeploymentUnavailable is the delay before requeuing when a deployment is not yet available.
+	requeueDelayDeploymentUnavailable = 15 * time.Second
 )
 
 // MCPServerReconciler reconciles a MCPServer object
@@ -86,136 +114,271 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	logger.Info("Reconciling MCPServer", "name", mcpServer.Name, "namespace", mcpServer.Namespace)
 
-	// Reconcile Deployment
+	// Validate configuration and set Accepted condition
+	acceptedCondition, configValid := r.setAcceptedCondition(ctx, mcpServer)
+	preserveLastTransitionTime(&acceptedCondition, mcpServer.Status.Conditions)
+
+	// If configuration is not valid, update status and stop
+	if !configValid {
+		readyCondition := newCondition(
+			ConditionTypeReady,
+			metav1.ConditionFalse,
+			ReasonConfigurationInvalid,
+			"Configuration must be fixed before server can start",
+			mcpServer.Generation,
+		)
+		preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
+
+		status := acv1alpha1.MCPServerStatus().
+			WithObservedGeneration(mcpServer.Generation).
+			WithServiceName(mcpServer.Name).
+			WithConditions(
+				conditionToAC(acceptedCondition),
+				conditionToAC(readyCondition),
+			)
+
+		if err := r.applyStatus(ctx, mcpServer, status); err != nil {
+			logger.Error(err, "Failed to update MCPServer status")
+			return ctrl.Result{}, err
+		}
+
+		logger.Info("MCPServer configuration is invalid", "reason", acceptedCondition.Reason)
+		return ctrl.Result{}, nil
+	}
+
+	// Configuration is valid, proceed with deployment reconciliation
 	existingDeployment, err := r.reconcileDeployment(ctx, mcpServer)
 	if err != nil {
-		r.updateStatusFailed(ctx, mcpServer, "Failed to reconcile Deployment")
+		// Deployment reconciliation failed - update status
+		readyCondition := newCondition(
+			ConditionTypeReady,
+			metav1.ConditionFalse,
+			ReasonDeploymentUnavailable,
+			fmt.Sprintf("Failed to reconcile Deployment: %v", err),
+			mcpServer.Generation,
+		)
+		preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
+
+		status := acv1alpha1.MCPServerStatus().
+			WithObservedGeneration(mcpServer.Generation).
+			WithServiceName(mcpServer.Name).
+			WithConditions(
+				conditionToAC(acceptedCondition),
+				conditionToAC(readyCondition),
+			)
+
+		if err := r.applyStatus(ctx, mcpServer, status); err != nil {
+			logger.Error(err, "Failed to update MCPServer status")
+		}
 		return ctrl.Result{}, err
 	}
 
 	// Reconcile Service
 	if err := r.reconcileService(ctx, mcpServer); err != nil {
-		r.updateStatusFailed(ctx, mcpServer, "Failed to reconcile Service")
+		// Service reconciliation failed - update status
+		readyCondition := newCondition(
+			ConditionTypeReady,
+			metav1.ConditionFalse,
+			ReasonServiceUnavailable,
+			fmt.Sprintf("Failed to reconcile Service: %v", err),
+			mcpServer.Generation,
+		)
+		preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
+
+		status := acv1alpha1.MCPServerStatus().
+			WithObservedGeneration(mcpServer.Generation).
+			WithDeploymentName(existingDeployment.Name).
+			WithServiceName(mcpServer.Name).
+			WithConditions(
+				conditionToAC(acceptedCondition),
+				conditionToAC(readyCondition),
+			)
+
+		if err := r.applyStatus(ctx, mcpServer, status); err != nil {
+			logger.Error(err, "Failed to update MCPServer status")
+		}
 		return ctrl.Result{}, err
 	}
 
-	phase, condition := determinePhase(existingDeployment, mcpServer.Generation, mcpServer.Status.Conditions)
+	// Determine Ready condition based on deployment status
+	readyCondition := determineReadyCondition(
+		existingDeployment,
+		acceptedCondition,
+		mcpServer.Generation,
+		mcpServer.Status.Conditions,
+	)
 
+	// Build status
 	path := mcpServer.Spec.Config.Path
 	if path == "" {
 		path = "/mcp"
 	}
 
 	status := acv1alpha1.MCPServerStatus().
-		WithPhase(phase).
+		WithObservedGeneration(mcpServer.Generation).
 		WithDeploymentName(existingDeployment.Name).
 		WithServiceName(mcpServer.Name).
-		WithAddress(acv1alpha1.MCPServerAddress().WithURL(fmt.Sprintf("http://%s.%s.svc.cluster.local:%d%s", mcpServer.Name, mcpServer.Namespace, mcpServer.Spec.Config.Port, path))).
-		WithConditions(conditionToAC(condition))
+		WithAddress(acv1alpha1.MCPServerAddress().
+			WithURL(fmt.Sprintf("http://%s.%s.svc.cluster.local:%d%s",
+				mcpServer.Name, mcpServer.Namespace, mcpServer.Spec.Config.Port, path))).
+		WithConditions(
+			conditionToAC(acceptedCondition),
+			conditionToAC(readyCondition),
+		)
 
 	if err := r.applyStatus(ctx, mcpServer, status); err != nil {
-		logger.Error(err, "Failed to apply new MCPServer status")
+		logger.Error(err, "Failed to apply MCPServer status")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Successfully reconciled MCPServer", "phase", mcpServer.Status.Phase)
+	logger.Info("Successfully reconciled MCPServer",
+		"accepted", acceptedCondition.Status,
+		"ready", readyCondition.Status)
+
+	// If Deployment is not yet available, requeue to check again later
+	if readyCondition.Status == metav1.ConditionFalse && readyCondition.Reason == ReasonDeploymentUnavailable {
+		logger.Info("Deployment not yet available, requeuing to check again",
+			"requeueAfter", requeueDelayDeploymentUnavailable)
+		return ctrl.Result{RequeueAfter: requeueDelayDeploymentUnavailable}, nil
+	}
+
 	return ctrl.Result{}, nil
 }
 
-// determinePhase maps deployment status to an MCPServer phase and condition.
-func determinePhase(
+// determineReadyCondition analyzes deployment status and accepted condition to determine
+// the Ready condition.
+func determineReadyCondition(
 	deployment *appsv1.Deployment,
+	acceptedCondition metav1.Condition,
 	generation int64,
 	existingConditions []metav1.Condition,
-) (string, metav1.Condition) {
+) metav1.Condition {
+	// If configuration is not accepted, Ready=False
+	if acceptedCondition.Status == metav1.ConditionFalse {
+		condition := newCondition(
+			ConditionTypeReady,
+			metav1.ConditionFalse,
+			ReasonConfigurationInvalid,
+			"Configuration must be fixed before server can start",
+			generation,
+		)
+		preserveLastTransitionTime(&condition, existingConditions)
+		return condition
+	}
+
+	// Check if scaled to zero
+	// Note: Following Kubernetes Deployment semantics, we set Ready=True when scaled to 0.
+	// Scaling to zero is an intentional, valid desired state (not a failure).
+	// This prevents false alerts and aligns with core K8s resource conventions where
+	// conditions indicate "is the system in its desired state?" rather than "is it doing work?".
+	// Users can check the ScaledToZero reason or status.replicas for operational state.
+	if deployment.Spec.Replicas != nil && *deployment.Spec.Replicas == 0 {
+		condition := newCondition(
+			ConditionTypeReady,
+			metav1.ConditionTrue,
+			ReasonScaledToZero,
+			"Server is ready (scaled to 0 replicas)",
+			generation,
+		)
+		preserveLastTransitionTime(&condition, existingConditions)
+		return condition
+	}
+
+	// Extract deployment conditions
 	deploymentAvailable := false
 	deploymentProgressing := false
 	deploymentReplicaFailure := false
 	var deploymentMessage string
 
-	for _, condition := range deployment.Status.Conditions {
-		switch condition.Type {
+	for _, cond := range deployment.Status.Conditions {
+		switch cond.Type {
 		case appsv1.DeploymentAvailable:
-			if condition.Status == corev1.ConditionTrue {
+			if cond.Status == corev1.ConditionTrue {
 				deploymentAvailable = true
 			}
 		case appsv1.DeploymentProgressing:
-			if condition.Status == corev1.ConditionTrue {
+			if cond.Status == corev1.ConditionTrue {
 				deploymentProgressing = true
 			}
-			if condition.Status == corev1.ConditionFalse {
-				deploymentMessage = condition.Message
+			if cond.Status == corev1.ConditionFalse {
+				deploymentMessage = cond.Message
 			}
 		case appsv1.DeploymentReplicaFailure:
-			if condition.Status == corev1.ConditionTrue {
+			if cond.Status == corev1.ConditionTrue {
 				deploymentReplicaFailure = true
-				deploymentMessage = condition.Message
+				deploymentMessage = cond.Message
 			}
 		}
 	}
 
+	// Deployment has no status yet
 	if len(deployment.Status.Conditions) == 0 && deployment.Status.ReadyReplicas == 0 {
-		condition := metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			Reason:             "DeploymentPending",
-			Message:            "Waiting for Deployment to report status",
-			ObservedGeneration: generation,
-			LastTransitionTime: metav1.Now(),
-		}
-
+		condition := newCondition(
+			ConditionTypeReady,
+			metav1.ConditionUnknown,
+			ReasonInitializing,
+			"Waiting for Deployment to report status",
+			generation,
+		)
 		preserveLastTransitionTime(&condition, existingConditions)
-
-		return PhasePending, condition
+		return condition
 	}
 
+	// Deployment hasn't processed the latest spec yet
+	// Only check if ObservedGeneration is non-zero (0 is the initial state)
+	if deployment.Status.ObservedGeneration > 0 && deployment.Status.ObservedGeneration < deployment.Generation {
+		condition := newCondition(
+			ConditionTypeReady,
+			metav1.ConditionFalse,
+			ReasonDeploymentUnavailable,
+			"Deployment is processing spec update",
+			generation,
+		)
+		preserveLastTransitionTime(&condition, existingConditions)
+		return condition
+	}
+
+	// At least one replica is ready - SUCCESS
 	if deploymentAvailable && deployment.Status.ReadyReplicas > 0 {
-		condition := metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionTrue,
-			Reason:             "DeploymentAvailable",
-			Message:            "Deployment is available and ready",
-			ObservedGeneration: generation,
-			LastTransitionTime: metav1.Now(),
-		}
-
+		message := fmt.Sprintf("MCP server is ready (%d of %d instances healthy)",
+			deployment.Status.ReadyReplicas,
+			ptr.Deref(deployment.Spec.Replicas, 1))
+		condition := newCondition(
+			ConditionTypeReady,
+			metav1.ConditionTrue,
+			ReasonAvailable,
+			message,
+			generation,
+		)
 		preserveLastTransitionTime(&condition, existingConditions)
-
-		return PhaseRunning, condition
+		return condition
 	}
 
+	// Deployment exists but no replicas ready - FAILURE
+	// This covers: ImagePullBackOff, CrashLoop, OOM, Security errors, Probe failures, etc.
 	if deploymentReplicaFailure || (!deploymentProgressing && !deploymentAvailable) {
-		message := "Deployment failed"
-		if deploymentMessage != "" {
-			message = deploymentMessage
-		}
-
-		condition := metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			Reason:             "DeploymentFailed",
-			Message:            message,
-			ObservedGeneration: generation,
-			LastTransitionTime: metav1.Now(),
-		}
-
+		message := analyzeDeploymentFailure(deploymentMessage)
+		condition := newCondition(
+			ConditionTypeReady,
+			metav1.ConditionFalse,
+			ReasonDeploymentUnavailable,
+			message,
+			generation,
+		)
 		preserveLastTransitionTime(&condition, existingConditions)
-
-		return PhaseFailed, condition
+		return condition
 	}
 
-	condition := metav1.Condition{
-		Type:               "Ready",
-		Status:             metav1.ConditionFalse,
-		Reason:             "DeploymentProgressing",
-		Message:            "Deployment is progressing",
-		ObservedGeneration: generation,
-		LastTransitionTime: metav1.Now(),
-	}
-
+	// Still progressing (no replicas ready yet)
+	condition := newCondition(
+		ConditionTypeReady,
+		metav1.ConditionFalse,
+		ReasonDeploymentUnavailable,
+		"Waiting for instances to become healthy",
+		generation,
+	)
 	preserveLastTransitionTime(&condition, existingConditions)
-
-	return PhasePending, condition
+	return condition
 }
 
 // reconcileDeployment creates or updates the Deployment for the MCPServer
@@ -226,10 +389,9 @@ func (r *MCPServerReconciler) reconcileDeployment(
 ) (*appsv1.Deployment, error) {
 	logger := log.FromContext(ctx)
 
-	deployment, err := r.createDeployment(ctx, mcpServer)
+	deployment, err := r.createDeployment(mcpServer)
 	if err != nil {
 		logger.Error(err, "Failed to create Deployment")
-		r.updateStatusFailed(ctx, mcpServer, "Failed to create Deployment")
 		return nil, err
 	}
 	if err := controllerutil.SetControllerReference(mcpServer, deployment, r.Scheme); err != nil {
@@ -245,13 +407,12 @@ func (r *MCPServerReconciler) reconcileDeployment(
 			logger.Error(err, "Failed to create Deployment")
 			return nil, err
 		}
-		if err := r.Get(ctx, client.ObjectKey{
-			Name: deployment.Name, Namespace: deployment.Namespace,
-		}, existingDeployment); err != nil {
-			logger.Error(err, "Failed to get newly created Deployment")
-			return nil, err
-		}
-		return existingDeployment, nil
+		// Return the deployment object we just created.
+		// Don't try to Get it immediately - this can cause a race condition
+		// where the API server hasn't fully processed the creation yet.
+		// The deployment status will be empty, which is fine - the Ready condition
+		// will be set to Unknown/Initializing, and we'll requeue to check again.
+		return deployment, nil
 	} else if err != nil {
 		logger.Error(err, "Failed to get Deployment")
 		return nil, err
@@ -289,6 +450,13 @@ func (r *MCPServerReconciler) reconcileDeployment(
 			logger.Error(err, "Failed to update Deployment")
 			return nil, err
 		}
+		// Re-fetch deployment to get current status after update
+		if err := r.Get(ctx, client.ObjectKey{
+			Name: existingDeployment.Name, Namespace: existingDeployment.Namespace,
+		}, existingDeployment); err != nil {
+			logger.Error(err, "Failed to get updated Deployment")
+			return nil, err
+		}
 	} else {
 		logger.Info("Deployment already exists and is up to date", "name", deployment.Name)
 	}
@@ -297,7 +465,7 @@ func (r *MCPServerReconciler) reconcileDeployment(
 }
 
 // createDeployment creates a Deployment for the MCPServer
-func (r *MCPServerReconciler) createDeployment(ctx context.Context, mcpServer *mcpv1alpha1.MCPServer) (*appsv1.Deployment, error) {
+func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1alpha1.MCPServer) (*appsv1.Deployment, error) {
 	// Validate source type and extract image reference
 	var imageRef string
 	switch mcpServer.Spec.Source.Type {
@@ -342,9 +510,6 @@ func (r *MCPServerReconciler) createDeployment(ctx context.Context, mcpServer *m
 		container.Env = mcpServer.Spec.Config.Env
 	}
 	if len(mcpServer.Spec.Config.EnvFrom) > 0 {
-		if err := r.validateEnvFrom(ctx, mcpServer); err != nil {
-			return nil, err
-		}
 		container.EnvFrom = mcpServer.Spec.Config.EnvFrom
 	}
 
@@ -373,10 +538,7 @@ func (r *MCPServerReconciler) createDeployment(ctx context.Context, mcpServer *m
 	}
 
 	// Process storage mounts
-	volumes, volumeMounts, err := r.processStorageMounts(ctx, mcpServer)
-	if err != nil {
-		return nil, err
-	}
+	volumes, volumeMounts := r.processStorageMounts(mcpServer)
 	container.VolumeMounts = volumeMounts
 
 	deployment := &appsv1.Deployment{
@@ -414,41 +576,11 @@ func (r *MCPServerReconciler) createDeployment(ctx context.Context, mcpServer *m
 	return deployment, nil
 }
 
-// validateEnvFrom verifies that referenced ConfigMaps and Secrets exist for non-optional envFrom entries.
-func (r *MCPServerReconciler) validateEnvFrom(ctx context.Context, mcpServer *mcpv1alpha1.MCPServer) error {
-	for i, envFrom := range mcpServer.Spec.Config.EnvFrom {
-		if ref := envFrom.ConfigMapRef; ref != nil {
-			if ref.Optional == nil || !*ref.Optional {
-				configMap := &corev1.ConfigMap{}
-				if err := r.Get(ctx, client.ObjectKey{
-					Name:      ref.Name,
-					Namespace: mcpServer.Namespace,
-				}, configMap); err != nil {
-					return fmt.Errorf("failed to get ConfigMap %s for envFrom at index %d: %w", ref.Name, i, err)
-				}
-			}
-		}
-		if ref := envFrom.SecretRef; ref != nil {
-			if ref.Optional == nil || !*ref.Optional {
-				secret := &corev1.Secret{}
-				if err := r.Get(ctx, client.ObjectKey{
-					Name:      ref.Name,
-					Namespace: mcpServer.Namespace,
-				}, secret); err != nil {
-					return fmt.Errorf("failed to get Secret %s for envFrom at index %d: %w", ref.Name, i, err)
-				}
-			}
-		}
-	}
-	return nil
-}
-
-// processStorageMounts builds volumes and volume mounts from the MCPServer storage configuration,
-// validating that referenced ConfigMaps and Secrets exist for non-optional entries.
+// processStorageMounts builds volumes and volume mounts from the MCPServer storage configuration.
+// Validation of referenced ConfigMaps and Secrets is done in setAcceptedCondition.
 func (r *MCPServerReconciler) processStorageMounts(
-	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
-) ([]corev1.Volume, []corev1.VolumeMount, error) {
+) ([]corev1.Volume, []corev1.VolumeMount) {
 	volumes := make([]corev1.Volume, 0, len(mcpServer.Spec.Config.Storage))
 	volumeMounts := make([]corev1.VolumeMount, 0, len(mcpServer.Spec.Config.Storage))
 
@@ -484,53 +616,20 @@ func (r *MCPServerReconciler) processStorageMounts(
 
 		switch storage.Source.Type {
 		case mcpv1alpha1.StorageTypeConfigMap:
-			if storage.Source.ConfigMap == nil {
-				return nil, nil, fmt.Errorf("configMap must be set when type is ConfigMap for storage mount at index %d", i)
-			}
-			if storage.Source.ConfigMap.Name == "" {
-				return nil, nil, fmt.Errorf("configMap name must not be empty for storage mount at index %d", i)
-			}
-			if storage.Source.ConfigMap.Optional == nil || !*storage.Source.ConfigMap.Optional {
-				configMap := &corev1.ConfigMap{}
-				if err := r.Get(ctx, client.ObjectKey{
-					Name:      storage.Source.ConfigMap.Name,
-					Namespace: mcpServer.Namespace,
-				}, configMap); err != nil {
-					return nil, nil, fmt.Errorf("failed to get ConfigMap %s for storage mount at index %d: %w", storage.Source.ConfigMap.Name, i, err)
-				}
-			}
+			// Validation already done in setAcceptedCondition
 			volume.ConfigMap = storage.Source.ConfigMap
 		case mcpv1alpha1.StorageTypeSecret:
-			if storage.Source.Secret == nil {
-				return nil, nil, fmt.Errorf("secret must be set when type is Secret for storage mount at index %d", i)
-			}
-			if storage.Source.Secret.SecretName == "" {
-				return nil, nil, fmt.Errorf("secret name must not be empty for storage mount at index %d", i)
-			}
-			if storage.Source.Secret.Optional == nil || !*storage.Source.Secret.Optional {
-				secret := &corev1.Secret{}
-				if err := r.Get(ctx, client.ObjectKey{
-					Name:      storage.Source.Secret.SecretName,
-					Namespace: mcpServer.Namespace,
-				}, secret); err != nil {
-					return nil, nil, fmt.Errorf("failed to get Secret %s for storage mount at index %d: %w", storage.Source.Secret.SecretName, i, err)
-				}
-			}
+			// Validation already done in setAcceptedCondition
 			volume.Secret = storage.Source.Secret
 		case mcpv1alpha1.StorageTypeEmptyDir:
-			if storage.Source.EmptyDir == nil {
-				return nil, nil, fmt.Errorf("emptyDir must be set when type is EmptyDir for storage mount at index %d", i)
-			}
-			// No existence validation needed - EmptyDir is created by Kubernetes
+			// No validation needed - EmptyDir is created by Kubernetes
 			volume.EmptyDir = storage.Source.EmptyDir
-		default:
-			return nil, nil, fmt.Errorf("unsupported storage type %s at index %d", storage.Source.Type, i)
 		}
 
 		volumes = append(volumes, volume)
 	}
 
-	return volumes, volumeMounts, nil
+	return volumes, volumeMounts
 }
 
 // reconcileService creates or updates the Service for the MCPServer.
@@ -603,37 +702,6 @@ func (r *MCPServerReconciler) createService(mcpServer *mcpv1alpha1.MCPServer) *c
 	return service
 }
 
-// updateStatusFailed updates the MCPServer status to Failed
-func (r *MCPServerReconciler) updateStatusFailed(ctx context.Context, mcpServer *mcpv1alpha1.MCPServer, message string) {
-	condition := metav1.Condition{
-		Type:               "Ready",
-		Status:             metav1.ConditionFalse,
-		Reason:             "ReconciliationFailed",
-		Message:            message,
-		ObservedGeneration: mcpServer.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
-
-	preserveLastTransitionTime(&condition, mcpServer.Status.Conditions)
-
-	status := acv1alpha1.MCPServerStatus().
-		WithPhase(PhaseFailed).
-		WithServiceName(mcpServer.Name).
-		WithConditions(conditionToAC(condition))
-
-	if mcpServer.Status.DeploymentName != "" {
-		status = status.WithDeploymentName(mcpServer.Status.DeploymentName)
-	}
-
-	if mcpServer.Status.Address != nil {
-		status = status.WithAddress(acv1alpha1.MCPServerAddress().WithURL(mcpServer.Status.Address.URL))
-	}
-
-	if err := r.applyStatus(ctx, mcpServer, status); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update MCPServer status to Failed")
-	}
-}
-
 func (r *MCPServerReconciler) applyStatus(
 	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
@@ -674,6 +742,283 @@ func defaultContainerSecurityContext() *corev1.SecurityContext {
 		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 		SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 	}
+}
+
+// newCondition creates a new metav1.Condition with the current timestamp.
+func newCondition(
+	condType string,
+	status metav1.ConditionStatus,
+	reason string,
+	message string,
+	observedGeneration int64,
+) metav1.Condition {
+	return metav1.Condition{
+		Type:               condType,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: observedGeneration,
+		LastTransitionTime: metav1.Now(),
+	}
+}
+
+// analyzeDeploymentFailure examines the deployment message to build a detailed message
+// about why pods are not healthy. Returns a message with specifics.
+func analyzeDeploymentFailure(deploymentMessage string) string {
+	if deploymentMessage == "" {
+		return "No healthy instances available"
+	}
+
+	// Extract the most relevant error information
+	msg := deploymentMessage
+
+	// Common patterns - extract the key info
+	if strings.Contains(msg, "ImagePullBackOff") || strings.Contains(msg, "ErrImagePull") {
+		return fmt.Sprintf("No healthy instances: ImagePullBackOff - %s", msg)
+	}
+	if strings.Contains(msg, "runAsNonRoot") || strings.Contains(msg, "CreateContainerConfigError") {
+		return fmt.Sprintf("No healthy instances: CreateContainerConfigError - %s", msg)
+	}
+	if strings.Contains(msg, "OOMKilled") {
+		return fmt.Sprintf("No healthy instances: OOMKilled - %s", msg)
+	}
+	if strings.Contains(msg, "CrashLoopBackOff") {
+		return fmt.Sprintf("No healthy instances: CrashLoopBackOff - %s", msg)
+	}
+	if strings.Contains(msg, "Liveness probe failed") || strings.Contains(msg, "Readiness probe failed") {
+		return fmt.Sprintf("No healthy instances: Probe failed - %s", msg)
+	}
+
+	// Generic failure
+	return fmt.Sprintf("No healthy instances: %s", msg)
+}
+
+// validateStorageMount validates a single storage mount configuration.
+// Returns an error condition and false if validation fails, otherwise returns zero condition and true.
+func (r *MCPServerReconciler) validateStorageMount(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+	storage mcpv1alpha1.StorageMount,
+	index int,
+) (metav1.Condition, bool) {
+	switch storage.Source.Type {
+	case mcpv1alpha1.StorageTypeConfigMap:
+		if storage.Source.ConfigMap == nil {
+			return newCondition(
+				ConditionTypeAccepted,
+				metav1.ConditionFalse,
+				ReasonInvalid,
+				fmt.Sprintf("ConfigMap must be set for storage mount at index %d", index),
+				mcpServer.Generation,
+			), false
+		}
+		if storage.Source.ConfigMap.Name == "" {
+			return newCondition(
+				ConditionTypeAccepted,
+				metav1.ConditionFalse,
+				ReasonInvalid,
+				fmt.Sprintf("ConfigMap name must not be empty for storage mount at index %d", index),
+				mcpServer.Generation,
+			), false
+		}
+		// Skip validation if optional
+		if storage.Source.ConfigMap.Optional != nil && *storage.Source.ConfigMap.Optional {
+			return metav1.Condition{}, true
+		}
+		// Validate ConfigMap exists
+		configMap := &corev1.ConfigMap{}
+		if err := r.Get(ctx, client.ObjectKey{
+			Name:      storage.Source.ConfigMap.Name,
+			Namespace: mcpServer.Namespace,
+		}, configMap); err != nil {
+			if apierrors.IsNotFound(err) {
+				return newCondition(
+					ConditionTypeAccepted,
+					metav1.ConditionFalse,
+					ReasonInvalid,
+					fmt.Sprintf("ConfigMap '%s' not found in namespace '%s'",
+						storage.Source.ConfigMap.Name, mcpServer.Namespace),
+					mcpServer.Generation,
+				), false
+			}
+			// Other errors (permissions, etc.) - still mark as not accepted
+			return newCondition(
+				ConditionTypeAccepted,
+				metav1.ConditionFalse,
+				ReasonInvalid,
+				fmt.Sprintf("Failed to validate ConfigMap '%s': %v",
+					storage.Source.ConfigMap.Name, err),
+				mcpServer.Generation,
+			), false
+		}
+
+	case mcpv1alpha1.StorageTypeSecret:
+		if storage.Source.Secret == nil {
+			return newCondition(
+				ConditionTypeAccepted,
+				metav1.ConditionFalse,
+				ReasonInvalid,
+				fmt.Sprintf("Secret must be set for storage mount at index %d", index),
+				mcpServer.Generation,
+			), false
+		}
+		if storage.Source.Secret.SecretName == "" {
+			return newCondition(
+				ConditionTypeAccepted,
+				metav1.ConditionFalse,
+				ReasonInvalid,
+				fmt.Sprintf("Secret name must not be empty for storage mount at index %d", index),
+				mcpServer.Generation,
+			), false
+		}
+		// Skip validation if optional
+		if storage.Source.Secret.Optional != nil && *storage.Source.Secret.Optional {
+			return metav1.Condition{}, true
+		}
+		// Validate Secret exists
+		secret := &corev1.Secret{}
+		if err := r.Get(ctx, client.ObjectKey{
+			Name:      storage.Source.Secret.SecretName,
+			Namespace: mcpServer.Namespace,
+		}, secret); err != nil {
+			if apierrors.IsNotFound(err) {
+				return newCondition(
+					ConditionTypeAccepted,
+					metav1.ConditionFalse,
+					ReasonInvalid,
+					fmt.Sprintf("Secret '%s' not found in namespace '%s'",
+						storage.Source.Secret.SecretName, mcpServer.Namespace),
+					mcpServer.Generation,
+				), false
+			}
+			return newCondition(
+				ConditionTypeAccepted,
+				metav1.ConditionFalse,
+				ReasonInvalid,
+				fmt.Sprintf("Failed to validate Secret '%s': %v",
+					storage.Source.Secret.SecretName, err),
+				mcpServer.Generation,
+			), false
+		}
+
+	case mcpv1alpha1.StorageTypeEmptyDir:
+		// Validate EmptyDir configuration is present
+		if storage.Source.EmptyDir == nil {
+			return newCondition(
+				ConditionTypeAccepted,
+				metav1.ConditionFalse,
+				ReasonInvalid,
+				fmt.Sprintf("EmptyDir must be set for storage mount at index %d", index),
+				mcpServer.Generation,
+			), false
+		}
+
+	default:
+		// Unknown/unsupported storage type
+		return newCondition(
+			ConditionTypeAccepted,
+			metav1.ConditionFalse,
+			ReasonInvalid,
+			fmt.Sprintf("Unsupported storage type '%s' at index %d", storage.Source.Type, index),
+			mcpServer.Generation,
+		), false
+	}
+	return metav1.Condition{}, true
+}
+
+// validateEnvFrom validates a single envFrom configuration.
+// Returns an error condition and false if validation fails, otherwise returns zero condition and true.
+func (r *MCPServerReconciler) validateEnvFrom(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+	envFrom corev1.EnvFromSource,
+	index int,
+) (metav1.Condition, bool) {
+	if ref := envFrom.ConfigMapRef; ref != nil {
+		if ref.Optional == nil || !*ref.Optional {
+			configMap := &corev1.ConfigMap{}
+			if err := r.Get(ctx, client.ObjectKey{
+				Name:      ref.Name,
+				Namespace: mcpServer.Namespace,
+			}, configMap); err != nil {
+				if apierrors.IsNotFound(err) {
+					return newCondition(
+						ConditionTypeAccepted,
+						metav1.ConditionFalse,
+						ReasonInvalid,
+						fmt.Sprintf("ConfigMap '%s' (envFrom index %d) not found in namespace '%s'",
+							ref.Name, index, mcpServer.Namespace),
+						mcpServer.Generation,
+					), false
+				}
+				return newCondition(
+					ConditionTypeAccepted,
+					metav1.ConditionFalse,
+					ReasonInvalid,
+					fmt.Sprintf("Failed to validate ConfigMap '%s': %v", ref.Name, err),
+					mcpServer.Generation,
+				), false
+			}
+		}
+	}
+	if ref := envFrom.SecretRef; ref != nil {
+		if ref.Optional == nil || !*ref.Optional {
+			secret := &corev1.Secret{}
+			if err := r.Get(ctx, client.ObjectKey{
+				Name:      ref.Name,
+				Namespace: mcpServer.Namespace,
+			}, secret); err != nil {
+				if apierrors.IsNotFound(err) {
+					return newCondition(
+						ConditionTypeAccepted,
+						metav1.ConditionFalse,
+						ReasonInvalid,
+						fmt.Sprintf("Secret '%s' (envFrom index %d) not found in namespace '%s'",
+							ref.Name, index, mcpServer.Namespace),
+						mcpServer.Generation,
+					), false
+				}
+				return newCondition(
+					ConditionTypeAccepted,
+					metav1.ConditionFalse,
+					ReasonInvalid,
+					fmt.Sprintf("Failed to validate Secret '%s': %v", ref.Name, err),
+					mcpServer.Generation,
+				), false
+			}
+		}
+	}
+	return metav1.Condition{}, true
+}
+
+// setAcceptedCondition validates the MCPServer configuration and sets the Accepted condition.
+// Returns the condition and a boolean indicating if configuration is valid.
+func (r *MCPServerReconciler) setAcceptedCondition(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+) (metav1.Condition, bool) {
+	// Validate storage mounts
+	for i, storage := range mcpServer.Spec.Config.Storage {
+		if condition, valid := r.validateStorageMount(ctx, mcpServer, storage, i); !valid {
+			return condition, false
+		}
+	}
+
+	// Validate envFrom references
+	for i, envFrom := range mcpServer.Spec.Config.EnvFrom {
+		if condition, valid := r.validateEnvFrom(ctx, mcpServer, envFrom, i); !valid {
+			return condition, false
+		}
+	}
+
+	// All validation passed
+	return newCondition(
+		ConditionTypeAccepted,
+		metav1.ConditionTrue,
+		ReasonValid,
+		"Configuration is valid",
+		mcpServer.Generation,
+	), true
 }
 
 // SetupWithManager sets up the controller with the Manager.
