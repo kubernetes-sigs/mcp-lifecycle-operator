@@ -6501,4 +6501,565 @@ var _ = Describe("isSameGroupKind", func() {
 		}
 		Expect(isSameGroupKind(ownerRef, "", "Pod")).To(BeTrue())
 	})
+
+	Describe("ConfigMap/Secret reference detection", func() {
+		var reconciler *MCPServerReconciler
+
+		BeforeEach(func() {
+			reconciler = &MCPServerReconciler{}
+		})
+
+		Context("mcpServerReferencesConfigMap", func() {
+			It("should detect ConfigMap in storage mounts", func() {
+				mcpServer := &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Config: mcpv1alpha1.ServerConfig{
+							Storage: []mcpv1alpha1.StorageMount{
+								{
+									Source: mcpv1alpha1.StorageSource{
+										Type: mcpv1alpha1.StorageTypeConfigMap,
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "my-config",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				Expect(reconciler.mcpServerReferencesConfigMap(mcpServer, "my-config")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesConfigMap(mcpServer, "other-config")).To(BeFalse())
+			})
+
+			It("should detect ConfigMap in envFrom", func() {
+				mcpServer := &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Config: mcpv1alpha1.ServerConfig{
+							EnvFrom: []corev1.EnvFromSource{
+								{
+									ConfigMapRef: &corev1.ConfigMapEnvSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "env-config",
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				Expect(reconciler.mcpServerReferencesConfigMap(mcpServer, "env-config")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesConfigMap(mcpServer, "other-config")).To(BeFalse())
+			})
+
+			It("should detect ConfigMap in env valueFrom", func() {
+				mcpServer := &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Config: mcpv1alpha1.ServerConfig{
+							Env: []corev1.EnvVar{
+								{
+									Name: "MY_VAR",
+									ValueFrom: &corev1.EnvVarSource{
+										ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "var-config",
+											},
+											Key: "some-key",
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				Expect(reconciler.mcpServerReferencesConfigMap(mcpServer, "var-config")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesConfigMap(mcpServer, "other-config")).To(BeFalse())
+			})
+
+			It("should detect ConfigMap in multiple locations", func() {
+				mcpServer := &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Config: mcpv1alpha1.ServerConfig{
+							Storage: []mcpv1alpha1.StorageMount{
+								{
+									Source: mcpv1alpha1.StorageSource{
+										Type: mcpv1alpha1.StorageTypeConfigMap,
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "config-a",
+											},
+										},
+									},
+								},
+							},
+							EnvFrom: []corev1.EnvFromSource{
+								{
+									ConfigMapRef: &corev1.ConfigMapEnvSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "config-b",
+										},
+									},
+								},
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name: "VAR",
+									ValueFrom: &corev1.EnvVarSource{
+										ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "config-c",
+											},
+											Key: "key",
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				Expect(reconciler.mcpServerReferencesConfigMap(mcpServer, "config-a")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesConfigMap(mcpServer, "config-b")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesConfigMap(mcpServer, "config-c")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesConfigMap(mcpServer, "config-d")).To(BeFalse())
+			})
+
+			It("should return false when no ConfigMaps are referenced", func() {
+				mcpServer := &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Config: mcpv1alpha1.ServerConfig{
+							Port: 8080,
+						},
+					},
+				}
+
+				Expect(reconciler.mcpServerReferencesConfigMap(mcpServer, "any-config")).To(BeFalse())
+			})
+		})
+
+		Context("mcpServerReferencesSecret", func() {
+			It("should detect Secret in storage mounts", func() {
+				mcpServer := &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Config: mcpv1alpha1.ServerConfig{
+							Storage: []mcpv1alpha1.StorageMount{
+								{
+									Source: mcpv1alpha1.StorageSource{
+										Type: mcpv1alpha1.StorageTypeSecret,
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "my-secret",
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				Expect(reconciler.mcpServerReferencesSecret(mcpServer, "my-secret")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesSecret(mcpServer, "other-secret")).To(BeFalse())
+			})
+
+			It("should detect Secret in envFrom", func() {
+				mcpServer := &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Config: mcpv1alpha1.ServerConfig{
+							EnvFrom: []corev1.EnvFromSource{
+								{
+									SecretRef: &corev1.SecretEnvSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "env-secret",
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				Expect(reconciler.mcpServerReferencesSecret(mcpServer, "env-secret")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesSecret(mcpServer, "other-secret")).To(BeFalse())
+			})
+
+			It("should detect Secret in env valueFrom", func() {
+				mcpServer := &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Config: mcpv1alpha1.ServerConfig{
+							Env: []corev1.EnvVar{
+								{
+									Name: "MY_VAR",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "var-secret",
+											},
+											Key: "some-key",
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				Expect(reconciler.mcpServerReferencesSecret(mcpServer, "var-secret")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesSecret(mcpServer, "other-secret")).To(BeFalse())
+			})
+
+			It("should detect Secret in multiple locations", func() {
+				mcpServer := &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Config: mcpv1alpha1.ServerConfig{
+							Storage: []mcpv1alpha1.StorageMount{
+								{
+									Source: mcpv1alpha1.StorageSource{
+										Type: mcpv1alpha1.StorageTypeSecret,
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "secret-a",
+										},
+									},
+								},
+							},
+							EnvFrom: []corev1.EnvFromSource{
+								{
+									SecretRef: &corev1.SecretEnvSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "secret-b",
+										},
+									},
+								},
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name: "VAR",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "secret-c",
+											},
+											Key: "key",
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				Expect(reconciler.mcpServerReferencesSecret(mcpServer, "secret-a")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesSecret(mcpServer, "secret-b")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesSecret(mcpServer, "secret-c")).To(BeTrue())
+				Expect(reconciler.mcpServerReferencesSecret(mcpServer, "secret-d")).To(BeFalse())
+			})
+
+			It("should return false when no Secrets are referenced", func() {
+				mcpServer := &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Config: mcpv1alpha1.ServerConfig{
+							Port: 8080,
+						},
+					},
+				}
+
+				Expect(reconciler.mcpServerReferencesSecret(mcpServer, "any-secret")).To(BeFalse())
+			})
+		})
+
+		Context("findMCPServersForConfigMap", func() {
+			It("should return reconcile requests for MCPServers referencing the ConfigMap", func() {
+				ctx := context.Background()
+
+				// Create MCPServers that reference different ConfigMaps
+				mcpServer1 := &mcpv1alpha1.MCPServer{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "server1",
+						Namespace: "default",
+					},
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Source: mcpv1alpha1.Source{
+							Type: mcpv1alpha1.SourceTypeContainerImage,
+							ContainerImage: &mcpv1alpha1.ContainerImageSource{
+								Ref: "docker.io/library/test-image:latest",
+							},
+						},
+						Config: mcpv1alpha1.ServerConfig{
+							Port: 8080,
+							EnvFrom: []corev1.EnvFromSource{
+								{
+									ConfigMapRef: &corev1.ConfigMapEnvSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "shared-config",
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				mcpServer2 := &mcpv1alpha1.MCPServer{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "server2",
+						Namespace: "default",
+					},
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Source: mcpv1alpha1.Source{
+							Type: mcpv1alpha1.SourceTypeContainerImage,
+							ContainerImage: &mcpv1alpha1.ContainerImageSource{
+								Ref: "docker.io/library/test-image:latest",
+							},
+						},
+						Config: mcpv1alpha1.ServerConfig{
+							Port: 8080,
+							Storage: []mcpv1alpha1.StorageMount{
+								{
+									Path: "/data",
+									Source: mcpv1alpha1.StorageSource{
+										Type: mcpv1alpha1.StorageTypeConfigMap,
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "shared-config",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				mcpServer3 := &mcpv1alpha1.MCPServer{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "server3",
+						Namespace: "default",
+					},
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Source: mcpv1alpha1.Source{
+							Type: mcpv1alpha1.SourceTypeContainerImage,
+							ContainerImage: &mcpv1alpha1.ContainerImageSource{
+								Ref: "docker.io/library/test-image:latest",
+							},
+						},
+						Config: mcpv1alpha1.ServerConfig{
+							Port: 8080,
+							EnvFrom: []corev1.EnvFromSource{
+								{
+									ConfigMapRef: &corev1.ConfigMapEnvSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "different-config",
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				Expect(k8sClient.Create(ctx, mcpServer1)).To(Succeed())
+				Expect(k8sClient.Create(ctx, mcpServer2)).To(Succeed())
+				Expect(k8sClient.Create(ctx, mcpServer3)).To(Succeed())
+				defer func() {
+					k8sClient.Delete(ctx, mcpServer1)
+					k8sClient.Delete(ctx, mcpServer2)
+					k8sClient.Delete(ctx, mcpServer3)
+				}()
+
+				// Create a ConfigMap object
+				configMap := &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "shared-config",
+						Namespace: "default",
+					},
+				}
+
+				// Call the handler
+				reconciler := &MCPServerReconciler{
+					Client: k8sClient,
+					Scheme: k8sClient.Scheme(),
+				}
+				requests := reconciler.findMCPServersForConfigMap(ctx, configMap)
+
+				// Should return requests for server1 and server2, but not server3
+				Expect(requests).To(HaveLen(2))
+				requestNames := []string{requests[0].Name, requests[1].Name}
+				Expect(requestNames).To(ContainElements("server1", "server2"))
+				Expect(requestNames).NotTo(ContainElement("server3"))
+			})
+
+			It("should return empty list when no MCPServers reference the ConfigMap", func() {
+				ctx := context.Background()
+
+				mcpServer := &mcpv1alpha1.MCPServer{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "server-no-refs",
+						Namespace: "default",
+					},
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Source: mcpv1alpha1.Source{
+							Type: mcpv1alpha1.SourceTypeContainerImage,
+							ContainerImage: &mcpv1alpha1.ContainerImageSource{
+								Ref: "docker.io/library/test-image:latest",
+							},
+						},
+						Config: mcpv1alpha1.ServerConfig{
+							Port: 8080,
+						},
+					},
+				}
+
+				Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+				defer k8sClient.Delete(ctx, mcpServer)
+
+				configMap := &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "unused-config",
+						Namespace: "default",
+					},
+				}
+
+				reconciler := &MCPServerReconciler{
+					Client: k8sClient,
+					Scheme: k8sClient.Scheme(),
+				}
+				requests := reconciler.findMCPServersForConfigMap(ctx, configMap)
+
+				Expect(requests).To(BeEmpty())
+			})
+		})
+
+		Context("findMCPServersForSecret", func() {
+			It("should return reconcile requests for MCPServers referencing the Secret", func() {
+				ctx := context.Background()
+
+				// Create MCPServers that reference different Secrets
+				mcpServer1 := &mcpv1alpha1.MCPServer{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "server-sec1",
+						Namespace: "default",
+					},
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Source: mcpv1alpha1.Source{
+							Type: mcpv1alpha1.SourceTypeContainerImage,
+							ContainerImage: &mcpv1alpha1.ContainerImageSource{
+								Ref: "docker.io/library/test-image:latest",
+							},
+						},
+						Config: mcpv1alpha1.ServerConfig{
+							Port: 8080,
+							Env: []corev1.EnvVar{
+								{
+									Name: "PASSWORD",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "shared-secret",
+											},
+											Key: "password",
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				mcpServer2 := &mcpv1alpha1.MCPServer{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "server-sec2",
+						Namespace: "default",
+					},
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Source: mcpv1alpha1.Source{
+							Type: mcpv1alpha1.SourceTypeContainerImage,
+							ContainerImage: &mcpv1alpha1.ContainerImageSource{
+								Ref: "docker.io/library/test-image:latest",
+							},
+						},
+						Config: mcpv1alpha1.ServerConfig{
+							Port: 8080,
+							EnvFrom: []corev1.EnvFromSource{
+								{
+									SecretRef: &corev1.SecretEnvSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "different-secret",
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				Expect(k8sClient.Create(ctx, mcpServer1)).To(Succeed())
+				Expect(k8sClient.Create(ctx, mcpServer2)).To(Succeed())
+				defer func() {
+					k8sClient.Delete(ctx, mcpServer1)
+					k8sClient.Delete(ctx, mcpServer2)
+				}()
+
+				// Create a Secret object
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "shared-secret",
+						Namespace: "default",
+					},
+				}
+
+				// Call the handler
+				reconciler := &MCPServerReconciler{
+					Client: k8sClient,
+					Scheme: k8sClient.Scheme(),
+				}
+				requests := reconciler.findMCPServersForSecret(ctx, secret)
+
+				// Should return request for server-sec1, but not server-sec2
+				Expect(requests).To(HaveLen(1))
+				Expect(requests[0].Name).To(Equal("server-sec1"))
+			})
+
+			It("should return empty list when no MCPServers reference the Secret", func() {
+				ctx := context.Background()
+
+				mcpServer := &mcpv1alpha1.MCPServer{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "server-no-secret-refs",
+						Namespace: "default",
+					},
+					Spec: mcpv1alpha1.MCPServerSpec{
+						Source: mcpv1alpha1.Source{
+							Type: mcpv1alpha1.SourceTypeContainerImage,
+							ContainerImage: &mcpv1alpha1.ContainerImageSource{
+								Ref: "docker.io/library/test-image:latest",
+							},
+						},
+						Config: mcpv1alpha1.ServerConfig{
+							Port: 8080,
+						},
+					},
+				}
+
+				Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+				defer k8sClient.Delete(ctx, mcpServer)
+
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "unused-secret",
+						Namespace: "default",
+					},
+				}
+
+				reconciler := &MCPServerReconciler{
+					Client: k8sClient,
+					Scheme: k8sClient.Scheme(),
+				}
+				requests := reconciler.findMCPServersForSecret(ctx, secret)
+
+				Expect(requests).To(BeEmpty())
+			})
+		})
+	})
 })
