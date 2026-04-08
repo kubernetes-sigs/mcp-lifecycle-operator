@@ -47,11 +47,11 @@ assignees: aliok, ArangoGutierrez, matzew, mikebrow, mrunalp, soltysh
   to promote the container image to production
   - [ ] Wait for merge and verify image availability:
     ```bash
-    crane manifest registry.k8s.io/mcp-lifecycle-operator:v0.MINOR.0
+    crane manifest registry.k8s.io/mcp-lifecycle-operator/mcp-lifecycle-operator:v0.MINOR.0
     ```
 - [ ] Generate the install manifest and include it among the release assets:
   ```bash
-  IMG=registry.k8s.io/mcp-lifecycle-operator:v0.MINOR.0 make build-installer
+  IMG=registry.k8s.io/mcp-lifecycle-operator/mcp-lifecycle-operator:v0.MINOR.0 make build-installer
   ```
 - [ ] Create [GitHub release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/new)
   with the changelog above; attach `dist/install.yaml` as a release asset
