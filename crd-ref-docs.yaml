@@ -1,0 +1,19 @@
+processor:
+  # Ignore fields using regex patterns (RE2 syntax)
+  ignoreFields:
+    - "TypeMeta$"
+    - "ObjectMeta$"
+    - "ListMeta$"
+  # Ignore types matching regex patterns
+  ignoreTypes:
+    - "()List$"
+
+render:
+  kubernetesVersion: "1.28"
+
+output:
+  markdown:
+    outputFile: site-src/reference/index.md
+
+sourceDirectories:
+  - api/v1alpha1

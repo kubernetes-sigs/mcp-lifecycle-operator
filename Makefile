@@ -150,6 +150,27 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
 	"$(KUSTOMIZE)" build config/default > dist/install.yaml
 
+##@ Documentation
+
+.PHONY: api-ref-docs
+api-ref-docs: ## Generate API reference documentation
+	./hack/mkdocs/generate.sh
+
+.PHONY: build-docs
+build-docs: api-ref-docs ## Build documentation site using Docker
+	$(CONTAINER_TOOL) build -t mkdocs-builder -f hack/mkdocs/image/Dockerfile hack/mkdocs/image
+	$(CONTAINER_TOOL) run --rm -v $(shell pwd):/work -w /work mkdocs-builder build
+
+.PHONY: build-docs-netlify
+build-docs-netlify: api-ref-docs ## Build documentation site for Netlify deployment
+	pip install -r hack/mkdocs/image/requirements.txt
+	python -m mkdocs build
+
+.PHONY: live-docs
+live-docs: api-ref-docs ## Run live documentation server using Docker
+	$(CONTAINER_TOOL) build -t mkdocs-builder -f hack/mkdocs/image/Dockerfile hack/mkdocs/image
+	$(CONTAINER_TOOL) run --rm -it -v $(shell pwd):/work -w /work -p 3000:3000 mkdocs-builder serve --dev-addr=0.0.0.0:3000
+
 ##@ Deployment
 
 ifndef ignore-not-found

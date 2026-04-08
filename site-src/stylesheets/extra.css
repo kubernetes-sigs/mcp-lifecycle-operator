@@ -1,0 +1,38 @@
+/* Custom color scheme */
+:root {
+    --md-primary-fg-color: #4051b5;
+    --md-primary-fg-color--light: #5E8DE5;
+    --md-primary-fg-color--dark: #2056C8;
+}
+
+/* Material grid cards */
+.md-typeset .grid {
+    grid-gap: 0.4rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    margin: 1em 0;
+}
+
+.md-typeset .grid.cards > * {
+    border: 0.05rem solid var(--md-default-fg-color--lightest);
+    border-radius: 0.1rem;
+    display: block;
+    margin: 0;
+    padding: 0.8rem;
+    transition: border 0.25s, box-shadow 0.25s;
+}
+
+.md-typeset .grid.cards > *:hover {
+    border-color: var(--md-accent-fg-color);
+    box-shadow: 0 0.2rem 0.5rem rgba(0, 0, 0, 0.05);
+}
+
+/* Code block improvements */
+.md-typeset code {
+    word-break: break-word;
+}
+
+/* Better admonition styling */
+.md-typeset .admonition {
+    border-left: 0.2rem solid;
+}

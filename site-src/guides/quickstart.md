@@ -1,6 +1,6 @@
-# mcp-lifecycle-operator
+# Quickstart Guide
 
-A Kubernetes operator that provides a declarative API to deploy, manage, and safely roll out MCP Servers, handling their full lifecycle with production-grade automation and ecosystem integrations.
+This guide will walk you through deploying your first MCP server using the MCP Lifecycle Operator.
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 - kubectl configured to access your cluster
 - Go 1.24+ (for building from source)
 
-## Testing on Your Cluster
+## Installation
 
 ### 1. Install the CRDs
 
@@ -46,9 +46,12 @@ make docker-buildx IMG=<your-registry>/mcp-lifecycle-operator:latest
 make deploy IMG=<your-registry>/mcp-lifecycle-operator:latest
 ```
 
-Note: `docker-buildx` builds for multiple architectures (amd64, arm64, s390x, ppc64le) and pushes automatically.
+!!! note
+    `docker-buildx` builds for multiple architectures (amd64, arm64, s390x, ppc64le) and pushes automatically.
 
-### 3. Create a Test MCPServer
+## Deploy Your First MCP Server
+
+### Create a Test MCPServer
 
 In a new terminal, create a test `MCPServer` resource:
 
@@ -69,7 +72,7 @@ spec:
 EOF
 ```
 
-### 4. Verify the Deployment
+### Verify the Deployment
 
 Check that the operator created the resources:
 
@@ -89,12 +92,15 @@ kubectl get pods -l mcp-server=test-server
 ```
 
 Expected output from `kubectl get mcpservers`:
+
 ```
 NAME          PHASE     IMAGE                                      PORT   ADDRESS                                            AGE
 test-server   Running   aliok/mcp-server-streamable-http:latest   8081   http://test-server.default.svc.cluster.local:8081/mcp  1m
 ```
 
 The `ADDRESS` column shows the cluster-internal URL that can be used by other workloads to connect to the MCP server.
+
+### View Status Details
 
 The status includes the service address for easy discovery:
 
@@ -110,7 +116,7 @@ status:
       status: "True"
 ```
 
-### 5. Test the Service
+## Test the Service
 
 Port-forward to test connectivity:
 
@@ -119,29 +125,12 @@ kubectl port-forward service/test-server 8081:8081
 ```
 
 Then in another terminal:
+
 ```bash
 curl http://localhost:8081/mcp
 ```
 
 You should see a response from the MCP server.
-
-### 6. Uninstall (Optional)
-
-To remove the CRDs and operator:
-
-```bash
-# If you deployed to cluster
-make undeploy
-
-# Remove the CRDs
-make uninstall
-```
-
-## Examples
-
-For complete examples with ConfigMap support and detailed documentation, see the [examples/](./examples/) directory:
-
-- **[kubernetes-mcp-server](./examples/kubernetes-mcp-server/)** - Deploy the Kubernetes MCP Server with basic and ConfigMap-based configurations
 
 ## Example MCPServer Resources
 
@@ -162,49 +151,52 @@ spec:
     port: 8081
 ```
 
-### Custom MCP Server
+### MCP Server with ConfigMap
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-config
+data:
+  LOG_LEVEL: "debug"
+  FEATURE_FLAG: "enabled"
+---
 apiVersion: mcp.x-k8s.io/v1alpha1
 kind: MCPServer
 metadata:
-  name: custom-server
-  namespace: default
+  name: configured-server
 spec:
   source:
     type: ContainerImage
     containerImage:
-      ref: my-registry.io/custom-mcp-server:1.0.0
+      ref: my-registry.io/mcp-server:latest
   config:
-    port: 8000
+    port: 8081
+    envFrom:
+      - configMapRef:
+          name: mcp-config
 ```
 
-## Development
+## Cleanup
 
-### Building
+To remove the MCP server:
 
 ```bash
-# Generate code and manifests
-make manifests generate
-
-# Build binary
-make build
-
-# Run tests
-make test
+kubectl delete mcpserver test-server
 ```
 
-## Community, discussion, contribution, and support
+To uninstall the operator:
 
-This project is part of Kubernetes [SIG Apps](https://github.com/kubernetes/community/blob/main/sig-apps/README.md).
+```bash
+# If you deployed to cluster
+make undeploy
 
-Learn how to engage with the Kubernetes community on the [community page](http://kubernetes.io/community/).
+# Remove the CRDs
+make uninstall
+```
 
-You can reach the maintainers of this project at:
+## Next Steps
 
-- [Slack channel](https://kubernetes.slack.com/messages/sig-apps)
-- [Mailing List](https://groups.google.com/a/kubernetes.io/g/sig-apps)
-
-### Code of conduct
-
-Participation in the Kubernetes community is governed by the [Kubernetes Code of Conduct](code-of-conduct.md).
+- Explore more [examples](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples)
+- Check the [API Reference](../reference/) for all configuration options

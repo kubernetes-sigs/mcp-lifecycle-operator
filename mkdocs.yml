@@ -1,0 +1,63 @@
+site_name: MCP Lifecycle Operator
+site_url: https://mcp-lifecycle-operator.sigs.k8s.io
+repo_url: https://github.com/kubernetes-sigs/mcp-lifecycle-operator
+repo_name: kubernetes-sigs/mcp-lifecycle-operator
+edit_uri: edit/main/site-src/
+site_dir: site
+docs_dir: site-src
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  logo: images/logo.png
+  favicon: images/favicon-64.png
+  palette:
+    primary: custom
+  features:
+    - search.highlight
+    - navigation.tabs
+    - navigation.top
+    - navigation.expand
+    - content.code.copy
+    - content.action.edit
+
+plugins:
+  - search
+  - awesome-pages
+  - mermaid2
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - tables
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/kubernetes-sigs/mcp-lifecycle-operator
+    - icon: fontawesome/brands/slack
+      link: https://kubernetes.slack.com/messages/sig-apps

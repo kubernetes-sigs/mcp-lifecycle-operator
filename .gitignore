@@ -35,3 +35,8 @@ __pycache__/
 
 # Kubeconfig might contain secrets
 *.kubeconfig
+
+# MkDocs generated site
+site/
+site-src/reference/index.md
+.venv-mkdocs/

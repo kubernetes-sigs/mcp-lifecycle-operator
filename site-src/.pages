@@ -1,0 +1,6 @@
+nav:
+  - Home: index.md
+  - Introduction: introduction.md
+  - Guides: guides
+  - Reference: reference
+  - Contributing: contributing
