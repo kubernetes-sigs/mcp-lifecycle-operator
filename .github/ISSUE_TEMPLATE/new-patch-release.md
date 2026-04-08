@@ -42,8 +42,12 @@ assignees: aliok, ArangoGutierrez, matzew, mikebrow, mrunalp, soltysh
     ```bash
     crane manifest registry.k8s.io/mcp-lifecycle-operator:v0.MINOR.PATCH
     ```
+- [ ] Generate the install manifest and include it among the release assets:
+  ```bash
+  IMG=registry.k8s.io/mcp-lifecycle-operator:v0.MINOR.PATCH make build-installer
+  ```
 - [ ] Create [GitHub release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/new)
-  with the changelog above
+  with the changelog above; attach `dist/install.yaml` as a release asset
 - [ ] Send announcement email to `dev@kubernetes.io` with subject:
   `[ANNOUNCE] mcp-lifecycle-operator v0.MINOR.PATCH is released`
 - [ ] Close this issue

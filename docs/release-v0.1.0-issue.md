@@ -43,10 +43,8 @@ First release. Key features:
 - [ ] Verify the changelog above is up-to-date
 - [x] Create the release branch
   `release-0.1` exists (branched at `1c39a19`), cherry-pick PR #78 merged.
-- [ ] Create Prow presubmit/postsubmit jobs for `release-0.1` in
-  [kubernetes/test-infra](https://github.com/kubernetes/test-infra) and submit PR
-  (copy from main config, adjust branch to `release-0.1`)
-  - [ ] Wait for test-infra PR to merge
+- [x] Verify the [postsubmit image-pushing job](https://github.com/kubernetes/test-infra/blob/master/config/jobs/image-pushing/k8s-staging-mcp-lifecycle-operator.yaml)
+  covers `release-0.1` — the existing `^release-` pattern matches; presubmits run on all branches
 - [ ] Verify Go version in Prow job image matches `go.mod`
   **Note:** Prow config currently uses `golang:1.24`, but `go.mod` declares `go 1.25.8`.
   This must be aligned before proceeding.
@@ -74,8 +72,12 @@ First release. Key features:
     ```bash
     crane manifest registry.k8s.io/mcp-lifecycle-operator:v0.1.0
     ```
+- [ ] Generate the install manifest and include it among the release assets:
+  ```bash
+  IMG=registry.k8s.io/mcp-lifecycle-operator:v0.1.0 make build-installer
+  ```
 - [ ] Create [GitHub release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/new)
-  with the changelog above
+  with the changelog above; attach `dist/install.yaml` as a release asset
 - [ ] Send announcement email to `dev@kubernetes.io` with subject:
   `[ANNOUNCE] mcp-lifecycle-operator v0.1.0 is released`
 - [ ] Close this issue
