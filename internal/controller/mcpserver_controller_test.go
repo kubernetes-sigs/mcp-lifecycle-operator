@@ -4314,6 +4314,56 @@ var _ = Describe("MCPServer Controller - Optimistic Locking Conflicts", func() {
 			corev1.EnvVar{Name: "RETRY_VAR", Value: "value"},
 		))
 	})
+
+	It("should return conflict error when service update encounters optimistic locking conflict", func() {
+		By("Initial reconcile to create resources")
+		initialReconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+		_, err := initialReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Updating MCPServer port to trigger a service update")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Config.Port = 9090
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		By("Creating interceptor that returns conflict on service Update")
+		updateCallCount := 0
+		wrappedClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+		Expect(err).NotTo(HaveOccurred())
+
+		interceptedClient := interceptor.NewClient(wrappedClient, interceptor.Funcs{
+			Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				if _, ok := obj.(*corev1.Service); ok {
+					updateCallCount++
+					return errors.NewConflict(
+						schema.GroupResource{Group: "", Resource: "services"},
+						obj.GetName(),
+						fmt.Errorf("the object has been modified"),
+					)
+				}
+				return c.Update(ctx, obj, opts...)
+			},
+		})
+
+		conflictReconciler := &MCPServerReconciler{
+			Client: interceptedClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		By("Reconciling with conflict interceptor")
+		_, err = conflictReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(errors.IsConflict(err)).To(BeTrue())
+		Expect(updateCallCount).To(Equal(1))
+	})
 })
 
 var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
