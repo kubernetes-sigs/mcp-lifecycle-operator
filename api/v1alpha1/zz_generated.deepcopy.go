@@ -145,6 +145,20 @@ func (in *MCPServerSpec) DeepCopyInto(out *MCPServerSpec) {
 	*out = *in
 	in.Source.DeepCopyInto(&out.Source)
 	in.Config.DeepCopyInto(&out.Config)
+	if in.Labels != nil {
+		in, out := &in.Labels, &out.Labels
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
+	if in.Annotations != nil {
+		in, out := &in.Annotations, &out.Annotations
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	in.Runtime.DeepCopyInto(&out.Runtime)
 }
 

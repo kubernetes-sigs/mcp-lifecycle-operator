@@ -31,6 +31,10 @@ type MCPServerSpecApplyConfiguration struct {
 	// This includes runtime settings such as the server port, command-line arguments,
 	// environment variables, and storage mounts.
 	Config *ServerConfigApplyConfiguration `json:"config,omitempty"`
+	// Labels are applied to the Deployment, PodTemplate, and Service.
+	Labels map[string]string `json:"labels,omitempty"`
+	// Annotations are applied to the Deployment, PodTemplate, and Service.
+	Annotations map[string]string `json:"annotations,omitempty"`
 	// Runtime defines runtime management configuration.
 	// If not specified, default runtime settings will be applied.
 	Runtime *RuntimeConfigApplyConfiguration `json:"runtime,omitempty"`
@@ -55,6 +59,34 @@ func (b *MCPServerSpecApplyConfiguration) WithSource(value *SourceApplyConfigura
 // If called multiple times, the Config field is set to the value of the last call.
 func (b *MCPServerSpecApplyConfiguration) WithConfig(value *ServerConfigApplyConfiguration) *MCPServerSpecApplyConfiguration {
 	b.Config = value
+	return b
+}
+
+// WithLabels puts the entries into the Labels field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the Labels field,
+// overwriting an existing map entries in Labels field with the same key.
+func (b *MCPServerSpecApplyConfiguration) WithLabels(entries map[string]string) *MCPServerSpecApplyConfiguration {
+	if b.Labels == nil && len(entries) > 0 {
+		b.Labels = make(map[string]string, len(entries))
+	}
+	for k, v := range entries {
+		b.Labels[k] = v
+	}
+	return b
+}
+
+// WithAnnotations puts the entries into the Annotations field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the Annotations field,
+// overwriting an existing map entries in Annotations field with the same key.
+func (b *MCPServerSpecApplyConfiguration) WithAnnotations(entries map[string]string) *MCPServerSpecApplyConfiguration {
+	if b.Annotations == nil && len(entries) > 0 {
+		b.Annotations = make(map[string]string, len(entries))
+	}
+	for k, v := range entries {
+		b.Annotations[k] = v
+	}
 	return b
 }
 

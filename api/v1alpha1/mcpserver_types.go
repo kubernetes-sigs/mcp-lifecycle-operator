@@ -344,6 +344,14 @@ type MCPServerSpec struct {
 	// +kubebuilder:validation:Required
 	Config ServerConfig `json:"config,omitzero"`
 
+	// Labels are applied to the Deployment, PodTemplate, and Service.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Annotations are applied to the Deployment, PodTemplate, and Service.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+
 	// Runtime defines runtime management configuration.
 	// If not specified, default runtime settings will be applied.
 	// +optional

@@ -55,6 +55,12 @@ spec:
           spec:
             description: spec defines the desired state of MCPServer
             properties:
+              annotations:
+                additionalProperties:
+                  type: string
+                description: Annotations are applied to the Deployment, PodTemplate,
+                  and Service.
+                type: object
               config:
                 description: |-
                   Config is a required field that defines how the MCP server should be configured when it runs.
@@ -564,6 +570,12 @@ spec:
                     x-kubernetes-list-type: map
                 required:
                 - port
+                type: object
+              labels:
+                additionalProperties:
+                  type: string
+                description: Labels are applied to the Deployment, PodTemplate, and
+                  Service.
                 type: object
               runtime:
                 description: |-

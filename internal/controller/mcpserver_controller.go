@@ -269,6 +269,10 @@ func (r *MCPServerReconciler) reconcileDeployment(
 			// Explicit DeepEqual checks for fields that can be zeroed/removed by the user.
 			// DeepDerivative skips zero-value fields in the desired spec, so removals
 			// (clearing args, env, volumes, etc.) would go undetected without these.
+			!equality.Semantic.DeepEqual(existingDeployment.Labels, deployment.Labels) ||
+			!equality.Semantic.DeepEqual(existingDeployment.Annotations, deployment.Annotations) ||
+			!equality.Semantic.DeepEqual(existingDeployment.Spec.Template.Labels, deployment.Spec.Template.Labels) ||
+			!equality.Semantic.DeepEqual(existingDeployment.Spec.Template.Annotations, deployment.Spec.Template.Annotations) ||
 			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].Args, newPodSpec.Containers[0].Args) ||
 			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].Env, newPodSpec.Containers[0].Env) ||
 			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].EnvFrom, newPodSpec.Containers[0].EnvFrom) ||
@@ -285,6 +289,10 @@ func (r *MCPServerReconciler) reconcileDeployment(
 		logger.Info("Updating Deployment", "name", existingDeployment.Name)
 		existingDeployment.Spec.Replicas = deployment.Spec.Replicas
 		existingDeployment.Spec.Template.Spec = deployment.Spec.Template.Spec
+		existingDeployment.Labels = deployment.Labels
+		existingDeployment.Annotations = deployment.Annotations
+		existingDeployment.Spec.Template.Labels = deployment.Spec.Template.Labels
+		existingDeployment.Spec.Template.Annotations = deployment.Spec.Template.Annotations
 		if err := r.Update(ctx, existingDeployment); err != nil {
 			logger.Error(err, "Failed to update Deployment")
 			return nil, err
@@ -319,6 +327,8 @@ func (r *MCPServerReconciler) createDeployment(ctx context.Context, mcpServer *m
 		"app":        "mcp-server",
 		"mcp-server": mcpServer.Name,
 	}
+	mergedLabels := mergeStringMaps(labels, mcpServer.Spec.Labels)
+	mergedAnnotations := mergeStringMaps(mcpServer.Spec.Annotations)
 
 	container := corev1.Container{
 		Name:  "mcp-server",
@@ -381,20 +391,20 @@ func (r *MCPServerReconciler) createDeployment(ctx context.Context, mcpServer *m
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      mcpServer.Name,
-			Namespace: mcpServer.Namespace,
-			Labels:    labels,
+			Name:        mcpServer.Name,
+			Namespace:   mcpServer.Namespace,
+			Labels:      mergedLabels,
+			Annotations: mergedAnnotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"mcp-server": mcpServer.Name,
-				},
+				MatchLabels: labels,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
+					Labels:      mergedLabels,
+					Annotations: mergedAnnotations,
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{container},
@@ -557,9 +567,13 @@ func (r *MCPServerReconciler) reconcileService(
 	} else if err != nil {
 		logger.Error(err, "Failed to get Service")
 		return err
-	} else if !equality.Semantic.DeepEqual(service.Spec.Ports, existingService.Spec.Ports) {
+	} else if !equality.Semantic.DeepEqual(service.Spec.Ports, existingService.Spec.Ports) ||
+		!equality.Semantic.DeepEqual(service.Labels, existingService.Labels) ||
+		!equality.Semantic.DeepEqual(service.Annotations, existingService.Annotations) {
 		logger.Info("Updating Service", "name", existingService.Name)
 		existingService.Spec.Ports = service.Spec.Ports
+		existingService.Labels = service.Labels
+		existingService.Annotations = service.Annotations
 		if err := r.Update(ctx, existingService); err != nil {
 			logger.Error(err, "Failed to update Service")
 			return err
@@ -577,12 +591,15 @@ func (r *MCPServerReconciler) createService(mcpServer *mcpv1alpha1.MCPServer) *c
 		"app":        "mcp-server",
 		"mcp-server": mcpServer.Name,
 	}
+	mergedLabels := mergeStringMaps(labels, mcpServer.Spec.Labels)
+	mergedAnnotations := mergeStringMaps(mcpServer.Spec.Annotations)
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      mcpServer.Name,
-			Namespace: mcpServer.Namespace,
-			Labels:    labels,
+			Name:        mcpServer.Name,
+			Namespace:   mcpServer.Namespace,
+			Labels:      mergedLabels,
+			Annotations: mergedAnnotations,
 		},
 		Spec: corev1.ServiceSpec{
 			Type: corev1.ServiceTypeClusterIP,
@@ -684,4 +701,20 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Named("mcpserver").
 		Complete(r)
+}
+
+// mergeStringMaps merges multiple string maps into a single map.
+// Maps passed later take precedence in case of duplicate keys.
+
+func mergeStringMaps(maps ...map[string]string) map[string]string {
+	out := make(map[string]string)
+	for _, m := range maps {
+		for k, v := range m {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

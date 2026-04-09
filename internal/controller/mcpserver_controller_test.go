@@ -44,6 +44,120 @@ import (
 )
 
 var _ = Describe("MCPServer Controller", func() {
+	Context("When reconciling a resource with labels and annotations", func() {
+		const resourceName = "test-resource-labels-annotations"
+
+		ctx := context.Background()
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+					Labels: map[string]string{
+						"team": "platform",
+					},
+					Annotations: map[string]string{
+						"app.kubernetes.io/managed-by": "mcp-lifecycle-operator",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		})
+
+		It("should propagate labels and annotations to deployment, pod template, and service", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// 1. Verify Deployment
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify Deployment Meta
+			Expect(deployment.Labels).To(HaveKeyWithValue("team", "platform"))
+			Expect(deployment.Labels).To(HaveKeyWithValue("mcp-server", resourceName))
+			Expect(deployment.Annotations).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "mcp-lifecycle-operator"))
+
+			// Verify Pod Template Meta
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("team", "platform"))
+			Expect(deployment.Spec.Template.Labels).To(HaveKeyWithValue("mcp-server", resourceName))
+			Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "mcp-lifecycle-operator"))
+
+			// 2. Verify Service
+			svc := &corev1.Service{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, svc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(svc.Labels).To(HaveKeyWithValue("team", "platform"))
+			Expect(svc.Annotations).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "mcp-lifecycle-operator"))
+		})
+
+		It("should update resources when labels or annotations are changed", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			By("Reconciling to create the initial resources")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Updating the MCPServer labels and annotations")
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			err = k8sClient.Get(ctx, typeNamespacedName, mcpServer)
+			Expect(err).NotTo(HaveOccurred())
+			mcpServer.Spec.Labels = map[string]string{"team": "devops"}
+			mcpServer.Spec.Annotations = map[string]string{"metrics": "enabled"}
+			Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+			By("Reconciling again to pick up the change")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify Deployment Update
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(deployment.Labels).To(HaveKeyWithValue("team", "devops"))
+			Expect(deployment.Annotations).To(HaveKeyWithValue("metrics", "enabled"))
+			Expect(deployment.Annotations).NotTo(HaveKey("app.kubernetes.io/managed-by")) // Old annotation removed
+		})
+	})
+
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 
