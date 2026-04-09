@@ -21,6 +21,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
@@ -3698,6 +3700,820 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(deployment.Spec.Template.Spec.Containers[0].LivenessProbe).To(BeNil())
 			Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe).NotTo(BeNil())
 			Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket).NotTo(BeNil())
+		})
+	})
+})
+
+var _ = Describe("MCPServer Controller - Owned Resource Cleanup", func() {
+	Context("When reconciling a resource", func() {
+		const resourceName = "test-ownerref"
+
+		ctx := context.Background()
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+			}
+			service := &corev1.Service{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, service)).To(Succeed())
+			}
+		})
+
+		It("should set controller owner reference on created Deployment", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+
+			Expect(deployment.OwnerReferences).To(HaveLen(1))
+			ownerRef := deployment.OwnerReferences[0]
+			Expect(ownerRef.Name).To(Equal(mcpServer.Name))
+			Expect(ownerRef.UID).To(Equal(mcpServer.UID))
+			Expect(*ownerRef.Controller).To(BeTrue())
+			Expect(ownerRef.Kind).To(Equal("MCPServer"))
+			Expect(ownerRef.APIVersion).To(Equal("mcp.x-k8s.io/v1alpha1"))
+		})
+
+		It("should set controller owner reference on created Service", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+			service := &corev1.Service{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)).To(Succeed())
+
+			Expect(service.OwnerReferences).To(HaveLen(1))
+			ownerRef := service.OwnerReferences[0]
+			Expect(ownerRef.Name).To(Equal(mcpServer.Name))
+			Expect(ownerRef.UID).To(Equal(mcpServer.UID))
+			Expect(*ownerRef.Controller).To(BeTrue())
+			Expect(ownerRef.Kind).To(Equal("MCPServer"))
+			Expect(ownerRef.APIVersion).To(Equal("mcp.x-k8s.io/v1alpha1"))
+		})
+
+		It("should preserve owner references across reconciliation updates", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			By("Reconciling to create initial resources")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			originalUID := mcpServer.UID
+
+			By("Updating the MCPServer port to trigger a Service update")
+			mcpServer.Spec.Config.Port = 9090
+			Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+			By("Reconciling again after the update")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying Deployment owner reference is preserved")
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+			Expect(deployment.OwnerReferences).To(HaveLen(1))
+			Expect(deployment.OwnerReferences[0].UID).To(Equal(originalUID))
+			Expect(*deployment.OwnerReferences[0].Controller).To(BeTrue())
+
+			By("Verifying Service owner reference is preserved")
+			service := &corev1.Service{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)).To(Succeed())
+			Expect(service.OwnerReferences).To(HaveLen(1))
+			Expect(service.OwnerReferences[0].UID).To(Equal(originalUID))
+			Expect(*service.OwnerReferences[0].Controller).To(BeTrue())
+		})
+	})
+})
+
+var _ = Describe("MCPServer Controller - Error Recovery", func() {
+	ctx := context.Background()
+
+	Context("When missing envFrom ConfigMap is created after failure", func() {
+		const resourceName = "test-recovery-cm"
+		const configMapName = "recovery-configmap"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+						EnvFrom: []corev1.EnvFromSource{
+							{
+								ConfigMapRef: &corev1.ConfigMapEnvSource{
+									LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			cm := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: configMapName, Namespace: "default"}, cm)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, cm)).To(Succeed())
+			}
+		})
+
+		It("should recover from Failed to Pending when missing ConfigMap is created", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			By("First reconcile fails due to missing ConfigMap")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to get ConfigMap recovery-configmap for envFrom"))
+
+			By("Verifying status is Failed")
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			Expect(mcpServer.Status.Phase).To(Equal("Failed"))
+			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCondition.Reason).To(Equal("ReconciliationFailed"))
+
+			By("Verifying no Deployment was created")
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+
+			By("Creating the missing ConfigMap")
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: configMapName, Namespace: "default"},
+				Data:       map[string]string{"key": "value"},
+			}
+			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
+			By("Second reconcile succeeds after ConfigMap is available")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying status recovered to Pending")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			Expect(mcpServer.Status.Phase).To(Equal("Pending"))
+			readyCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Reason).To(Equal("DeploymentPending"))
+
+			By("Verifying Deployment was created on recovery")
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+		})
+	})
+
+	Context("When missing envFrom Secret is created after failure", func() {
+		const resourceName = "test-recovery-secret"
+		const secretName = "recovery-secret"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+						EnvFrom: []corev1.EnvFromSource{
+							{
+								SecretRef: &corev1.SecretEnvSource{
+									LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			secret := &corev1.Secret{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: secretName, Namespace: "default"}, secret)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+			}
+		})
+
+		It("should recover from Failed to Pending when missing Secret is created", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			By("First reconcile fails due to missing Secret")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to get Secret recovery-secret for envFrom"))
+
+			By("Verifying status is Failed")
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			Expect(mcpServer.Status.Phase).To(Equal("Failed"))
+			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCondition.Reason).To(Equal("ReconciliationFailed"))
+
+			By("Verifying no Deployment was created")
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+
+			By("Creating the missing Secret")
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: "default"},
+				Data:       map[string][]byte{"key": []byte("value")},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			By("Second reconcile succeeds after Secret is available")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying status recovered to Pending")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			Expect(mcpServer.Status.Phase).To(Equal("Pending"))
+			readyCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Reason).To(Equal("DeploymentPending"))
+
+			By("Verifying Deployment was created on recovery")
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+		})
+	})
+
+	Context("When missing storage ConfigMap is created after failure", func() {
+		const resourceName = "test-recovery-storage"
+		const configMapName = "recovery-storage-cm"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+						Storage: []mcpv1alpha1.StorageMount{
+							{
+								Path: "/etc/config",
+								Source: mcpv1alpha1.StorageSource{
+									Type: mcpv1alpha1.StorageTypeConfigMap,
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			cm := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: configMapName, Namespace: "default"}, cm)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, cm)).To(Succeed())
+			}
+		})
+
+		It("should recover from Failed to Pending when missing storage ConfigMap is created", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			By("First reconcile fails due to missing storage ConfigMap")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to get ConfigMap recovery-storage-cm for storage mount"))
+
+			By("Verifying status is Failed")
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			Expect(mcpServer.Status.Phase).To(Equal("Failed"))
+
+			By("Creating the missing ConfigMap")
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: configMapName, Namespace: "default"},
+				Data:       map[string]string{"config.yaml": "data: value"},
+			}
+			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
+			By("Second reconcile succeeds after ConfigMap is available")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying status recovered to Pending")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			Expect(mcpServer.Status.Phase).To(Equal("Pending"))
+
+			By("Verifying Deployment was created on recovery")
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+		})
+	})
+})
+
+var _ = Describe("MCPServer Controller - Optimistic Locking Conflicts", func() {
+	const resourceName = "test-conflict"
+
+	ctx := context.Background()
+
+	typeNamespacedName := types.NamespacedName{
+		Name:      resourceName,
+		Namespace: "default",
+	}
+
+	BeforeEach(func() {
+		resource := &mcpv1alpha1.MCPServer{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      resourceName,
+				Namespace: "default",
+			},
+			Spec: mcpv1alpha1.MCPServerSpec{
+				Source: mcpv1alpha1.Source{
+					Type: mcpv1alpha1.SourceTypeContainerImage,
+					ContainerImage: &mcpv1alpha1.ContainerImageSource{
+						Ref: "docker.io/library/test-image:latest",
+					},
+				},
+				Config: mcpv1alpha1.ServerConfig{
+					Port: 8080,
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		resource := &mcpv1alpha1.MCPServer{}
+		err := k8sClient.Get(ctx, typeNamespacedName, resource)
+		if err == nil {
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		}
+		deployment := &appsv1.Deployment{}
+		err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+		if err == nil {
+			Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+		}
+		service := &corev1.Service{}
+		err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)
+		if err == nil {
+			Expect(k8sClient.Delete(ctx, service)).To(Succeed())
+		}
+	})
+
+	It("should return conflict error when deployment update encounters optimistic locking conflict", func() {
+		By("Initial reconcile to create resources")
+		initialReconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+		_, err := initialReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Updating MCPServer spec to trigger a deployment update")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Config.Env = []corev1.EnvVar{{Name: "CONFLICT_VAR", Value: "value"}}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		By("Creating interceptor that returns conflict on deployment Update")
+		updateCallCount := 0
+		wrappedClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+		Expect(err).NotTo(HaveOccurred())
+
+		interceptedClient := interceptor.NewClient(wrappedClient, interceptor.Funcs{
+			Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				if _, ok := obj.(*appsv1.Deployment); ok {
+					updateCallCount++
+					return errors.NewConflict(
+						schema.GroupResource{Group: "apps", Resource: "deployments"},
+						obj.GetName(),
+						fmt.Errorf("the object has been modified"),
+					)
+				}
+				return c.Update(ctx, obj, opts...)
+			},
+		})
+
+		conflictReconciler := &MCPServerReconciler{
+			Client: interceptedClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		By("Reconciling with conflict interceptor")
+		_, err = conflictReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(errors.IsConflict(err)).To(BeTrue())
+		Expect(updateCallCount).To(Equal(1))
+	})
+
+	It("should succeed on retry after conflict is resolved", func() {
+		By("Initial reconcile to create resources")
+		initialReconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+		_, err := initialReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Updating MCPServer spec to trigger a deployment update")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Config.Env = []corev1.EnvVar{{Name: "RETRY_VAR", Value: "value"}}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		By("Creating interceptor that returns conflict only on first Update")
+		updateCallCount := 0
+		wrappedClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+		Expect(err).NotTo(HaveOccurred())
+
+		interceptedClient := interceptor.NewClient(wrappedClient, interceptor.Funcs{
+			Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				if _, ok := obj.(*appsv1.Deployment); ok {
+					updateCallCount++
+					if updateCallCount == 1 {
+						return errors.NewConflict(
+							schema.GroupResource{Group: "apps", Resource: "deployments"},
+							obj.GetName(),
+							fmt.Errorf("the object has been modified"),
+						)
+					}
+				}
+				return c.Update(ctx, obj, opts...)
+			},
+		})
+
+		conflictReconciler := &MCPServerReconciler{
+			Client: interceptedClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		By("First reconcile fails with conflict")
+		_, err = conflictReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(errors.IsConflict(err)).To(BeTrue())
+
+		By("Second reconcile succeeds (conflict resolved)")
+		_, err = conflictReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying deployment was updated with the new env var")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+		Expect(deployment.Spec.Template.Spec.Containers[0].Env).To(ContainElement(
+			corev1.EnvVar{Name: "RETRY_VAR", Value: "value"},
+		))
+	})
+})
+
+var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
+	ctx := context.Background()
+
+	Context("When a Deployment already exists with a different owner", func() {
+		const resourceName = "test-foreign-deploy"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			By("Pre-creating a Deployment owned by a different controller")
+			foreignDeployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "apps/v1",
+							Kind:       "SomeOtherController",
+							Name:       "foreign-owner",
+							UID:        types.UID("foreign-controller-uid"),
+							Controller: ptr.To(true),
+						},
+					},
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"mcp-server": resourceName},
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app":        "mcp-server",
+								"mcp-server": resourceName,
+							},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "other", Image: "other-image:latest"},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, foreignDeployment)).To(Succeed())
+
+			By("Creating the MCPServer CR")
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+			}
+		})
+
+		It("should update deployment spec even when owned by another controller", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying the deployment spec was overwritten")
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("docker.io/library/test-image:latest"))
+
+			By("Verifying the original foreign owner reference is still present")
+			Expect(deployment.OwnerReferences).To(HaveLen(1))
+			Expect(deployment.OwnerReferences[0].Name).To(Equal("foreign-owner"))
+			Expect(*deployment.OwnerReferences[0].Controller).To(BeTrue())
+		})
+	})
+
+	Context("When a Service already exists with a different owner", func() {
+		const resourceName = "test-foreign-svc"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			By("Pre-creating a Service owned by a different controller")
+			foreignService := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "apps/v1",
+							Kind:       "SomeOtherController",
+							Name:       "foreign-svc-owner",
+							UID:        types.UID("foreign-svc-controller-uid"),
+							Controller: ptr.To(true),
+						},
+					},
+				},
+				Spec: corev1.ServiceSpec{
+					Selector: map[string]string{"mcp-server": resourceName},
+					Ports: []corev1.ServicePort{
+						{
+							Name:       "http",
+							Port:       9999,
+							TargetPort: intstr.FromInt32(9999),
+							Protocol:   corev1.ProtocolTCP,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, foreignService)).To(Succeed())
+
+			By("Creating the MCPServer CR")
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			service := &corev1.Service{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, service)).To(Succeed())
+			}
+		})
+
+		It("should update service spec even when owned by another controller", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying the service port was updated to match MCPServer config")
+			service := &corev1.Service{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)).To(Succeed())
+			Expect(service.Spec.Ports).To(HaveLen(1))
+			Expect(service.Spec.Ports[0].Port).To(Equal(int32(8080)))
+
+			By("Verifying the original foreign owner reference is still present")
+			Expect(service.OwnerReferences).To(HaveLen(1))
+			Expect(service.OwnerReferences[0].Name).To(Equal("foreign-svc-owner"))
+			Expect(*service.OwnerReferences[0].Controller).To(BeTrue())
 		})
 	})
 })
