@@ -65,6 +65,8 @@ make api-ref-docs
 
 This creates `site-src/reference/index.md` from the CRD types in `api/v1alpha1/`.
 
+**Note**: The generated `index.md` file is not committed to git - it's automatically generated during the build process (`make build-docs`, `make live-docs`, or `make build-docs-netlify`).
+
 ## Technology Stack
 
 - **Static Site Generator**: MkDocs ~1.6
