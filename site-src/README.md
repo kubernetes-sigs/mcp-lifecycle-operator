@@ -25,7 +25,7 @@ site-src/
 ### Prerequisites
 
 - Docker (recommended for local development)
-- Python 3.8+ with pip (for Netlify deployment)
+- Python 3.11+ with pip (for local development without Docker)
 
 ### Local Development
 
@@ -68,7 +68,7 @@ This creates `site-src/reference/index.md` from the CRD types in `api/v1alpha1/`
 ## Technology Stack
 
 - **Static Site Generator**: MkDocs ~1.6
-- **Theme**: Material for MkDocs ~9.7
+- **Theme**: Material for MkDocs ~9.5
 - **Plugins**:
   - `awesome-pages`: Advanced navigation control
   - `mermaid2`: Diagram support
