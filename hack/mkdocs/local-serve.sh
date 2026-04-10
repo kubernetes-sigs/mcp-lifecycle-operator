@@ -18,6 +18,7 @@
 # This avoids conflicts with system Python on macOS
 
 set -e
+set -o pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ROOT_DIR="$( cd "${SCRIPT_DIR}/../.." && pwd )"
