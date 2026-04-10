@@ -49,16 +49,17 @@ spec:
 
 #### Storage and Mounts
 
-Mount ConfigMaps, Secrets, or Persistent Volumes:
+Mount ConfigMaps, Secrets, or EmptyDirs:
 
 ```yaml
 spec:
   config:
     storage:
-      - name: config-volume
-        configMap:
-          name: mcp-server-config
-        mountPath: /etc/mcp
+      - path: /etc/mcp
+        source:
+          type: ConfigMap
+          configMap:
+            name: mcp-server-config
 ```
 
 #### Health and Security
@@ -67,15 +68,16 @@ Configure health checks and security contexts:
 
 ```yaml
 spec:
-  config:
+  runtime:
     health:
       readinessProbe:
         httpGet:
           path: /health
           port: 8081
     security:
-      runAsNonRoot: true
-      readOnlyRootFilesystem: true
+      securityContext:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
 ```
 
 ## Status and Discovery
