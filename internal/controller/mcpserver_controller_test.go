@@ -5751,6 +5751,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			Expect(readyCondition).NotTo(BeNil())
 			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCondition.Reason).To(Equal("ServiceUnavailable"))
+			Expect(readyCondition.Message).To(ContainSubstring("has no controller owner"))
 		})
 	})
 
@@ -5866,6 +5867,124 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 				Equal("DeploymentUnavailable"), // Deployment exists but not ready yet
 				Equal("Available"),             // Fully ready
 			), "MCPServer should be reconciling successfully after adopting orphaned deployment")
+
+			By("Cleanup")
+			Expect(k8sClient.Delete(ctx, newMCPServer)).To(Succeed())
+		})
+	})
+
+	Context("When a Service is orphaned from a deleted MCPServer", func() {
+		const resourceName = "test-orphaned-svc"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		It("should adopt service when MCPServer is recreated with same name", func() {
+			By("Creating first MCPServer")
+			oldMCPServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/old-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, oldMCPServer)).To(Succeed())
+
+			By("Reconciling to create service")
+			reconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying service was created with old MCPServer owner")
+			service := &corev1.Service{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)).To(Succeed())
+			Expect(service.OwnerReferences).To(HaveLen(1))
+			oldUID := oldMCPServer.UID
+			Expect(service.OwnerReferences[0].UID).To(Equal(oldUID))
+
+			By("Deleting MCPServer but keeping service")
+			// Re-fetch to get latest version after reconciliation
+			Expect(k8sClient.Get(ctx, typeNamespacedName, oldMCPServer)).To(Succeed())
+			// Remove finalizers if any
+			oldMCPServer.Finalizers = nil
+			Expect(k8sClient.Update(ctx, oldMCPServer)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, oldMCPServer)).To(Succeed())
+
+			// Manually set owner reference to simulate orphaned service
+			// (with stale UID from deleted MCPServer)
+			service.OwnerReferences[0].UID = types.UID("old-deleted-uid")
+			Expect(k8sClient.Update(ctx, service)).To(Succeed())
+
+			By("Creating new MCPServer with same name")
+			newMCPServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/new-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 9090,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, newMCPServer)).To(Succeed())
+
+			By("Reconciling new MCPServer")
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying service was adopted by new MCPServer")
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)).To(Succeed())
+			Expect(service.OwnerReferences).To(HaveLen(1))
+			Expect(service.OwnerReferences[0].UID).To(Equal(newMCPServer.UID))
+			Expect(service.OwnerReferences[0].Name).To(Equal(resourceName))
+			Expect(service.OwnerReferences[0].Kind).To(Equal("MCPServer"))
+
+			By("Verifying service spec was updated to new port")
+			Expect(service.Spec.Ports[0].Port).To(Equal(int32(9090)))
+
+			By("Verifying MCPServer status shows successful reconciliation")
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Eventually(func() string {
+				err := k8sClient.Get(ctx, typeNamespacedName, mcpServer)
+				if err != nil {
+					return ""
+				}
+				readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+				if readyCondition == nil {
+					return ""
+				}
+				return readyCondition.Reason
+			}).Should(Or(
+				Equal("Initializing"),          // Initial state after creation
+				Equal("DeploymentUnavailable"), // Deployment exists but not ready yet
+				Equal("Available"),             // Fully ready
+			), "MCPServer should be reconciling successfully after adopting orphaned service")
 
 			By("Cleanup")
 			Expect(k8sClient.Delete(ctx, newMCPServer)).To(Succeed())
