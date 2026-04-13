@@ -653,6 +653,7 @@ func (r *MCPServerReconciler) reconcileService(
 			logger.Error(err, "Failed to create Service")
 			return err
 		}
+		return nil
 	} else if err != nil {
 		logger.Error(err, "Failed to get Service")
 		return err
