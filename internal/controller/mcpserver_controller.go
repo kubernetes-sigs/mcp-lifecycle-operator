@@ -418,6 +418,20 @@ func (r *MCPServerReconciler) reconcileDeployment(
 		return nil, err
 	}
 
+	// Validate ownership before updating
+	if err := r.validateOwnership(existingDeployment, mcpServer); err != nil {
+		logger.Error(err, "Deployment ownership validation failed")
+		return nil, err
+	}
+
+	// Update ownerReferences to establish/refresh controller ownership.
+	// This is safe because validateOwnership has confirmed we can manage this resource.
+	// For orphaned resources, this adopts them by updating the stale UID.
+	if err := controllerutil.SetControllerReference(mcpServer, existingDeployment, r.Scheme); err != nil {
+		logger.Error(err, "Failed to set controller reference for existing Deployment")
+		return nil, err
+	}
+
 	oldPodSpec := existingDeployment.Spec.Template.Spec
 	newPodSpec := deployment.Spec.Template.Spec
 
@@ -657,7 +671,23 @@ func (r *MCPServerReconciler) reconcileService(
 	} else if err != nil {
 		logger.Error(err, "Failed to get Service")
 		return err
-	} else if !equality.Semantic.DeepEqual(service.Spec.Ports, existingService.Spec.Ports) {
+	}
+
+	// Validate ownership before updating
+	if err := r.validateOwnership(existingService, mcpServer); err != nil {
+		logger.Error(err, "Service ownership validation failed")
+		return err
+	}
+
+	// Update ownerReferences to establish/refresh controller ownership.
+	// This is safe because validateOwnership has confirmed we can manage this resource.
+	// For orphaned resources, this adopts them by updating the stale UID.
+	if err := controllerutil.SetControllerReference(mcpServer, existingService, r.Scheme); err != nil {
+		logger.Error(err, "Failed to set controller reference for existing Service")
+		return err
+	}
+
+	if !equality.Semantic.DeepEqual(service.Spec.Ports, existingService.Spec.Ports) {
 		logger.Info("Updating Service", "name", existingService.Name)
 		existingService.Spec.Ports = service.Spec.Ports
 		if err := r.Update(ctx, existingService); err != nil {
@@ -701,6 +731,48 @@ func (r *MCPServerReconciler) createService(mcpServer *mcpv1alpha1.MCPServer) *c
 	}
 
 	return service
+}
+
+// validateOwnership checks if a resource is owned by a different controller.
+// Returns an error if the resource has a controller owner that is not the given MCPServer,
+// or if the resource has no controller owner (preventing silent adoption of unowned resources).
+func (r *MCPServerReconciler) validateOwnership(
+	obj client.Object,
+	mcpServer *mcpv1alpha1.MCPServer,
+) error {
+	// Get the controller owner reference from the existing resource
+	controllerOwner := metav1.GetControllerOf(obj)
+	if controllerOwner == nil {
+		// No controller owner - reject to prevent silent adoption
+		// User must delete the existing resource or choose a different name for their MCPServer
+		return fmt.Errorf("resource %s/%s exists but has no controller owner; "+
+			"delete the resource first or choose a different name for the MCPServer",
+			obj.GetNamespace(), obj.GetName())
+	}
+
+	// Check if the controller owner is this MCPServer by UID
+	if controllerOwner.UID == mcpServer.UID {
+		// Owned by this exact MCPServer instance - safe to update
+		return nil
+	}
+
+	// Check if the owner is an MCPServer with the same name/namespace
+	// This handles the case where the MCPServer was deleted and recreated
+	// with the same name, and we want to adopt the orphaned resources.
+	if controllerOwner.Kind == "MCPServer" &&
+		controllerOwner.Name == mcpServer.Name &&
+		obj.GetNamespace() == mcpServer.Namespace {
+		// Owner is an MCPServer with same name/namespace but different UID
+		// This means the old MCPServer was deleted and this is a new one
+		// Safe to adopt the resources
+		return nil
+	}
+
+	// Resource is owned by a different controller
+	return fmt.Errorf("resource %s/%s is owned by %s/%s (UID: %s), cannot be managed by MCPServer %s/%s (UID: %s)",
+		obj.GetNamespace(), obj.GetName(),
+		controllerOwner.Kind, controllerOwner.Name, controllerOwner.UID,
+		mcpServer.Namespace, mcpServer.Name, mcpServer.UID)
 }
 
 func (r *MCPServerReconciler) applyStatus(

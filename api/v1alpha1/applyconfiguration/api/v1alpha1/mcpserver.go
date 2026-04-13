@@ -27,7 +27,31 @@ import (
 // MCPServerApplyConfiguration represents a declarative configuration of the MCPServer type for use
 // with apply.
 //
-// MCPServer is the Schema for the mcpservers API
+// MCPServer runs a Model Context Protocol (MCP) server in Kubernetes.
+//
+// MCPServer creates and manages a Deployment and Service to run an MCP server from a
+// container image. The MCP server exposes tools, resources, and prompts that AI applications
+// can use via the Model Context Protocol.
+//
+// Example:
+//
+// apiVersion: mcp.x-k8s.io/v1alpha1
+// kind: MCPServer
+// metadata:
+// name: example
+// spec:
+// source:
+// type: ContainerImage
+// containerImage:
+// ref: example-mcp-image
+// config:
+// port: 8080
+//
+// The controller manages Deployment and Service resources with the same name as the MCPServer,
+// using ownerReferences to establish ownership. The controller will reject updates to resources
+// owned by other controllers or resources with no controller owner (to prevent silent overwrites
+// of manually-created resources), but will adopt orphaned resources from a deleted MCPServer
+// with the same name to enable seamless recreation.
 type MCPServerApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration `json:",inline"`
 	// metadata is a standard object metadata

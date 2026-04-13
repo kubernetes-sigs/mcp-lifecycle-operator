@@ -1934,6 +1934,15 @@ var _ = Describe("MCPServer Controller - reconcileDeployment", func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-empty-containers",
 				Namespace: "default",
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "mcp.x-k8s.io/v1alpha1",
+						Kind:       "MCPServer",
+						Name:       "test-empty-containers",
+						UID:        "fake-uid",
+						Controller: ptr.To(true),
+					},
+				},
 			},
 			Spec: appsv1.DeploymentSpec{
 				Selector: &metav1.LabelSelector{
@@ -5432,7 +5441,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			}
 		})
 
-		It("should update deployment spec even when owned by another controller", func() {
+		It("should reject updating deployment when owned by another controller", func() {
 			controllerReconciler := &MCPServerReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
@@ -5441,12 +5450,14 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).NotTo(HaveOccurred())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("is owned by"))
+			Expect(err.Error()).To(ContainSubstring("cannot be managed by MCPServer"))
 
-			By("Verifying the deployment spec was overwritten")
+			By("Verifying the deployment spec was NOT overwritten")
 			deployment := &appsv1.Deployment{}
 			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
-			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("docker.io/library/test-image:latest"))
+			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("other-image:latest"))
 
 			By("Verifying the original foreign owner reference is still present")
 			Expect(deployment.OwnerReferences).To(HaveLen(1))
@@ -5527,7 +5538,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			}
 		})
 
-		It("should update service spec even when owned by another controller", func() {
+		It("should reject updating service when owned by another controller", func() {
 			controllerReconciler := &MCPServerReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
@@ -5536,18 +5547,328 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).NotTo(HaveOccurred())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("is owned by"))
+			Expect(err.Error()).To(ContainSubstring("cannot be managed by MCPServer"))
 
-			By("Verifying the service port was updated to match MCPServer config")
+			By("Verifying the service port was NOT updated")
 			service := &corev1.Service{}
 			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)).To(Succeed())
 			Expect(service.Spec.Ports).To(HaveLen(1))
-			Expect(service.Spec.Ports[0].Port).To(Equal(int32(8080)))
+			Expect(service.Spec.Ports[0].Port).To(Equal(int32(9999)))
 
 			By("Verifying the original foreign owner reference is still present")
 			Expect(service.OwnerReferences).To(HaveLen(1))
 			Expect(service.OwnerReferences[0].Name).To(Equal("foreign-svc-owner"))
 			Expect(*service.OwnerReferences[0].Controller).To(BeTrue())
+		})
+	})
+
+	Context("When a Deployment exists with no controller owner", func() {
+		const resourceName = "test-unowned-deploy"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			By("Pre-creating a Deployment with no owner")
+			unownedDeployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+					// No ownerReferences - simulates manually created resource
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "manual"},
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{"app": "manual"},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "manual", Image: "manual-image:latest"},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, unownedDeployment)).To(Succeed())
+
+			By("Creating the MCPServer CR")
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+			}
+		})
+
+		It("should reject updating unowned deployment", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("has no controller owner"))
+			Expect(err.Error()).To(ContainSubstring("delete the resource first or choose a different name"))
+
+			By("Verifying the deployment was NOT updated")
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("manual-image:latest"))
+
+			By("Verifying the deployment still has no owner")
+			Expect(deployment.OwnerReferences).To(BeEmpty())
+
+			By("Verifying the MCPServer status shows deployment unavailable with ownership error")
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCondition.Reason).To(Equal("DeploymentUnavailable"))
+			Expect(readyCondition.Message).To(ContainSubstring("has no controller owner"))
+		})
+	})
+
+	Context("When a Service exists with no controller owner", func() {
+		const resourceName = "test-unowned-svc"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			By("Creating MCPServer first to create Deployment")
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+
+			By("Pre-creating a Service with no owner")
+			unownedService := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+					// No ownerReferences
+				},
+				Spec: corev1.ServiceSpec{
+					Selector: map[string]string{"app": "manual"},
+					Ports: []corev1.ServicePort{
+						{
+							Name:     "http",
+							Port:     9999,
+							Protocol: corev1.ProtocolTCP,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, unownedService)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			service := &corev1.Service{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, service)).To(Succeed())
+			}
+		})
+
+		It("should reject updating unowned service", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("has no controller owner"))
+
+			By("Verifying the service was NOT updated")
+			service := &corev1.Service{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)).To(Succeed())
+			Expect(service.Spec.Ports[0].Port).To(Equal(int32(9999)))
+
+			By("Verifying the MCPServer status shows service unavailable with ownership error")
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCondition.Reason).To(Equal("ServiceUnavailable"))
+		})
+	})
+
+	Context("When a Deployment is orphaned from a deleted MCPServer", func() {
+		const resourceName = "test-orphaned-deploy"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		It("should adopt deployment when MCPServer is recreated with same name", func() {
+			By("Creating first MCPServer")
+			oldMCPServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/old-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, oldMCPServer)).To(Succeed())
+
+			By("Reconciling to create deployment")
+			reconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying deployment was created with old MCPServer owner")
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+			Expect(deployment.OwnerReferences).To(HaveLen(1))
+			oldUID := oldMCPServer.UID
+			Expect(deployment.OwnerReferences[0].UID).To(Equal(oldUID))
+
+			By("Deleting MCPServer but keeping deployment")
+			// Re-fetch to get latest version after reconciliation
+			Expect(k8sClient.Get(ctx, typeNamespacedName, oldMCPServer)).To(Succeed())
+			// Remove finalizers if any
+			oldMCPServer.Finalizers = nil
+			Expect(k8sClient.Update(ctx, oldMCPServer)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, oldMCPServer)).To(Succeed())
+
+			// Manually set owner reference to simulate orphaned deployment
+			// (with stale UID from deleted MCPServer)
+			deployment.OwnerReferences[0].UID = types.UID("old-deleted-uid")
+			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
+
+			By("Creating new MCPServer with same name")
+			newMCPServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/new-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, newMCPServer)).To(Succeed())
+
+			By("Reconciling new MCPServer")
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying deployment was adopted by new MCPServer")
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+			Expect(deployment.OwnerReferences).To(HaveLen(1))
+			Expect(deployment.OwnerReferences[0].UID).To(Equal(newMCPServer.UID))
+			Expect(deployment.OwnerReferences[0].Name).To(Equal(resourceName))
+			Expect(deployment.OwnerReferences[0].Kind).To(Equal("MCPServer"))
+
+			By("Verifying deployment spec was updated to new image")
+			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("docker.io/library/new-image:latest"))
+
+			By("Verifying MCPServer status shows successful reconciliation")
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Eventually(func() string {
+				err := k8sClient.Get(ctx, typeNamespacedName, mcpServer)
+				if err != nil {
+					return ""
+				}
+				readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+				if readyCondition == nil {
+					return ""
+				}
+				return readyCondition.Reason
+			}).Should(Or(
+				Equal("Initializing"),          // Initial state after creation
+				Equal("DeploymentUnavailable"), // Deployment exists but not ready yet
+				Equal("Available"),             // Fully ready
+			), "MCPServer should be reconciling successfully after adopting orphaned deployment")
+
+			By("Cleanup")
+			Expect(k8sClient.Delete(ctx, newMCPServer)).To(Succeed())
 		})
 	})
 })

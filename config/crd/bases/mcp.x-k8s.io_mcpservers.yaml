@@ -36,7 +36,18 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: MCPServer is the Schema for the mcpservers API
+        description: "MCPServer runs a Model Context Protocol (MCP) server in Kubernetes.\n\nMCPServer
+          creates and manages a Deployment and Service to run an MCP server from a\ncontainer
+          image. The MCP server exposes tools, resources, and prompts that AI applications\ncan
+          use via the Model Context Protocol.\n\nExample:\n\n\tapiVersion: mcp.x-k8s.io/v1alpha1\n\tkind:
+          MCPServer\n\tmetadata:\n\t  name: example\n\tspec:\n\t  source:\n\t    type:
+          ContainerImage\n\t    containerImage:\n\t      ref: example-mcp-image\n\t
+          \ config:\n\t    port: 8080\n\nThe controller manages Deployment and Service
+          resources with the same name as the MCPServer,\nusing ownerReferences to
+          establish ownership. The controller will reject updates to resources\nowned
+          by other controllers or resources with no controller owner (to prevent silent
+          overwrites\nof manually-created resources), but will adopt orphaned resources
+          from a deleted MCPServer\nwith the same name to enable seamless recreation."
         properties:
           apiVersion:
             description: |-
