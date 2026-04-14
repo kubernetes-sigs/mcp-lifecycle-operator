@@ -829,7 +829,6 @@ func (r *MCPServerReconciler) validateOwnership(
 		mcpServer.Namespace, mcpServer.Name, mcpServer.UID)
 }
 
-
 func (r *MCPServerReconciler) applyStatus(
 	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
@@ -1254,7 +1253,7 @@ func (r *MCPServerReconciler) findMCPServersForConfigMap(ctx context.Context, co
 		return []reconcile.Request{}
 	}
 
-	var requests []reconcile.Request
+	requests := make([]reconcile.Request, 0, len(mcpServers.Items))
 	for _, mcpServer := range mcpServers.Items {
 		requests = append(requests, reconcile.Request{
 			NamespacedName: client.ObjectKeyFromObject(&mcpServer),
@@ -1276,7 +1275,7 @@ func (r *MCPServerReconciler) findMCPServersForSecret(ctx context.Context, secre
 		return []reconcile.Request{}
 	}
 
-	var requests []reconcile.Request
+	requests := make([]reconcile.Request, 0, len(mcpServers.Items))
 	for _, mcpServer := range mcpServers.Items {
 		requests = append(requests, reconcile.Request{
 			NamespacedName: client.ObjectKeyFromObject(&mcpServer),
