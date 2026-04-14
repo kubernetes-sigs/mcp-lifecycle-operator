@@ -424,12 +424,24 @@ func (r *MCPServerReconciler) reconcileDeployment(
 		return nil, err
 	}
 
+	// Check if we need to adopt an orphaned resource by comparing owner UIDs before updating
+	oldOwnerUID := ""
+	if oldOwner := metav1.GetControllerOf(existingDeployment); oldOwner != nil {
+		oldOwnerUID = string(oldOwner.UID)
+	}
+
 	// Update ownerReferences to establish/refresh controller ownership.
 	// This is safe because validateOwnership has confirmed we can manage this resource.
 	// For orphaned resources, this adopts them by updating the stale UID.
 	if err := controllerutil.SetControllerReference(mcpServer, existingDeployment, r.Scheme); err != nil {
 		logger.Error(err, "Failed to set controller reference for existing Deployment")
 		return nil, err
+	}
+
+	// Check if we actually adopted an orphaned resource (owner UID changed)
+	ownershipChanged := false
+	if newOwner := metav1.GetControllerOf(existingDeployment); newOwner != nil {
+		ownershipChanged = oldOwnerUID != string(newOwner.UID)
 	}
 
 	oldPodSpec := existingDeployment.Spec.Template.Spec
@@ -454,7 +466,8 @@ func (r *MCPServerReconciler) reconcileDeployment(
 			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].LivenessProbe, newPodSpec.Containers[0].LivenessProbe) ||
 			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].ReadinessProbe, newPodSpec.Containers[0].ReadinessProbe) ||
 			oldPodSpec.ServiceAccountName != newPodSpec.ServiceAccountName ||
-			!equality.Semantic.DeepEqual(existingDeployment.Spec.Replicas, deployment.Spec.Replicas)
+			!equality.Semantic.DeepEqual(existingDeployment.Spec.Replicas, deployment.Spec.Replicas) ||
+			ownershipChanged
 	}
 	if needsUpdate {
 		logger.Info("Updating Deployment", "name", existingDeployment.Name)
@@ -679,6 +692,12 @@ func (r *MCPServerReconciler) reconcileService(
 		return err
 	}
 
+	// Check if we need to adopt an orphaned resource by comparing owner UIDs before updating
+	oldOwnerUID := ""
+	if oldOwner := metav1.GetControllerOf(existingService); oldOwner != nil {
+		oldOwnerUID = string(oldOwner.UID)
+	}
+
 	// Update ownerReferences to establish/refresh controller ownership.
 	// This is safe because validateOwnership has confirmed we can manage this resource.
 	// For orphaned resources, this adopts them by updating the stale UID.
@@ -687,7 +706,15 @@ func (r *MCPServerReconciler) reconcileService(
 		return err
 	}
 
-	if !equality.Semantic.DeepEqual(service.Spec.Ports, existingService.Spec.Ports) {
+	// Check if we actually adopted an orphaned resource (owner UID changed)
+	ownershipChanged := false
+	if newOwner := metav1.GetControllerOf(existingService); newOwner != nil {
+		ownershipChanged = oldOwnerUID != string(newOwner.UID)
+	}
+
+	// Update if ports changed OR if we adopted an orphaned resource
+	needsUpdate := !equality.Semantic.DeepEqual(service.Spec.Ports, existingService.Spec.Ports) || ownershipChanged
+	if needsUpdate {
 		logger.Info("Updating Service", "name", existingService.Name)
 		existingService.Spec.Ports = service.Spec.Ports
 		if err := r.Update(ctx, existingService); err != nil {
