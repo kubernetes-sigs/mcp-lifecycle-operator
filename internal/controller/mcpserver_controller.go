@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	v1ac "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/utils/ptr"
@@ -760,6 +761,21 @@ func (r *MCPServerReconciler) createService(mcpServer *mcpv1alpha1.MCPServer) *c
 	return service
 }
 
+// isSameGroupKind checks if an owner reference matches the expected API group and kind,
+// ignoring the API version to support cross-version adoption scenarios.
+func isSameGroupKind(ownerRef *metav1.OwnerReference, expectedGroup, expectedKind string) bool {
+	if ownerRef.Kind != expectedKind {
+		return false
+	}
+
+	ownerGV, err := schema.ParseGroupVersion(ownerRef.APIVersion)
+	if err != nil {
+		return false
+	}
+
+	return ownerGV.Group == expectedGroup
+}
+
 // validateOwnership checks if a resource is owned by a different controller.
 // Returns an error if the resource has a controller owner that is not the given MCPServer,
 // or if the resource has no controller owner (preventing silent adoption of unowned resources).
@@ -783,15 +799,16 @@ func (r *MCPServerReconciler) validateOwnership(
 		return nil
 	}
 
-	// Check if the owner is an MCPServer with the same name/namespace
+	// Check if the owner is an MCPServer with the same name/namespace/group
 	// This handles the case where the MCPServer was deleted and recreated
 	// with the same name, and we want to adopt the orphaned resources.
-	if controllerOwner.Kind == "MCPServer" &&
+	// We validate the API group but allow different versions to support upgrades.
+	if isSameGroupKind(controllerOwner, mcpv1alpha1.GroupVersion.Group, mcpv1alpha1.MCPServerKind) &&
 		controllerOwner.Name == mcpServer.Name &&
 		obj.GetNamespace() == mcpServer.Namespace {
-		// Owner is an MCPServer with same name/namespace but different UID
+		// Owner is an MCPServer with same group/name/namespace but different UID
 		// This means the old MCPServer was deleted and this is a new one
-		// Safe to adopt the resources
+		// Safe to adopt the resources (version may differ during upgrades)
 		return nil
 	}
 

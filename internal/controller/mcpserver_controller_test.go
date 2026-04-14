@@ -6421,3 +6421,84 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 		})
 	})
 })
+var _ = Describe("isSameGroupKind", func() {
+	It("should return true for same group and kind with v1alpha1", func() {
+		ownerRef := &metav1.OwnerReference{
+			APIVersion: mcpv1alpha1.GroupVersion.String(),
+			Kind:       mcpv1alpha1.MCPServerKind,
+			Name:       "test-server",
+			UID:        types.UID("test-uid"),
+		}
+		Expect(isSameGroupKind(ownerRef, mcpv1alpha1.GroupVersion.Group, mcpv1alpha1.MCPServerKind)).To(BeTrue())
+	})
+
+	It("should return true for same group and kind with different version (v1alpha2)", func() {
+		ownerRef := &metav1.OwnerReference{
+			APIVersion: mcpv1alpha1.GroupVersion.Group + "/v1alpha2",
+			Kind:       mcpv1alpha1.MCPServerKind,
+			Name:       "test-server",
+			UID:        types.UID("test-uid"),
+		}
+		Expect(isSameGroupKind(ownerRef, mcpv1alpha1.GroupVersion.Group, mcpv1alpha1.MCPServerKind)).To(BeTrue())
+	})
+
+	It("should return true for same group and kind with stable version (v1)", func() {
+		ownerRef := &metav1.OwnerReference{
+			APIVersion: mcpv1alpha1.GroupVersion.Group + "/v1",
+			Kind:       mcpv1alpha1.MCPServerKind,
+			Name:       "test-server",
+			UID:        types.UID("test-uid"),
+		}
+		Expect(isSameGroupKind(ownerRef, mcpv1alpha1.GroupVersion.Group, mcpv1alpha1.MCPServerKind)).To(BeTrue())
+	})
+
+	It("should return false for different group with same kind", func() {
+		ownerRef := &metav1.OwnerReference{
+			APIVersion: "evil.io/v1",
+			Kind:       mcpv1alpha1.MCPServerKind,
+			Name:       "test-server",
+			UID:        types.UID("test-uid"),
+		}
+		Expect(isSameGroupKind(ownerRef, mcpv1alpha1.GroupVersion.Group, mcpv1alpha1.MCPServerKind)).To(BeFalse())
+	})
+
+	It("should return false for different kind with same group", func() {
+		ownerRef := &metav1.OwnerReference{
+			APIVersion: mcpv1alpha1.GroupVersion.String(),
+			Kind:       "OtherResource",
+			Name:       "test-server",
+			UID:        types.UID("test-uid"),
+		}
+		Expect(isSameGroupKind(ownerRef, mcpv1alpha1.GroupVersion.Group, mcpv1alpha1.MCPServerKind)).To(BeFalse())
+	})
+
+	It("should return false for both different group and kind", func() {
+		ownerRef := &metav1.OwnerReference{
+			APIVersion: "other.io/v1",
+			Kind:       "OtherResource",
+			Name:       "test-server",
+			UID:        types.UID("test-uid"),
+		}
+		Expect(isSameGroupKind(ownerRef, mcpv1alpha1.GroupVersion.Group, mcpv1alpha1.MCPServerKind)).To(BeFalse())
+	})
+
+	It("should return false for invalid APIVersion format", func() {
+		ownerRef := &metav1.OwnerReference{
+			APIVersion: "invalid/format/extra",
+			Kind:       mcpv1alpha1.MCPServerKind,
+			Name:       "test-server",
+			UID:        types.UID("test-uid"),
+		}
+		Expect(isSameGroupKind(ownerRef, mcpv1alpha1.GroupVersion.Group, mcpv1alpha1.MCPServerKind)).To(BeFalse())
+	})
+
+	It("should return true for core API resource with empty group", func() {
+		ownerRef := &metav1.OwnerReference{
+			APIVersion: "v1",
+			Kind:       "Pod",
+			Name:       "test-pod",
+			UID:        types.UID("test-uid"),
+		}
+		Expect(isSameGroupKind(ownerRef, "", "Pod")).To(BeTrue())
+	})
+})

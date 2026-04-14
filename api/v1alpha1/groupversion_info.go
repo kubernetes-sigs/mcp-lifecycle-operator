@@ -42,3 +42,8 @@ var (
 	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
+
+const (
+	// MCPServerKind is the kind name for MCPServer resources.
+	MCPServerKind = "MCPServer"
+)
