@@ -163,8 +163,8 @@ build-docs: api-ref-docs ## Build documentation site using Docker
 
 .PHONY: build-docs-netlify
 build-docs-netlify: api-ref-docs ## Build documentation site for Netlify deployment
-	pip install -r hack/mkdocs/image/requirements.txt
-	python -m mkdocs build
+	pip3 install --user --break-system-packages -r hack/mkdocs/image/requirements.txt
+	python3 -m mkdocs build
 
 .PHONY: live-docs
 live-docs: api-ref-docs ## Run live documentation server using Docker

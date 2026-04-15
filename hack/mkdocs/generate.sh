@@ -24,14 +24,37 @@ cd "${SCRIPT_ROOT}"
 
 echo "Generating API reference documentation..."
 
+# Set up the binary directory
+GOPATH_DIR="$(go env GOPATH)"
+BIN_DIR="${GOPATH_DIR}/bin"
+
+# Ensure the bin directory exists
+mkdir -p "${BIN_DIR}"
+
+# Set GOBIN explicitly for the install command
+export GOBIN="${BIN_DIR}"
+
+CRD_REF_DOCS="${BIN_DIR}/crd-ref-docs"
+
 # Install crd-ref-docs if not present
-if ! command -v crd-ref-docs &> /dev/null; then
-    echo "Installing crd-ref-docs..."
+if [ ! -f "${CRD_REF_DOCS}" ]; then
+    echo "Installing crd-ref-docs to ${BIN_DIR}..."
     go install github.com/elastic/crd-ref-docs@latest
+
+    # Verify installation succeeded
+    if [ ! -f "${CRD_REF_DOCS}" ]; then
+        echo "ERROR: crd-ref-docs installation failed. Binary not found at ${CRD_REF_DOCS}"
+        echo "GOPATH: ${GOPATH_DIR}"
+        echo "GOBIN: ${GOBIN}"
+        echo "Contents of ${BIN_DIR}:"
+        ls -la "${BIN_DIR}" || echo "Directory ${BIN_DIR} does not exist"
+        exit 1
+    fi
+    echo "Successfully installed crd-ref-docs"
 fi
 
 # Generate the API reference documentation
-crd-ref-docs \
+"${CRD_REF_DOCS}" \
     --source-path=./api/v1alpha1 \
     --config=./crd-ref-docs.yaml \
     --renderer=markdown \
