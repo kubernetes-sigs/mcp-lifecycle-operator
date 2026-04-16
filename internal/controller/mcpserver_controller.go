@@ -1240,16 +1240,26 @@ func extractSecretNames(obj client.Object) []string {
 	return secrets
 }
 
-// findMCPServersForConfigMap finds all MCPServers that reference the given ConfigMap
-// using the field index for efficient lookup.
-func (r *MCPServerReconciler) findMCPServersForConfigMap(ctx context.Context, configMap client.Object) []reconcile.Request {
+// findMCPServersForResource is a generic helper that finds all MCPServers
+// referencing a given resource by name using the specified field index.
+func (r *MCPServerReconciler) findMCPServersForResource(
+	ctx context.Context,
+	resourceName string,
+	namespace string,
+	indexKey string,
+) []reconcile.Request {
+	logger := log.FromContext(ctx)
 	var mcpServers mcpv1alpha1.MCPServerList
 
-	// Use the index to find MCPServers that reference this ConfigMap
+	// Use the index to find MCPServers that reference this resource
 	if err := r.List(ctx, &mcpServers,
-		client.InNamespace(configMap.GetNamespace()),
-		client.MatchingFields{configMapIndexKey: configMap.GetName()},
+		client.InNamespace(namespace),
+		client.MatchingFields{indexKey: resourceName},
 	); err != nil {
+		logger.Error(err, "Failed to list MCPServers for resource",
+			"resourceName", resourceName,
+			"namespace", namespace,
+			"indexKey", indexKey)
 		return []reconcile.Request{}
 	}
 
@@ -1262,26 +1272,16 @@ func (r *MCPServerReconciler) findMCPServersForConfigMap(ctx context.Context, co
 	return requests
 }
 
+// findMCPServersForConfigMap finds all MCPServers that reference the given ConfigMap
+// using the field index for efficient lookup.
+func (r *MCPServerReconciler) findMCPServersForConfigMap(ctx context.Context, configMap client.Object) []reconcile.Request {
+	return r.findMCPServersForResource(ctx, configMap.GetName(), configMap.GetNamespace(), configMapIndexKey)
+}
+
 // findMCPServersForSecret finds all MCPServers that reference the given Secret
 // using the field index for efficient lookup.
 func (r *MCPServerReconciler) findMCPServersForSecret(ctx context.Context, secret client.Object) []reconcile.Request {
-	var mcpServers mcpv1alpha1.MCPServerList
-
-	// Use the index to find MCPServers that reference this Secret
-	if err := r.List(ctx, &mcpServers,
-		client.InNamespace(secret.GetNamespace()),
-		client.MatchingFields{secretIndexKey: secret.GetName()},
-	); err != nil {
-		return []reconcile.Request{}
-	}
-
-	requests := make([]reconcile.Request, 0, len(mcpServers.Items))
-	for _, mcpServer := range mcpServers.Items {
-		requests = append(requests, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&mcpServer),
-		})
-	}
-	return requests
+	return r.findMCPServersForResource(ctx, secret.GetName(), secret.GetNamespace(), secretIndexKey)
 }
 
 // SetupWithManager sets up the controller with the Manager.
