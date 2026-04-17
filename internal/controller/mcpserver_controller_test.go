@@ -1582,6 +1582,228 @@ var _ = Describe("MCPServer Controller", func() {
 				"Accepted condition LastTransitionTime should be preserved when status doesn't change")
 		})
 	})
+
+	Context("When reconciling a resource with a missing env valueFrom ConfigMap reference", func() {
+		const resourceName = "test-resource-env-valuefrom-missing-cm"
+
+		ctx := context.Background()
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+						Env: []corev1.EnvVar{
+							{
+								Name: "MY_CONFIG_VAR",
+								ValueFrom: &corev1.EnvVarSource{
+									ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-env-configmap"},
+										Key:                  "some-key",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+		})
+
+		It("should set Accepted=False when env valueFrom references a missing ConfigMap", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify no Deployment was created
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+
+			// Verify MCPServer status has correct conditions
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+			Expect(acceptedCondition).NotTo(BeNil())
+			Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(acceptedCondition.Reason).To(Equal(ReasonInvalid))
+			Expect(acceptedCondition.Message).To(ContainSubstring("nonexistent-env-configmap"))
+			Expect(acceptedCondition.Message).To(ContainSubstring("MY_CONFIG_VAR"))
+
+			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCondition.Reason).To(Equal(ReasonConfigurationInvalid))
+		})
+
+		It("should skip validation when env valueFrom ConfigMap reference is optional", func() {
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			optional := true
+			mcpServer.Spec.Config.Env[0].ValueFrom.ConfigMapKeyRef.Optional = &optional
+			Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)).To(Succeed())
+		})
+	})
+
+	Context("When reconciling a resource with a missing env valueFrom Secret reference", func() {
+		const resourceName = "test-resource-env-valuefrom-missing-secret"
+
+		ctx := context.Background()
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+						Env: []corev1.EnvVar{
+							{
+								Name: "MY_SECRET_VAR",
+								ValueFrom: &corev1.EnvVarSource{
+									SecretKeyRef: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-env-secret"},
+										Key:                  "some-key",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+		})
+
+		It("should set Accepted=False when env valueFrom references a missing Secret", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify no Deployment was created
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+
+			// Verify MCPServer status has correct conditions
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+			Expect(acceptedCondition).NotTo(BeNil())
+			Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(acceptedCondition.Reason).To(Equal(ReasonInvalid))
+			Expect(acceptedCondition.Message).To(ContainSubstring("nonexistent-env-secret"))
+			Expect(acceptedCondition.Message).To(ContainSubstring("MY_SECRET_VAR"))
+
+			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCondition.Reason).To(Equal(ReasonConfigurationInvalid))
+		})
+
+		It("should skip validation when env valueFrom Secret reference is optional", func() {
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			optional := true
+			mcpServer.Spec.Config.Env[0].ValueFrom.SecretKeyRef.Optional = &optional
+			Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)).To(Succeed())
+		})
+	})
 })
 
 var _ = Describe("MCPServer Controller - Address URL", func() {
@@ -3859,6 +4081,204 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(condition.Message).To(ContainSubstring("Unsupported storage type"))
 			Expect(condition.Message).To(ContainSubstring("UnknownType"))
 		})
+
+		It("should reject env valueFrom with missing ConfigMap", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Env: []corev1.EnvVar{
+							{
+								Name: "MY_VAR",
+								ValueFrom: &corev1.EnvVarSource{
+									ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{Name: "missing-cm"},
+										Key:                  "key1",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			condition, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(valid).To(BeFalse())
+			Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(condition.Reason).To(Equal(ReasonInvalid))
+			Expect(condition.Message).To(ContainSubstring("missing-cm"))
+			Expect(condition.Message).To(ContainSubstring("MY_VAR"))
+		})
+
+		It("should reject env valueFrom with missing Secret", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Env: []corev1.EnvVar{
+							{
+								Name: "SECRET_VAR",
+								ValueFrom: &corev1.EnvVarSource{
+									SecretKeyRef: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{Name: "missing-secret"},
+										Key:                  "key1",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			condition, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(valid).To(BeFalse())
+			Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(condition.Reason).To(Equal(ReasonInvalid))
+			Expect(condition.Message).To(ContainSubstring("missing-secret"))
+			Expect(condition.Message).To(ContainSubstring("SECRET_VAR"))
+		})
+
+		It("should accept env valueFrom with optional missing ConfigMap", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			optional := true
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Env: []corev1.EnvVar{
+							{
+								Name: "MY_VAR",
+								ValueFrom: &corev1.EnvVarSource{
+									ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{Name: "missing-cm"},
+										Key:                  "key1",
+										Optional:             &optional,
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			_, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(valid).To(BeTrue())
+		})
+
+		It("should accept env valueFrom with optional missing Secret", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			optional := true
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Env: []corev1.EnvVar{
+							{
+								Name: "SECRET_VAR",
+								ValueFrom: &corev1.EnvVarSource{
+									SecretKeyRef: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{Name: "missing-secret"},
+										Key:                  "key1",
+										Optional:             &optional,
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			_, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(valid).To(BeTrue())
+		})
+
+		It("should accept env with literal value (no valueFrom)", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Env: []corev1.EnvVar{
+							{
+								Name:  "SIMPLE_VAR",
+								Value: "simple-value",
+							},
+						},
+					},
+				},
+			}
+
+			condition, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(valid).To(BeTrue())
+			Expect(condition.Status).To(Equal(metav1.ConditionTrue))
+		})
 	})
 
 	Context("When reconciling a resource with resources", func() {
@@ -5140,6 +5560,230 @@ var _ = Describe("MCPServer Controller - Error Recovery", func() {
 
 			By("Verifying Deployment was created on recovery")
 			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+		})
+	})
+
+	Context("When missing env valueFrom ConfigMap is created after failure", func() {
+		const resourceName = "test-recovery-env-valuefrom-cm"
+		const configMapName = "recovery-env-valuefrom-cm"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+						Env: []corev1.EnvVar{
+							{
+								Name: "RECOVERY_VAR",
+								ValueFrom: &corev1.EnvVarSource{
+									ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
+										Key:                  "some-key",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			cm := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: configMapName, Namespace: "default"}, cm)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, cm)).To(Succeed())
+			}
+		})
+
+		It("should recover from Failed to Pending when missing env valueFrom ConfigMap is created", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			By("First reconcile fails due to missing ConfigMap")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying status is Failed")
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+			Expect(acceptedCondition).NotTo(BeNil())
+			Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(acceptedCondition.Reason).To(Equal("Invalid"))
+			Expect(acceptedCondition.Message).To(ContainSubstring(configMapName))
+			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCondition.Reason).To(Equal("ConfigurationInvalid"))
+
+			By("Verifying no Deployment was created")
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+
+			By("Creating the missing ConfigMap")
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: configMapName, Namespace: "default"},
+				Data:       map[string]string{"some-key": "value"},
+			}
+			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
+			By("Second reconcile succeeds after ConfigMap is available")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying status recovered to Pending")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			acceptedCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+			Expect(acceptedCondition).NotTo(BeNil())
+			Expect(acceptedCondition.Status).To(Equal(metav1.ConditionTrue))
+			Expect(acceptedCondition.Reason).To(Equal("Valid"))
+			readyCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Reason).To(Equal("Initializing"))
+
+			By("Verifying Deployment was created on recovery")
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+		})
+	})
+
+	Context("When missing env valueFrom Secret is created after failure", func() {
+		const resourceName = "test-recovery-env-valuefrom-secret"
+		const secretName = "recovery-env-valuefrom-secret"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "docker.io/library/test-image:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+						Env: []corev1.EnvVar{
+							{
+								Name: "SECRET_RECOVERY_VAR",
+								ValueFrom: &corev1.EnvVarSource{
+									SecretKeyRef: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+										Key:                  "some-key",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			secret := &corev1.Secret{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: secretName, Namespace: "default"}, secret)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+			}
+		})
+
+		It("should recover from Failed to Pending when missing env valueFrom Secret is created", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			By("First reconcile fails due to missing Secret")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying status is Failed")
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+			Expect(acceptedCondition).NotTo(BeNil())
+			Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(acceptedCondition.Reason).To(Equal("Invalid"))
+			Expect(acceptedCondition.Message).To(ContainSubstring(secretName))
+			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCondition.Reason).To(Equal("ConfigurationInvalid"))
+
+			By("Verifying no Deployment was created")
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+
+			By("Creating the missing Secret")
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: "default"},
+				Data:       map[string][]byte{"some-key": []byte("value")},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			By("Second reconcile succeeds after Secret is available")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying status recovered to Pending")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			acceptedCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+			Expect(acceptedCondition).NotTo(BeNil())
+			Expect(acceptedCondition.Status).To(Equal(metav1.ConditionTrue))
+			Expect(acceptedCondition.Reason).To(Equal("Valid"))
+			readyCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Reason).To(Equal("Initializing"))
+
+			By("Verifying Deployment was created on recovery")
 			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
 		})
 	})

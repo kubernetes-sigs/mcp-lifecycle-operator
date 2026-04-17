@@ -1120,6 +1120,74 @@ func (r *MCPServerReconciler) validateEnvFrom(
 	return metav1.Condition{}, true
 }
 
+// validateEnvValueFrom validates a single env var's valueFrom configuration.
+// Returns an error condition and false if validation fails, otherwise returns zero condition and true.
+func (r *MCPServerReconciler) validateEnvValueFrom(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+	env corev1.EnvVar,
+	index int,
+) (metav1.Condition, bool) {
+	if env.ValueFrom == nil {
+		return metav1.Condition{}, true
+	}
+	if ref := env.ValueFrom.ConfigMapKeyRef; ref != nil {
+		if ref.Optional == nil || !*ref.Optional {
+			configMap := &corev1.ConfigMap{}
+			if err := r.Get(ctx, client.ObjectKey{
+				Name:      ref.Name,
+				Namespace: mcpServer.Namespace,
+			}, configMap); err != nil {
+				if apierrors.IsNotFound(err) {
+					return newCondition(
+						ConditionTypeAccepted,
+						metav1.ConditionFalse,
+						ReasonInvalid,
+						fmt.Sprintf("ConfigMap '%s' referenced by env var '%s' (env index %d) not found in namespace '%s'",
+							ref.Name, env.Name, index, mcpServer.Namespace),
+						mcpServer.Generation,
+					), false
+				}
+				return newCondition(
+					ConditionTypeAccepted,
+					metav1.ConditionFalse,
+					ReasonInvalid,
+					fmt.Sprintf("Failed to validate ConfigMap '%s' referenced by env var '%s': %v", ref.Name, env.Name, err),
+					mcpServer.Generation,
+				), false
+			}
+		}
+	}
+	if ref := env.ValueFrom.SecretKeyRef; ref != nil {
+		if ref.Optional == nil || !*ref.Optional {
+			secret := &corev1.Secret{}
+			if err := r.Get(ctx, client.ObjectKey{
+				Name:      ref.Name,
+				Namespace: mcpServer.Namespace,
+			}, secret); err != nil {
+				if apierrors.IsNotFound(err) {
+					return newCondition(
+						ConditionTypeAccepted,
+						metav1.ConditionFalse,
+						ReasonInvalid,
+						fmt.Sprintf("Secret '%s' referenced by env var '%s' (env index %d) not found in namespace '%s'",
+							ref.Name, env.Name, index, mcpServer.Namespace),
+						mcpServer.Generation,
+					), false
+				}
+				return newCondition(
+					ConditionTypeAccepted,
+					metav1.ConditionFalse,
+					ReasonInvalid,
+					fmt.Sprintf("Failed to validate Secret '%s' referenced by env var '%s': %v", ref.Name, env.Name, err),
+					mcpServer.Generation,
+				), false
+			}
+		}
+	}
+	return metav1.Condition{}, true
+}
+
 // setAcceptedCondition validates the MCPServer configuration and sets the Accepted condition.
 // Returns the condition and a boolean indicating if configuration is valid.
 func (r *MCPServerReconciler) setAcceptedCondition(
@@ -1136,6 +1204,13 @@ func (r *MCPServerReconciler) setAcceptedCondition(
 	// Validate envFrom references
 	for i, envFrom := range mcpServer.Spec.Config.EnvFrom {
 		if condition, valid := r.validateEnvFrom(ctx, mcpServer, envFrom, i); !valid {
+			return condition, false
+		}
+	}
+
+	// Validate env valueFrom references
+	for i, env := range mcpServer.Spec.Config.Env {
+		if condition, valid := r.validateEnvValueFrom(ctx, mcpServer, env, i); !valid {
 			return condition, false
 		}
 	}
