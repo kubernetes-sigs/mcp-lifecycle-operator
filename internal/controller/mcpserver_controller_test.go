@@ -21,6 +21,7 @@ package controller
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"time"
 
@@ -4036,11 +4037,12 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			condition, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
-			Expect(valid).To(BeFalse())
-			Expect(condition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(condition.Reason).To(Equal(ReasonInvalid))
-			Expect(condition.Message).To(ContainSubstring("EmptyDir must be set"))
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			var validationErr *ValidationError
+			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
+			Expect(validationErr.Reason).To(Equal(ReasonInvalid))
+			Expect(validationErr.Message).To(ContainSubstring("EmptyDir must be set"))
 		})
 
 		It("should reject unknown storage type", func() {
@@ -4074,12 +4076,13 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			condition, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
-			Expect(valid).To(BeFalse())
-			Expect(condition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(condition.Reason).To(Equal(ReasonInvalid))
-			Expect(condition.Message).To(ContainSubstring("Unsupported storage type"))
-			Expect(condition.Message).To(ContainSubstring("UnknownType"))
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			var validationErr *ValidationError
+			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
+			Expect(validationErr.Reason).To(Equal(ReasonInvalid))
+			Expect(validationErr.Message).To(ContainSubstring("Unsupported storage type"))
+			Expect(validationErr.Message).To(ContainSubstring("UnknownType"))
 		})
 
 		It("should reject env valueFrom with missing ConfigMap", func() {
@@ -4116,12 +4119,13 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			condition, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
-			Expect(valid).To(BeFalse())
-			Expect(condition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(condition.Reason).To(Equal(ReasonInvalid))
-			Expect(condition.Message).To(ContainSubstring("missing-cm"))
-			Expect(condition.Message).To(ContainSubstring("MY_VAR"))
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			var validationErr *ValidationError
+			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
+			Expect(validationErr.Reason).To(Equal(ReasonInvalid))
+			Expect(validationErr.Message).To(ContainSubstring("missing-cm"))
+			Expect(validationErr.Message).To(ContainSubstring("MY_VAR"))
 		})
 
 		It("should reject env valueFrom with missing Secret", func() {
@@ -4158,12 +4162,13 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			condition, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
-			Expect(valid).To(BeFalse())
-			Expect(condition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(condition.Reason).To(Equal(ReasonInvalid))
-			Expect(condition.Message).To(ContainSubstring("missing-secret"))
-			Expect(condition.Message).To(ContainSubstring("SECRET_VAR"))
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			var validationErr *ValidationError
+			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
+			Expect(validationErr.Reason).To(Equal(ReasonInvalid))
+			Expect(validationErr.Message).To(ContainSubstring("missing-secret"))
+			Expect(validationErr.Message).To(ContainSubstring("SECRET_VAR"))
 		})
 
 		It("should accept env valueFrom with optional missing ConfigMap", func() {
@@ -4202,8 +4207,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			_, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
-			Expect(valid).To(BeTrue())
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should accept env valueFrom with optional missing Secret", func() {
@@ -4242,8 +4247,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			_, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
-			Expect(valid).To(BeTrue())
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should accept env with literal value (no valueFrom)", func() {
@@ -4275,9 +4280,305 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			condition, valid := reconciler.setAcceptedCondition(ctx, mcpServer)
-			Expect(valid).To(BeTrue())
-			Expect(condition.Status).To(Equal(metav1.ConditionTrue))
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should return transient error for ConfigMap timeout without marking invalid", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			// Create a fake client that returns timeout error for ConfigMap Get
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+						if _, ok := obj.(*corev1.ConfigMap); ok {
+							return &errors.StatusError{
+								ErrStatus: metav1.Status{
+									Status:  metav1.StatusFailure,
+									Code:    500,
+									Reason:  metav1.StatusReasonInternalError,
+									Message: "the server has timed out",
+								},
+							}
+						}
+						return client.Get(ctx, key, obj, opts...)
+					},
+				}).Build()
+
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Storage: []mcpv1alpha1.StorageMount{
+							{
+								Path: "/data",
+								Source: mcpv1alpha1.StorageSource{
+									Type: mcpv1alpha1.StorageTypeConfigMap,
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-config",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			// Should NOT be a ValidationError - should be a transient error
+			var validationErr *ValidationError
+			Expect(stderrors.As(err, &validationErr)).To(BeFalse())
+			Expect(err.Error()).To(ContainSubstring("transient error validating ConfigMap"))
+		})
+
+		It("should return transient error for Secret timeout without marking invalid", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			// Create a fake client that returns timeout error for Secret Get
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+						if _, ok := obj.(*corev1.Secret); ok {
+							return &errors.StatusError{
+								ErrStatus: metav1.Status{
+									Status:  metav1.StatusFailure,
+									Code:    503,
+									Reason:  metav1.StatusReasonServiceUnavailable,
+									Message: "the server is currently unable to handle the request",
+								},
+							}
+						}
+						return client.Get(ctx, key, obj, opts...)
+					},
+				}).Build()
+
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Storage: []mcpv1alpha1.StorageMount{
+							{
+								Path: "/secret",
+								Source: mcpv1alpha1.StorageSource{
+									Type: mcpv1alpha1.StorageTypeSecret,
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: "test-secret",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			// Should NOT be a ValidationError - should be a transient error
+			var validationErr *ValidationError
+			Expect(stderrors.As(err, &validationErr)).To(BeFalse())
+			Expect(err.Error()).To(ContainSubstring("transient error validating Secret"))
+		})
+
+		It("should return transient error for envFrom ConfigMap timeout", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+						if _, ok := obj.(*corev1.ConfigMap); ok {
+							return &errors.StatusError{
+								ErrStatus: metav1.Status{
+									Status:  metav1.StatusFailure,
+									Code:    429,
+									Reason:  metav1.StatusReasonTooManyRequests,
+									Message: "rate limited",
+								},
+							}
+						}
+						return client.Get(ctx, key, obj, opts...)
+					},
+				}).Build()
+
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						EnvFrom: []corev1.EnvFromSource{
+							{
+								ConfigMapRef: &corev1.ConfigMapEnvSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "test-config",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			var validationErr *ValidationError
+			Expect(stderrors.As(err, &validationErr)).To(BeFalse())
+			Expect(err.Error()).To(ContainSubstring("transient error validating ConfigMap"))
+			Expect(err.Error()).To(ContainSubstring("envFrom"))
+		})
+
+		It("should return transient error for env valueFrom Secret timeout", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+						if _, ok := obj.(*corev1.Secret); ok {
+							return &errors.StatusError{
+								ErrStatus: metav1.Status{
+									Status:  metav1.StatusFailure,
+									Code:    504,
+									Reason:  metav1.StatusReasonTimeout,
+									Message: "gateway timeout",
+								},
+							}
+						}
+						return client.Get(ctx, key, obj, opts...)
+					},
+				}).Build()
+
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Env: []corev1.EnvVar{
+							{
+								Name: "MY_SECRET",
+								ValueFrom: &corev1.EnvVarSource{
+									SecretKeyRef: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-secret",
+										},
+										Key: "key",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			var validationErr *ValidationError
+			Expect(stderrors.As(err, &validationErr)).To(BeFalse())
+			Expect(err.Error()).To(ContainSubstring("transient error validating Secret"))
+			Expect(err.Error()).To(ContainSubstring("env"))
+		})
+
+		It("should return ValidationError for Forbidden (permanent error)", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+						if _, ok := obj.(*corev1.ConfigMap); ok {
+							return &errors.StatusError{
+								ErrStatus: metav1.Status{
+									Status:  metav1.StatusFailure,
+									Code:    403,
+									Reason:  metav1.StatusReasonForbidden,
+									Message: "forbidden: User cannot get configmaps",
+								},
+							}
+						}
+						return client.Get(ctx, key, obj, opts...)
+					},
+				}).Build()
+
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Storage: []mcpv1alpha1.StorageMount{
+							{
+								Path: "/data",
+								Source: mcpv1alpha1.StorageSource{
+									Type: mcpv1alpha1.StorageTypeConfigMap,
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-config",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			// Should be a ValidationError - Forbidden is permanent
+			var validationErr *ValidationError
+			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
+			Expect(validationErr.Reason).To(Equal(ReasonInvalid))
+			Expect(validationErr.Message).To(ContainSubstring("No permission to access ConfigMap"))
 		})
 	})
 

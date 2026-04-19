@@ -21,6 +21,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -52,6 +53,17 @@ import (
 const (
 	fieldManager = "mcpserver-controller"
 )
+
+// ValidationError represents a permanent configuration validation error.
+// These errors indicate the MCPServer configuration is invalid and should not be retried.
+type ValidationError struct {
+	Reason  string
+	Message string
+}
+
+func (e *ValidationError) Error() string {
+	return e.Message
+}
 
 // Condition types for MCPServer status.
 const (
@@ -127,37 +139,62 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	logger.Info("Reconciling MCPServer", "name", mcpServer.Name, "namespace", mcpServer.Namespace)
 
-	// Validate configuration and set Accepted condition
-	acceptedCondition, configValid := r.setAcceptedCondition(ctx, mcpServer)
-	preserveLastTransitionTime(&acceptedCondition, mcpServer.Status.Conditions)
-
-	// If configuration is not valid, update status and stop
-	if !configValid {
-		readyCondition := newCondition(
-			ConditionTypeReady,
-			metav1.ConditionFalse,
-			ReasonConfigurationInvalid,
-			"Configuration must be fixed before server can start",
-			mcpServer.Generation,
-		)
-		preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
-
-		status := acv1alpha1.MCPServerStatus().
-			WithObservedGeneration(mcpServer.Generation).
-			WithServiceName(mcpServer.Name).
-			WithConditions(
-				conditionToAC(acceptedCondition),
-				conditionToAC(readyCondition),
+	// Validate configuration
+	if err := r.setAcceptedCondition(ctx, mcpServer); err != nil {
+		var validationErr *ValidationError
+		if errors.As(err, &validationErr) {
+			// Permanent validation error - mark configuration as invalid
+			acceptedCondition := newCondition(
+				ConditionTypeAccepted,
+				metav1.ConditionFalse,
+				validationErr.Reason,
+				validationErr.Message,
+				mcpServer.Generation,
 			)
+			preserveLastTransitionTime(&acceptedCondition, mcpServer.Status.Conditions)
 
-		if err := r.applyStatus(ctx, mcpServer, status); err != nil {
-			logger.Error(err, "Failed to update MCPServer status")
-			return ctrl.Result{}, err
+			readyCondition := newCondition(
+				ConditionTypeReady,
+				metav1.ConditionFalse,
+				ReasonConfigurationInvalid,
+				"Configuration must be fixed before server can start",
+				mcpServer.Generation,
+			)
+			preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
+
+			status := acv1alpha1.MCPServerStatus().
+				WithObservedGeneration(mcpServer.Generation).
+				WithServiceName(mcpServer.Name).
+				WithConditions(
+					conditionToAC(acceptedCondition),
+					conditionToAC(readyCondition),
+				)
+
+			if err := r.applyStatus(ctx, mcpServer, status); err != nil {
+				logger.Error(err, "Failed to update MCPServer status")
+				return ctrl.Result{}, err
+			}
+
+			logger.Info("MCPServer configuration is invalid", "reason", validationErr.Reason)
+			return ctrl.Result{}, nil
 		}
 
-		logger.Info("MCPServer configuration is invalid", "reason", acceptedCondition.Reason)
-		return ctrl.Result{}, nil
+		// Transient error - log and return to trigger retry with exponential backoff
+		logger.Info("Transient error during configuration validation, will retry",
+			"error", err)
+		// Don't update status - preserve existing Accepted condition
+		return ctrl.Result{}, err
 	}
+
+	// Configuration is valid - create Accepted=True condition
+	acceptedCondition := newCondition(
+		ConditionTypeAccepted,
+		metav1.ConditionTrue,
+		ReasonValid,
+		"Configuration is valid",
+		mcpServer.Generation,
+	)
+	preserveLastTransitionTime(&acceptedCondition, mcpServer.Status.Conditions)
 
 	// Configuration is valid, proceed with deployment reconciliation
 	existingDeployment, err := r.reconcileDeployment(ctx, mcpServer)
@@ -923,36 +960,30 @@ func analyzeDeploymentFailure(deploymentMessage string) string {
 }
 
 // validateStorageMount validates a single storage mount configuration.
-// Returns an error condition and false if validation fails, otherwise returns zero condition and true.
+// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
 func (r *MCPServerReconciler) validateStorageMount(
 	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
 	storage mcpv1alpha1.StorageMount,
 	index int,
-) (metav1.Condition, bool) {
+) error {
 	switch storage.Source.Type {
 	case mcpv1alpha1.StorageTypeConfigMap:
 		if storage.Source.ConfigMap == nil {
-			return newCondition(
-				ConditionTypeAccepted,
-				metav1.ConditionFalse,
-				ReasonInvalid,
-				fmt.Sprintf("ConfigMap must be set for storage mount at index %d", index),
-				mcpServer.Generation,
-			), false
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("ConfigMap must be set for storage mount at index %d", index),
+			}
 		}
 		if storage.Source.ConfigMap.Name == "" {
-			return newCondition(
-				ConditionTypeAccepted,
-				metav1.ConditionFalse,
-				ReasonInvalid,
-				fmt.Sprintf("ConfigMap name must not be empty for storage mount at index %d", index),
-				mcpServer.Generation,
-			), false
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("ConfigMap name must not be empty for storage mount at index %d", index),
+			}
 		}
 		// Skip validation if optional
 		if storage.Source.ConfigMap.Optional != nil && *storage.Source.ConfigMap.Optional {
-			return metav1.Condition{}, true
+			return nil
 		}
 		// Validate ConfigMap exists
 		configMap := &corev1.ConfigMap{}
@@ -960,49 +991,56 @@ func (r *MCPServerReconciler) validateStorageMount(
 			Name:      storage.Source.ConfigMap.Name,
 			Namespace: mcpServer.Namespace,
 		}, configMap); err != nil {
+			// Permanent errors - configuration is invalid
 			if apierrors.IsNotFound(err) {
-				return newCondition(
-					ConditionTypeAccepted,
-					metav1.ConditionFalse,
-					ReasonInvalid,
-					fmt.Sprintf("ConfigMap '%s' not found in namespace '%s'",
+				return &ValidationError{
+					Reason: ReasonInvalid,
+					Message: fmt.Sprintf("ConfigMap '%s' not found in namespace '%s'",
 						storage.Source.ConfigMap.Name, mcpServer.Namespace),
-					mcpServer.Generation,
-				), false
+				}
 			}
-			// Other errors (permissions, etc.) - still mark as not accepted
-			return newCondition(
-				ConditionTypeAccepted,
-				metav1.ConditionFalse,
-				ReasonInvalid,
-				fmt.Sprintf("Failed to validate ConfigMap '%s': %v",
-					storage.Source.ConfigMap.Name, err),
-				mcpServer.Generation,
-			), false
+			if apierrors.IsBadRequest(err) {
+				return &ValidationError{
+					Reason: ReasonInvalid,
+					Message: fmt.Sprintf("Invalid ConfigMap reference '%s': %v",
+						storage.Source.ConfigMap.Name, err),
+				}
+			}
+			if apierrors.IsForbidden(err) {
+				return &ValidationError{
+					Reason: ReasonInvalid,
+					Message: fmt.Sprintf("No permission to access ConfigMap '%s': %v",
+						storage.Source.ConfigMap.Name, err),
+				}
+			}
+			if apierrors.IsUnauthorized(err) {
+				return &ValidationError{
+					Reason: ReasonInvalid,
+					Message: fmt.Sprintf("Not authorized to access ConfigMap '%s': %v",
+						storage.Source.ConfigMap.Name, err),
+				}
+			}
+			// All other errors are transient - return wrapped error to trigger retry
+			return fmt.Errorf("transient error validating ConfigMap '%s': %w",
+				storage.Source.ConfigMap.Name, err)
 		}
 
 	case mcpv1alpha1.StorageTypeSecret:
 		if storage.Source.Secret == nil {
-			return newCondition(
-				ConditionTypeAccepted,
-				metav1.ConditionFalse,
-				ReasonInvalid,
-				fmt.Sprintf("Secret must be set for storage mount at index %d", index),
-				mcpServer.Generation,
-			), false
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("Secret must be set for storage mount at index %d", index),
+			}
 		}
 		if storage.Source.Secret.SecretName == "" {
-			return newCondition(
-				ConditionTypeAccepted,
-				metav1.ConditionFalse,
-				ReasonInvalid,
-				fmt.Sprintf("Secret name must not be empty for storage mount at index %d", index),
-				mcpServer.Generation,
-			), false
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("Secret name must not be empty for storage mount at index %d", index),
+			}
 		}
 		// Skip validation if optional
 		if storage.Source.Secret.Optional != nil && *storage.Source.Secret.Optional {
-			return metav1.Condition{}, true
+			return nil
 		}
 		// Validate Secret exists
 		secret := &corev1.Secret{}
@@ -1010,59 +1048,67 @@ func (r *MCPServerReconciler) validateStorageMount(
 			Name:      storage.Source.Secret.SecretName,
 			Namespace: mcpServer.Namespace,
 		}, secret); err != nil {
+			// Permanent errors - configuration is invalid
 			if apierrors.IsNotFound(err) {
-				return newCondition(
-					ConditionTypeAccepted,
-					metav1.ConditionFalse,
-					ReasonInvalid,
-					fmt.Sprintf("Secret '%s' not found in namespace '%s'",
+				return &ValidationError{
+					Reason: ReasonInvalid,
+					Message: fmt.Sprintf("Secret '%s' not found in namespace '%s'",
 						storage.Source.Secret.SecretName, mcpServer.Namespace),
-					mcpServer.Generation,
-				), false
+				}
 			}
-			return newCondition(
-				ConditionTypeAccepted,
-				metav1.ConditionFalse,
-				ReasonInvalid,
-				fmt.Sprintf("Failed to validate Secret '%s': %v",
-					storage.Source.Secret.SecretName, err),
-				mcpServer.Generation,
-			), false
+			if apierrors.IsBadRequest(err) {
+				return &ValidationError{
+					Reason: ReasonInvalid,
+					Message: fmt.Sprintf("Invalid Secret reference '%s': %v",
+						storage.Source.Secret.SecretName, err),
+				}
+			}
+			if apierrors.IsForbidden(err) {
+				return &ValidationError{
+					Reason: ReasonInvalid,
+					Message: fmt.Sprintf("No permission to access Secret '%s': %v",
+						storage.Source.Secret.SecretName, err),
+				}
+			}
+			if apierrors.IsUnauthorized(err) {
+				return &ValidationError{
+					Reason: ReasonInvalid,
+					Message: fmt.Sprintf("Not authorized to access Secret '%s': %v",
+						storage.Source.Secret.SecretName, err),
+				}
+			}
+			// All other errors are transient - return wrapped error to trigger retry
+			return fmt.Errorf("transient error validating Secret '%s': %w",
+				storage.Source.Secret.SecretName, err)
 		}
 
 	case mcpv1alpha1.StorageTypeEmptyDir:
 		// Validate EmptyDir configuration is present
 		if storage.Source.EmptyDir == nil {
-			return newCondition(
-				ConditionTypeAccepted,
-				metav1.ConditionFalse,
-				ReasonInvalid,
-				fmt.Sprintf("EmptyDir must be set for storage mount at index %d", index),
-				mcpServer.Generation,
-			), false
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("EmptyDir must be set for storage mount at index %d", index),
+			}
 		}
 
 	default:
 		// Unknown/unsupported storage type
-		return newCondition(
-			ConditionTypeAccepted,
-			metav1.ConditionFalse,
-			ReasonInvalid,
-			fmt.Sprintf("Unsupported storage type '%s' at index %d", storage.Source.Type, index),
-			mcpServer.Generation,
-		), false
+		return &ValidationError{
+			Reason:  ReasonInvalid,
+			Message: fmt.Sprintf("Unsupported storage type '%s' at index %d", storage.Source.Type, index),
+		}
 	}
-	return metav1.Condition{}, true
+	return nil
 }
 
 // validateEnvFrom validates a single envFrom configuration.
-// Returns an error condition and false if validation fails, otherwise returns zero condition and true.
+// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
 func (r *MCPServerReconciler) validateEnvFrom(
 	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
 	envFrom corev1.EnvFromSource,
 	index int,
-) (metav1.Condition, bool) {
+) error {
 	if ref := envFrom.ConfigMapRef; ref != nil {
 		if ref.Optional == nil || !*ref.Optional {
 			configMap := &corev1.ConfigMap{}
@@ -1070,23 +1116,38 @@ func (r *MCPServerReconciler) validateEnvFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, configMap); err != nil {
+				// Permanent errors - configuration is invalid
 				if apierrors.IsNotFound(err) {
-					return newCondition(
-						ConditionTypeAccepted,
-						metav1.ConditionFalse,
-						ReasonInvalid,
-						fmt.Sprintf("ConfigMap '%s' (envFrom index %d) not found in namespace '%s'",
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("ConfigMap '%s' (envFrom index %d) not found in namespace '%s'",
 							ref.Name, index, mcpServer.Namespace),
-						mcpServer.Generation,
-					), false
+					}
 				}
-				return newCondition(
-					ConditionTypeAccepted,
-					metav1.ConditionFalse,
-					ReasonInvalid,
-					fmt.Sprintf("Failed to validate ConfigMap '%s': %v", ref.Name, err),
-					mcpServer.Generation,
-				), false
+				if apierrors.IsBadRequest(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("Invalid ConfigMap reference '%s' (envFrom index %d): %v",
+							ref.Name, index, err),
+					}
+				}
+				if apierrors.IsForbidden(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("No permission to access ConfigMap '%s' (envFrom index %d): %v",
+							ref.Name, index, err),
+					}
+				}
+				if apierrors.IsUnauthorized(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("Not authorized to access ConfigMap '%s' (envFrom index %d): %v",
+							ref.Name, index, err),
+					}
+				}
+				// All other errors are transient
+				return fmt.Errorf("transient error validating ConfigMap '%s' (envFrom index %d): %w",
+					ref.Name, index, err)
 			}
 		}
 	}
@@ -1097,39 +1158,54 @@ func (r *MCPServerReconciler) validateEnvFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, secret); err != nil {
+				// Permanent errors - configuration is invalid
 				if apierrors.IsNotFound(err) {
-					return newCondition(
-						ConditionTypeAccepted,
-						metav1.ConditionFalse,
-						ReasonInvalid,
-						fmt.Sprintf("Secret '%s' (envFrom index %d) not found in namespace '%s'",
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("Secret '%s' (envFrom index %d) not found in namespace '%s'",
 							ref.Name, index, mcpServer.Namespace),
-						mcpServer.Generation,
-					), false
+					}
 				}
-				return newCondition(
-					ConditionTypeAccepted,
-					metav1.ConditionFalse,
-					ReasonInvalid,
-					fmt.Sprintf("Failed to validate Secret '%s': %v", ref.Name, err),
-					mcpServer.Generation,
-				), false
+				if apierrors.IsBadRequest(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("Invalid Secret reference '%s' (envFrom index %d): %v",
+							ref.Name, index, err),
+					}
+				}
+				if apierrors.IsForbidden(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("No permission to access Secret '%s' (envFrom index %d): %v",
+							ref.Name, index, err),
+					}
+				}
+				if apierrors.IsUnauthorized(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("Not authorized to access Secret '%s' (envFrom index %d): %v",
+							ref.Name, index, err),
+					}
+				}
+				// All other errors are transient
+				return fmt.Errorf("transient error validating Secret '%s' (envFrom index %d): %w",
+					ref.Name, index, err)
 			}
 		}
 	}
-	return metav1.Condition{}, true
+	return nil
 }
 
 // validateEnvValueFrom validates a single env var's valueFrom configuration.
-// Returns an error condition and false if validation fails, otherwise returns zero condition and true.
+// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
 func (r *MCPServerReconciler) validateEnvValueFrom(
 	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
 	env corev1.EnvVar,
 	index int,
-) (metav1.Condition, bool) {
+) error {
 	if env.ValueFrom == nil {
-		return metav1.Condition{}, true
+		return nil
 	}
 	if ref := env.ValueFrom.ConfigMapKeyRef; ref != nil {
 		if ref.Optional == nil || !*ref.Optional {
@@ -1138,23 +1214,38 @@ func (r *MCPServerReconciler) validateEnvValueFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, configMap); err != nil {
+				// Permanent errors - configuration is invalid
 				if apierrors.IsNotFound(err) {
-					return newCondition(
-						ConditionTypeAccepted,
-						metav1.ConditionFalse,
-						ReasonInvalid,
-						fmt.Sprintf("ConfigMap '%s' referenced by env var '%s' (env index %d) not found in namespace '%s'",
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("ConfigMap '%s' referenced by env var '%s' (env index %d) not found in namespace '%s'",
 							ref.Name, env.Name, index, mcpServer.Namespace),
-						mcpServer.Generation,
-					), false
+					}
 				}
-				return newCondition(
-					ConditionTypeAccepted,
-					metav1.ConditionFalse,
-					ReasonInvalid,
-					fmt.Sprintf("Failed to validate ConfigMap '%s' referenced by env var '%s': %v", ref.Name, env.Name, err),
-					mcpServer.Generation,
-				), false
+				if apierrors.IsBadRequest(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("Invalid ConfigMap reference '%s' referenced by env var '%s' (env index %d): %v",
+							ref.Name, env.Name, index, err),
+					}
+				}
+				if apierrors.IsForbidden(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("No permission to access ConfigMap '%s' referenced by env var '%s' (env index %d): %v",
+							ref.Name, env.Name, index, err),
+					}
+				}
+				if apierrors.IsUnauthorized(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("Not authorized to access ConfigMap '%s' referenced by env var '%s' (env index %d): %v",
+							ref.Name, env.Name, index, err),
+					}
+				}
+				// All other errors are transient
+				return fmt.Errorf("transient error validating ConfigMap '%s' referenced by env var '%s' (env index %d): %w",
+					ref.Name, env.Name, index, err)
 			}
 		}
 	}
@@ -1165,64 +1256,73 @@ func (r *MCPServerReconciler) validateEnvValueFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, secret); err != nil {
+				// Permanent errors - configuration is invalid
 				if apierrors.IsNotFound(err) {
-					return newCondition(
-						ConditionTypeAccepted,
-						metav1.ConditionFalse,
-						ReasonInvalid,
-						fmt.Sprintf("Secret '%s' referenced by env var '%s' (env index %d) not found in namespace '%s'",
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("Secret '%s' referenced by env var '%s' (env index %d) not found in namespace '%s'",
 							ref.Name, env.Name, index, mcpServer.Namespace),
-						mcpServer.Generation,
-					), false
+					}
 				}
-				return newCondition(
-					ConditionTypeAccepted,
-					metav1.ConditionFalse,
-					ReasonInvalid,
-					fmt.Sprintf("Failed to validate Secret '%s' referenced by env var '%s': %v", ref.Name, env.Name, err),
-					mcpServer.Generation,
-				), false
+				if apierrors.IsBadRequest(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("Invalid Secret reference '%s' referenced by env var '%s' (env index %d): %v",
+							ref.Name, env.Name, index, err),
+					}
+				}
+				if apierrors.IsForbidden(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("No permission to access Secret '%s' referenced by env var '%s' (env index %d): %v",
+							ref.Name, env.Name, index, err),
+					}
+				}
+				if apierrors.IsUnauthorized(err) {
+					return &ValidationError{
+						Reason: ReasonInvalid,
+						Message: fmt.Sprintf("Not authorized to access Secret '%s' referenced by env var '%s' (env index %d): %v",
+							ref.Name, env.Name, index, err),
+					}
+				}
+				// All other errors are transient
+				return fmt.Errorf("transient error validating Secret '%s' referenced by env var '%s' (env index %d): %w",
+					ref.Name, env.Name, index, err)
 			}
 		}
 	}
-	return metav1.Condition{}, true
+	return nil
 }
 
-// setAcceptedCondition validates the MCPServer configuration and sets the Accepted condition.
-// Returns the condition and a boolean indicating if configuration is valid.
+// setAcceptedCondition validates the MCPServer configuration.
+// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
 func (r *MCPServerReconciler) setAcceptedCondition(
 	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
-) (metav1.Condition, bool) {
+) error {
 	// Validate storage mounts
 	for i, storage := range mcpServer.Spec.Config.Storage {
-		if condition, valid := r.validateStorageMount(ctx, mcpServer, storage, i); !valid {
-			return condition, false
+		if err := r.validateStorageMount(ctx, mcpServer, storage, i); err != nil {
+			return err
 		}
 	}
 
 	// Validate envFrom references
 	for i, envFrom := range mcpServer.Spec.Config.EnvFrom {
-		if condition, valid := r.validateEnvFrom(ctx, mcpServer, envFrom, i); !valid {
-			return condition, false
+		if err := r.validateEnvFrom(ctx, mcpServer, envFrom, i); err != nil {
+			return err
 		}
 	}
 
 	// Validate env valueFrom references
 	for i, env := range mcpServer.Spec.Config.Env {
-		if condition, valid := r.validateEnvValueFrom(ctx, mcpServer, env, i); !valid {
-			return condition, false
+		if err := r.validateEnvValueFrom(ctx, mcpServer, env, i); err != nil {
+			return err
 		}
 	}
 
 	// All validation passed
-	return newCondition(
-		ConditionTypeAccepted,
-		metav1.ConditionTrue,
-		ReasonValid,
-		"Configuration is valid",
-		mcpServer.Generation,
-	), true
+	return nil
 }
 
 // extractConfigMapNames is an index extractor that returns all ConfigMap names
