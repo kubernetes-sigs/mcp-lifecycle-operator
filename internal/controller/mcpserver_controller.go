@@ -991,7 +991,9 @@ func (r *MCPServerReconciler) validateStorageMount(
 			Name:      storage.Source.ConfigMap.Name,
 			Namespace: mcpServer.Namespace,
 		}, configMap); err != nil {
-			// Permanent errors - configuration is invalid
+			// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
+			// permanent because the controller watches ConfigMaps/Secrets and will
+			// re-reconcile when the missing resource is created.
 			if apierrors.IsNotFound(err) {
 				return &ValidationError{
 					Reason: ReasonInvalid,
@@ -1006,21 +1008,7 @@ func (r *MCPServerReconciler) validateStorageMount(
 						storage.Source.ConfigMap.Name, err),
 				}
 			}
-			if apierrors.IsForbidden(err) {
-				return &ValidationError{
-					Reason: ReasonInvalid,
-					Message: fmt.Sprintf("No permission to access ConfigMap '%s': %v",
-						storage.Source.ConfigMap.Name, err),
-				}
-			}
-			if apierrors.IsUnauthorized(err) {
-				return &ValidationError{
-					Reason: ReasonInvalid,
-					Message: fmt.Sprintf("Not authorized to access ConfigMap '%s': %v",
-						storage.Source.ConfigMap.Name, err),
-				}
-			}
-			// All other errors are transient - return wrapped error to trigger retry
+			// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
 			return fmt.Errorf("transient error validating ConfigMap '%s': %w",
 				storage.Source.ConfigMap.Name, err)
 		}
@@ -1048,7 +1036,9 @@ func (r *MCPServerReconciler) validateStorageMount(
 			Name:      storage.Source.Secret.SecretName,
 			Namespace: mcpServer.Namespace,
 		}, secret); err != nil {
-			// Permanent errors - configuration is invalid
+			// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
+			// permanent because the controller watches ConfigMaps/Secrets and will
+			// re-reconcile when the missing resource is created.
 			if apierrors.IsNotFound(err) {
 				return &ValidationError{
 					Reason: ReasonInvalid,
@@ -1063,21 +1053,7 @@ func (r *MCPServerReconciler) validateStorageMount(
 						storage.Source.Secret.SecretName, err),
 				}
 			}
-			if apierrors.IsForbidden(err) {
-				return &ValidationError{
-					Reason: ReasonInvalid,
-					Message: fmt.Sprintf("No permission to access Secret '%s': %v",
-						storage.Source.Secret.SecretName, err),
-				}
-			}
-			if apierrors.IsUnauthorized(err) {
-				return &ValidationError{
-					Reason: ReasonInvalid,
-					Message: fmt.Sprintf("Not authorized to access Secret '%s': %v",
-						storage.Source.Secret.SecretName, err),
-				}
-			}
-			// All other errors are transient - return wrapped error to trigger retry
+			// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
 			return fmt.Errorf("transient error validating Secret '%s': %w",
 				storage.Source.Secret.SecretName, err)
 		}
@@ -1116,7 +1092,9 @@ func (r *MCPServerReconciler) validateEnvFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, configMap); err != nil {
-				// Permanent errors - configuration is invalid
+				// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
+				// permanent because the controller watches ConfigMaps/Secrets and will
+				// re-reconcile when the missing resource is created.
 				if apierrors.IsNotFound(err) {
 					return &ValidationError{
 						Reason: ReasonInvalid,
@@ -1131,21 +1109,7 @@ func (r *MCPServerReconciler) validateEnvFrom(
 							ref.Name, index, err),
 					}
 				}
-				if apierrors.IsForbidden(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("No permission to access ConfigMap '%s' (envFrom index %d): %v",
-							ref.Name, index, err),
-					}
-				}
-				if apierrors.IsUnauthorized(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("Not authorized to access ConfigMap '%s' (envFrom index %d): %v",
-							ref.Name, index, err),
-					}
-				}
-				// All other errors are transient
+				// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
 				return fmt.Errorf("transient error validating ConfigMap '%s' (envFrom index %d): %w",
 					ref.Name, index, err)
 			}
@@ -1158,7 +1122,9 @@ func (r *MCPServerReconciler) validateEnvFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, secret); err != nil {
-				// Permanent errors - configuration is invalid
+				// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
+				// permanent because the controller watches ConfigMaps/Secrets and will
+				// re-reconcile when the missing resource is created.
 				if apierrors.IsNotFound(err) {
 					return &ValidationError{
 						Reason: ReasonInvalid,
@@ -1173,21 +1139,7 @@ func (r *MCPServerReconciler) validateEnvFrom(
 							ref.Name, index, err),
 					}
 				}
-				if apierrors.IsForbidden(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("No permission to access Secret '%s' (envFrom index %d): %v",
-							ref.Name, index, err),
-					}
-				}
-				if apierrors.IsUnauthorized(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("Not authorized to access Secret '%s' (envFrom index %d): %v",
-							ref.Name, index, err),
-					}
-				}
-				// All other errors are transient
+				// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
 				return fmt.Errorf("transient error validating Secret '%s' (envFrom index %d): %w",
 					ref.Name, index, err)
 			}
@@ -1214,7 +1166,9 @@ func (r *MCPServerReconciler) validateEnvValueFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, configMap); err != nil {
-				// Permanent errors - configuration is invalid
+				// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
+				// permanent because the controller watches ConfigMaps/Secrets and will
+				// re-reconcile when the missing resource is created.
 				if apierrors.IsNotFound(err) {
 					return &ValidationError{
 						Reason: ReasonInvalid,
@@ -1229,21 +1183,7 @@ func (r *MCPServerReconciler) validateEnvValueFrom(
 							ref.Name, env.Name, index, err),
 					}
 				}
-				if apierrors.IsForbidden(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("No permission to access ConfigMap '%s' referenced by env var '%s' (env index %d): %v",
-							ref.Name, env.Name, index, err),
-					}
-				}
-				if apierrors.IsUnauthorized(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("Not authorized to access ConfigMap '%s' referenced by env var '%s' (env index %d): %v",
-							ref.Name, env.Name, index, err),
-					}
-				}
-				// All other errors are transient
+				// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
 				return fmt.Errorf("transient error validating ConfigMap '%s' referenced by env var '%s' (env index %d): %w",
 					ref.Name, env.Name, index, err)
 			}
@@ -1256,7 +1196,9 @@ func (r *MCPServerReconciler) validateEnvValueFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, secret); err != nil {
-				// Permanent errors - configuration is invalid
+				// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
+				// permanent because the controller watches ConfigMaps/Secrets and will
+				// re-reconcile when the missing resource is created.
 				if apierrors.IsNotFound(err) {
 					return &ValidationError{
 						Reason: ReasonInvalid,
@@ -1271,21 +1213,7 @@ func (r *MCPServerReconciler) validateEnvValueFrom(
 							ref.Name, env.Name, index, err),
 					}
 				}
-				if apierrors.IsForbidden(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("No permission to access Secret '%s' referenced by env var '%s' (env index %d): %v",
-							ref.Name, env.Name, index, err),
-					}
-				}
-				if apierrors.IsUnauthorized(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("Not authorized to access Secret '%s' referenced by env var '%s' (env index %d): %v",
-							ref.Name, env.Name, index, err),
-					}
-				}
-				// All other errors are transient
+				// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
 				return fmt.Errorf("transient error validating Secret '%s' referenced by env var '%s' (env index %d): %w",
 					ref.Name, env.Name, index, err)
 			}

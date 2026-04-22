@@ -4520,7 +4520,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(err.Error()).To(ContainSubstring("env"))
 		})
 
-		It("should return ValidationError for Forbidden (permanent error)", func() {
+		It("should return transient error for Forbidden", func() {
 			scheme := runtime.NewScheme()
 			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
@@ -4574,11 +4574,131 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
-			// Should be a ValidationError - Forbidden is permanent
+			// Forbidden is transient - RBAC changes don't trigger reconciliation
+			var validationErr *ValidationError
+			Expect(stderrors.As(err, &validationErr)).To(BeFalse())
+			Expect(err.Error()).To(ContainSubstring("transient error validating ConfigMap"))
+		})
+
+		It("should return transient error for Unauthorized", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+						if _, ok := obj.(*corev1.ConfigMap); ok {
+							return &errors.StatusError{
+								ErrStatus: metav1.Status{
+									Status:  metav1.StatusFailure,
+									Code:    401,
+									Reason:  metav1.StatusReasonUnauthorized,
+									Message: "unauthorized",
+								},
+							}
+						}
+						return client.Get(ctx, key, obj, opts...)
+					},
+				}).Build()
+
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Storage: []mcpv1alpha1.StorageMount{
+							{
+								Path: "/data",
+								Source: mcpv1alpha1.StorageSource{
+									Type: mcpv1alpha1.StorageTypeConfigMap,
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-config",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := reconciler.validateConfig(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			// Unauthorized is transient - RBAC changes don't trigger reconciliation
+			var validationErr *ValidationError
+			Expect(stderrors.As(err, &validationErr)).To(BeFalse())
+			Expect(err.Error()).To(ContainSubstring("transient error validating ConfigMap"))
+		})
+
+		It("should return ValidationError for BadRequest (permanent error)", func() {
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+						if _, ok := obj.(*corev1.ConfigMap); ok {
+							return &errors.StatusError{
+								ErrStatus: metav1.Status{
+									Status:  metav1.StatusFailure,
+									Code:    400,
+									Reason:  metav1.StatusReasonBadRequest,
+									Message: "bad request",
+								},
+							}
+						}
+						return client.Get(ctx, key, obj, opts...)
+					},
+				}).Build()
+
+			reconciler := &MCPServerReconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Storage: []mcpv1alpha1.StorageMount{
+							{
+								Path: "/data",
+								Source: mcpv1alpha1.StorageSource{
+									Type: mcpv1alpha1.StorageTypeConfigMap,
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-config",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := reconciler.validateConfig(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			// BadRequest is a permanent ValidationError
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
 			Expect(validationErr.Reason).To(Equal(ReasonInvalid))
-			Expect(validationErr.Message).To(ContainSubstring("No permission to access ConfigMap"))
+			Expect(validationErr.Message).To(ContainSubstring("Invalid ConfigMap reference"))
 		})
 	})
 
