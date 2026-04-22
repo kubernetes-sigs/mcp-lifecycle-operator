@@ -4002,7 +4002,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 	})
 
-	Context("setAcceptedCondition validation", func() {
+	Context("validateConfig validation", func() {
 		ctx := context.Background()
 
 		It("should reject EmptyDir with nil EmptyDir configuration", func() {
@@ -4037,7 +4037,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
@@ -4076,7 +4076,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
@@ -4119,7 +4119,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
@@ -4162,7 +4162,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
@@ -4207,7 +4207,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -4247,7 +4247,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -4280,7 +4280,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -4337,7 +4337,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			// Should NOT be a ValidationError - should be a transient error
 			var validationErr *ValidationError
@@ -4396,7 +4396,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			// Should NOT be a ValidationError - should be a transient error
 			var validationErr *ValidationError
@@ -4452,7 +4452,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeFalse())
@@ -4512,7 +4512,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeFalse())
@@ -4572,7 +4572,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.setAcceptedCondition(ctx, mcpServer)
+			err := reconciler.validateConfig(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			// Should be a ValidationError - Forbidden is permanent
 			var validationErr *ValidationError

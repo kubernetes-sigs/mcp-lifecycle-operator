@@ -140,7 +140,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	logger.Info("Reconciling MCPServer", "name", mcpServer.Name, "namespace", mcpServer.Namespace)
 
 	// Validate configuration
-	if err := r.setAcceptedCondition(ctx, mcpServer); err != nil {
+	if err := r.validateConfig(ctx, mcpServer); err != nil {
 		var validationErr *ValidationError
 		if errors.As(err, &validationErr) {
 			// Permanent validation error - mark configuration as invalid
@@ -654,7 +654,7 @@ func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1alpha1.MCPServer)
 }
 
 // processStorageMounts builds volumes and volume mounts from the MCPServer storage configuration.
-// Validation of referenced ConfigMaps and Secrets is done in setAcceptedCondition.
+// Validation of referenced ConfigMaps and Secrets is done in validateConfig.
 func (r *MCPServerReconciler) processStorageMounts(
 	mcpServer *mcpv1alpha1.MCPServer,
 ) ([]corev1.Volume, []corev1.VolumeMount) {
@@ -693,10 +693,10 @@ func (r *MCPServerReconciler) processStorageMounts(
 
 		switch storage.Source.Type {
 		case mcpv1alpha1.StorageTypeConfigMap:
-			// Validation already done in setAcceptedCondition
+			// Validation already done in validateConfig
 			volume.ConfigMap = storage.Source.ConfigMap
 		case mcpv1alpha1.StorageTypeSecret:
-			// Validation already done in setAcceptedCondition
+			// Validation already done in validateConfig
 			volume.Secret = storage.Source.Secret
 		case mcpv1alpha1.StorageTypeEmptyDir:
 			// No validation needed - EmptyDir is created by Kubernetes
@@ -1294,9 +1294,9 @@ func (r *MCPServerReconciler) validateEnvValueFrom(
 	return nil
 }
 
-// setAcceptedCondition validates the MCPServer configuration.
+// validateConfig validates the MCPServer configuration.
 // Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
-func (r *MCPServerReconciler) setAcceptedCondition(
+func (r *MCPServerReconciler) validateConfig(
 	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
 ) error {
