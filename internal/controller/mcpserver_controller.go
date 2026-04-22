@@ -180,8 +180,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		// Transient error - log and return to trigger retry with exponential backoff
-		logger.Info("Transient error during configuration validation, will retry",
-			"error", err)
+		logger.Error(err, "Transient error during configuration validation, will retry")
 		// Don't update status - preserve existing Accepted condition
 		return ctrl.Result{}, err
 	}
