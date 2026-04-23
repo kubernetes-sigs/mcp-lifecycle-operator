@@ -958,6 +958,27 @@ func analyzeDeploymentFailure(deploymentMessage string) string {
 	return fmt.Sprintf("No healthy instances: %s", msg)
 }
 
+// classifyAPIError classifies a Kubernetes API error as either a permanent ValidationError
+// or a transient error that should be retried.
+// NotFound and BadRequest are permanent — NotFound is safe to treat as permanent because the
+// controller watches ConfigMaps/Secrets and will re-reconcile when the missing resource is created.
+// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient.
+func classifyAPIError(resourceDesc string, namespace string, err error) error {
+	if apierrors.IsNotFound(err) {
+		return &ValidationError{
+			Reason:  ReasonInvalid,
+			Message: fmt.Sprintf("%s not found in namespace '%s'", resourceDesc, namespace),
+		}
+	}
+	if apierrors.IsBadRequest(err) {
+		return &ValidationError{
+			Reason:  ReasonInvalid,
+			Message: fmt.Sprintf("Invalid %s reference: %v", resourceDesc, err),
+		}
+	}
+	return fmt.Errorf("transient error validating %s: %w", resourceDesc, err)
+}
+
 // validateStorageMount validates a single storage mount configuration.
 // Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
 func (r *MCPServerReconciler) validateStorageMount(
@@ -990,26 +1011,9 @@ func (r *MCPServerReconciler) validateStorageMount(
 			Name:      storage.Source.ConfigMap.Name,
 			Namespace: mcpServer.Namespace,
 		}, configMap); err != nil {
-			// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
-			// permanent because the controller watches ConfigMaps/Secrets and will
-			// re-reconcile when the missing resource is created.
-			if apierrors.IsNotFound(err) {
-				return &ValidationError{
-					Reason: ReasonInvalid,
-					Message: fmt.Sprintf("ConfigMap '%s' not found in namespace '%s'",
-						storage.Source.ConfigMap.Name, mcpServer.Namespace),
-				}
-			}
-			if apierrors.IsBadRequest(err) {
-				return &ValidationError{
-					Reason: ReasonInvalid,
-					Message: fmt.Sprintf("Invalid ConfigMap reference '%s': %v",
-						storage.Source.ConfigMap.Name, err),
-				}
-			}
-			// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
-			return fmt.Errorf("transient error validating ConfigMap '%s': %w",
-				storage.Source.ConfigMap.Name, err)
+			return classifyAPIError(
+				fmt.Sprintf("ConfigMap '%s'", storage.Source.ConfigMap.Name),
+				mcpServer.Namespace, err)
 		}
 
 	case mcpv1alpha1.StorageTypeSecret:
@@ -1035,26 +1039,9 @@ func (r *MCPServerReconciler) validateStorageMount(
 			Name:      storage.Source.Secret.SecretName,
 			Namespace: mcpServer.Namespace,
 		}, secret); err != nil {
-			// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
-			// permanent because the controller watches ConfigMaps/Secrets and will
-			// re-reconcile when the missing resource is created.
-			if apierrors.IsNotFound(err) {
-				return &ValidationError{
-					Reason: ReasonInvalid,
-					Message: fmt.Sprintf("Secret '%s' not found in namespace '%s'",
-						storage.Source.Secret.SecretName, mcpServer.Namespace),
-				}
-			}
-			if apierrors.IsBadRequest(err) {
-				return &ValidationError{
-					Reason: ReasonInvalid,
-					Message: fmt.Sprintf("Invalid Secret reference '%s': %v",
-						storage.Source.Secret.SecretName, err),
-				}
-			}
-			// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
-			return fmt.Errorf("transient error validating Secret '%s': %w",
-				storage.Source.Secret.SecretName, err)
+			return classifyAPIError(
+				fmt.Sprintf("Secret '%s'", storage.Source.Secret.SecretName),
+				mcpServer.Namespace, err)
 		}
 
 	case mcpv1alpha1.StorageTypeEmptyDir:
@@ -1091,26 +1078,9 @@ func (r *MCPServerReconciler) validateEnvFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, configMap); err != nil {
-				// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
-				// permanent because the controller watches ConfigMaps/Secrets and will
-				// re-reconcile when the missing resource is created.
-				if apierrors.IsNotFound(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("ConfigMap '%s' (envFrom index %d) not found in namespace '%s'",
-							ref.Name, index, mcpServer.Namespace),
-					}
-				}
-				if apierrors.IsBadRequest(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("Invalid ConfigMap reference '%s' (envFrom index %d): %v",
-							ref.Name, index, err),
-					}
-				}
-				// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
-				return fmt.Errorf("transient error validating ConfigMap '%s' (envFrom index %d): %w",
-					ref.Name, index, err)
+				return classifyAPIError(
+					fmt.Sprintf("ConfigMap '%s' (envFrom index %d)", ref.Name, index),
+					mcpServer.Namespace, err)
 			}
 		}
 	}
@@ -1121,26 +1091,9 @@ func (r *MCPServerReconciler) validateEnvFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, secret); err != nil {
-				// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
-				// permanent because the controller watches ConfigMaps/Secrets and will
-				// re-reconcile when the missing resource is created.
-				if apierrors.IsNotFound(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("Secret '%s' (envFrom index %d) not found in namespace '%s'",
-							ref.Name, index, mcpServer.Namespace),
-					}
-				}
-				if apierrors.IsBadRequest(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("Invalid Secret reference '%s' (envFrom index %d): %v",
-							ref.Name, index, err),
-					}
-				}
-				// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
-				return fmt.Errorf("transient error validating Secret '%s' (envFrom index %d): %w",
-					ref.Name, index, err)
+				return classifyAPIError(
+					fmt.Sprintf("Secret '%s' (envFrom index %d)", ref.Name, index),
+					mcpServer.Namespace, err)
 			}
 		}
 	}
@@ -1165,26 +1118,9 @@ func (r *MCPServerReconciler) validateEnvValueFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, configMap); err != nil {
-				// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
-				// permanent because the controller watches ConfigMaps/Secrets and will
-				// re-reconcile when the missing resource is created.
-				if apierrors.IsNotFound(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("ConfigMap '%s' referenced by env var '%s' (env index %d) not found in namespace '%s'",
-							ref.Name, env.Name, index, mcpServer.Namespace),
-					}
-				}
-				if apierrors.IsBadRequest(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("Invalid ConfigMap reference '%s' referenced by env var '%s' (env index %d): %v",
-							ref.Name, env.Name, index, err),
-					}
-				}
-				// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
-				return fmt.Errorf("transient error validating ConfigMap '%s' referenced by env var '%s' (env index %d): %w",
-					ref.Name, env.Name, index, err)
+				return classifyAPIError(
+					fmt.Sprintf("ConfigMap '%s' referenced by env var '%s' (env index %d)", ref.Name, env.Name, index),
+					mcpServer.Namespace, err)
 			}
 		}
 	}
@@ -1195,26 +1131,9 @@ func (r *MCPServerReconciler) validateEnvValueFrom(
 				Name:      ref.Name,
 				Namespace: mcpServer.Namespace,
 			}, secret); err != nil {
-				// NotFound and BadRequest are permanent errors. NotFound is safe to treat as
-				// permanent because the controller watches ConfigMaps/Secrets and will
-				// re-reconcile when the missing resource is created.
-				if apierrors.IsNotFound(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("Secret '%s' referenced by env var '%s' (env index %d) not found in namespace '%s'",
-							ref.Name, env.Name, index, mcpServer.Namespace),
-					}
-				}
-				if apierrors.IsBadRequest(err) {
-					return &ValidationError{
-						Reason: ReasonInvalid,
-						Message: fmt.Sprintf("Invalid Secret reference '%s' referenced by env var '%s' (env index %d): %v",
-							ref.Name, env.Name, index, err),
-					}
-				}
-				// All other errors (Forbidden, Unauthorized, 500, 503, 429, timeouts...) are transient
-				return fmt.Errorf("transient error validating Secret '%s' referenced by env var '%s' (env index %d): %w",
-					ref.Name, env.Name, index, err)
+				return classifyAPIError(
+					fmt.Sprintf("Secret '%s' referenced by env var '%s' (env index %d)", ref.Name, env.Name, index),
+					mcpServer.Namespace, err)
 			}
 		}
 	}

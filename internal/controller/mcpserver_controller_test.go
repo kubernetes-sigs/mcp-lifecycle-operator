@@ -4698,7 +4698,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
 			Expect(validationErr.Reason).To(Equal(ReasonInvalid))
-			Expect(validationErr.Message).To(ContainSubstring("Invalid ConfigMap reference"))
+			Expect(validationErr.Message).To(ContainSubstring("Invalid ConfigMap"))
 		})
 	})
 
