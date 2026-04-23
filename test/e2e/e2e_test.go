@@ -23,8 +23,11 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +35,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/utils"
 )
@@ -270,16 +275,178 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
+	})
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+	Context("MCPServer - Everything MCP Server", func() {
+		const (
+			mcpTestNamespace    = "e2e-mcpserver-test"
+			mcpServerName       = "everything-mcp-server"
+			mcpServerPort       = 3001
+		)
+		var manifestFile string
+
+		BeforeAll(func() {
+			By("creating a test namespace for MCPServer")
+			cmd := exec.Command("kubectl", "create", "ns", mcpTestNamespace)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create test namespace")
+
+			By("writing the MCPServer manifest to a temp file")
+			manifest := fmt.Sprintf(`apiVersion: mcp.x-k8s.io/v1alpha1
+kind: MCPServer
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: quay.io/matzew/mcp-everything:latest
+  config:
+    port: %d
+    path: /mcp
+`, mcpServerName, mcpTestNamespace, mcpServerPort)
+
+			manifestFile = filepath.Join(os.TempDir(), "e2e-mcpserver.yaml")
+			err = os.WriteFile(manifestFile, []byte(manifest), 0644)
+			Expect(err).NotTo(HaveOccurred(), "Failed to write manifest file")
+
+			By("deploying the everything-mcp-server MCPServer resource")
+			cmd = exec.Command("kubectl", "apply", "-f", manifestFile)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to apply MCPServer resource")
+		})
+
+		AfterAll(func() {
+			By("deleting the MCPServer resource")
+			cmd := exec.Command("kubectl", "delete", "mcpserver",
+				mcpServerName, "-n", mcpTestNamespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+
+			By("deleting the MCPServer test namespace")
+			cmd = exec.Command("kubectl", "delete", "ns", mcpTestNamespace, "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+
+			if manifestFile != "" {
+				_ = os.Remove(manifestFile)
+			}
+		})
+
+		It("should become ready and serve tools via MCP protocol", func() {
+			By("waiting for the MCPServer to have Ready=True condition")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "mcpserver",
+					mcpServerName, "-n", mcpTestNamespace,
+					"-o", "jsonpath={.status.conditions[?(@.type==\"Ready\")].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("True"),
+					"MCPServer not yet Ready")
+			}, 3*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("verifying the MCPServer has Accepted=True condition")
+			cmd := exec.Command("kubectl", "get", "mcpserver",
+				mcpServerName, "-n", mcpTestNamespace,
+				"-o", "jsonpath={.status.conditions[?(@.type==\"Accepted\")].status}")
+			output, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(Equal("True"), "MCPServer not Accepted")
+
+			By("verifying the MCPServer status address is populated")
+			cmd = exec.Command("kubectl", "get", "mcpserver",
+				mcpServerName, "-n", mcpTestNamespace,
+				"-o", "jsonpath={.status.address.url}")
+			output, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).NotTo(BeEmpty(), "MCPServer address URL should be set")
+			expectedURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d/mcp",
+				mcpServerName, mcpTestNamespace, mcpServerPort)
+			Expect(output).To(Equal(expectedURL))
+
+			By("waiting for the server pod to be running")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pods",
+					"-l", fmt.Sprintf("mcp-server=%s", mcpServerName),
+					"-n", mcpTestNamespace,
+					"-o", "jsonpath={.items[0].status.phase}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("Running"))
+			}, 3*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("setting up port-forward to the MCP server service")
+			localPort := findFreePort()
+			portForwardCmd := exec.Command("kubectl", "port-forward",
+				fmt.Sprintf("svc/%s", mcpServerName),
+				fmt.Sprintf("%d:%d", localPort, mcpServerPort),
+				"-n", mcpTestNamespace)
+			portForwardCmd.Stdout = GinkgoWriter
+			portForwardCmd.Stderr = GinkgoWriter
+			err = portForwardCmd.Start()
+			Expect(err).NotTo(HaveOccurred(), "Failed to start port-forward")
+			defer func() {
+				if portForwardCmd.Process != nil {
+					_ = portForwardCmd.Process.Kill()
+					_ = portForwardCmd.Wait()
+				}
+			}()
+
+			// Wait for port-forward to be ready by polling the local port.
+			Eventually(func() error {
+				conn, dialErr := net.DialTimeout("tcp",
+					fmt.Sprintf("localhost:%d", localPort), time.Second)
+				if dialErr != nil {
+					return dialErr
+				}
+				conn.Close()
+				return nil
+			}, 30*time.Second, time.Second).Should(Succeed(),
+				"Port-forward did not become ready")
+
+			By("connecting an MCP client and initializing the session")
+			serverURL := fmt.Sprintf("http://localhost:%d/mcp", localPort)
+
+			mcpClient := mcp.NewClient(
+				&mcp.Implementation{
+					Name:    "e2e-test-client",
+					Version: "v0.0.1",
+				},
+				nil,
+			)
+
+			transport := &mcp.StreamableClientTransport{
+				Endpoint:   serverURL,
+				HTTPClient: &http.Client{Timeout: 30 * time.Second},
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			session, err := mcpClient.Connect(ctx, transport, nil)
+			Expect(err).NotTo(HaveOccurred(), "Failed to connect MCP client")
+			defer session.Close()
+
+			initResult := session.InitializeResult()
+			Expect(initResult).NotTo(BeNil())
+			_, _ = fmt.Fprintf(GinkgoWriter,
+				"Connected to MCP server: %s (version %s)\n",
+				initResult.ServerInfo.Name,
+				initResult.ServerInfo.Version)
+
+			By("listing available tools from the MCP server")
+			toolsResult, err := session.ListTools(ctx, nil)
+			Expect(err).NotTo(HaveOccurred(), "Failed to list MCP tools")
+			Expect(toolsResult).NotTo(BeNil())
+			Expect(toolsResult.Tools).NotTo(BeEmpty(),
+				"Expected the everything-mcp-server to expose at least one tool")
+
+			_, _ = fmt.Fprintf(GinkgoWriter,
+				"Found %d tools:\n", len(toolsResult.Tools))
+			for _, tool := range toolsResult.Tools {
+				_, _ = fmt.Fprintf(GinkgoWriter,
+					"  - %s: %s\n", tool.Name, tool.Description)
+			}
+		})
 	})
 })
 
@@ -337,4 +504,15 @@ type tokenRequest struct {
 	Status struct {
 		Token string `json:"token"`
 	} `json:"status"`
+}
+
+// findFreePort asks the OS for a free port to use for port-forwarding.
+func findFreePort() int {
+	l, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		// Fallback to a fixed port if we can't get a free one.
+		return 13001
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
 }
