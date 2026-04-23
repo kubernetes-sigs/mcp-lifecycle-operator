@@ -23,6 +23,12 @@ package v1alpha1
 //
 // MCPServerSpec defines the desired state of MCPServer.
 type MCPServerSpecApplyConfiguration struct {
+	// ExtraLabels provides end users a mechanism to add labels to the MCPServer object child resources.
+	// The labels should be appended to the existing labels
+	ExtraLabels map[string]string `json:"extraLabels,omitempty"`
+	// ExtraAnnotations provides end users a mechanism to add annotations to the MCPServer object child resources.
+	// The annotations would be appended to the existing annotations on the child resources
+	ExtraAnnotations map[string]string `json:"extraAnnotations,omitempty"`
 	// Source is a required field that defines where the MCP server should be sourced from.
 	// Currently supports container images, with potential for additional source types in the future.
 	// This configuration determines how the MCP server will be deployed and run.
@@ -40,6 +46,34 @@ type MCPServerSpecApplyConfiguration struct {
 // apply.
 func MCPServerSpec() *MCPServerSpecApplyConfiguration {
 	return &MCPServerSpecApplyConfiguration{}
+}
+
+// WithExtraLabels puts the entries into the ExtraLabels field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the ExtraLabels field,
+// overwriting an existing map entries in ExtraLabels field with the same key.
+func (b *MCPServerSpecApplyConfiguration) WithExtraLabels(entries map[string]string) *MCPServerSpecApplyConfiguration {
+	if b.ExtraLabels == nil && len(entries) > 0 {
+		b.ExtraLabels = make(map[string]string, len(entries))
+	}
+	for k, v := range entries {
+		b.ExtraLabels[k] = v
+	}
+	return b
+}
+
+// WithExtraAnnotations puts the entries into the ExtraAnnotations field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the ExtraAnnotations field,
+// overwriting an existing map entries in ExtraAnnotations field with the same key.
+func (b *MCPServerSpecApplyConfiguration) WithExtraAnnotations(entries map[string]string) *MCPServerSpecApplyConfiguration {
+	if b.ExtraAnnotations == nil && len(entries) > 0 {
+		b.ExtraAnnotations = make(map[string]string, len(entries))
+	}
+	for k, v := range entries {
+		b.ExtraAnnotations[k] = v
+	}
+	return b
 }
 
 // WithSource sets the Source field in the declarative configuration to the given value

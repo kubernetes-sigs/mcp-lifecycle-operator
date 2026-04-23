@@ -579,6 +579,20 @@ spec:
                 required:
                 - port
                 type: object
+              extraAnnotations:
+                additionalProperties:
+                  type: string
+                description: |-
+                  ExtraAnnotations provides end users a mechanism to add annotations to the MCPServer object child resources.
+                  The annotations would be appended to the existing annotations on the child resources
+                type: object
+              extraLabels:
+                additionalProperties:
+                  type: string
+                description: |-
+                  ExtraLabels provides end users a mechanism to add labels to the MCPServer object child resources.
+                  The labels should be appended to the existing labels
+                type: object
               runtime:
                 description: |-
                   Runtime defines runtime management configuration.

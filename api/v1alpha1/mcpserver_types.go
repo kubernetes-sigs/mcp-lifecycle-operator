@@ -332,6 +332,14 @@ type RuntimeConfig struct {
 
 // MCPServerSpec defines the desired state of MCPServer.
 type MCPServerSpec struct {
+	// ExtraLabels provides end users a mechanism to add labels to the MCPServer object child resources.
+	// The labels should be appended to the existing labels
+	// +optional
+	ExtraLabels map[string]string `json:"extraLabels,omitempty"`
+	// ExtraAnnotations provides end users a mechanism to add annotations to the MCPServer object child resources.
+	// The annotations would be appended to the existing annotations on the child resources
+	// +optional
+	ExtraAnnotations map[string]string `json:"extraAnnotations,omitempty"`
 	// Source is a required field that defines where the MCP server should be sourced from.
 	// Currently supports container images, with potential for additional source types in the future.
 	// This configuration determines how the MCP server will be deployed and run.
