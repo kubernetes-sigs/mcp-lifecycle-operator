@@ -47,6 +47,30 @@ import (
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 )
 
+// newTestMCPServer returns an MCPServer with standard test defaults:
+// namespace "default", SourceTypeContainerImage with ref
+// "docker.io/library/test-image:latest", and port 8080.
+// Callers mutate the returned struct for scenario-specific fields.
+func newTestMCPServer(name string) *mcpv1alpha1.MCPServer {
+	return &mcpv1alpha1.MCPServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "default",
+		},
+		Spec: mcpv1alpha1.MCPServerSpec{
+			Source: mcpv1alpha1.Source{
+				Type: mcpv1alpha1.SourceTypeContainerImage,
+				ContainerImage: &mcpv1alpha1.ContainerImageSource{
+					Ref: "docker.io/library/test-image:latest",
+				},
+			},
+			Config: mcpv1alpha1.ServerConfig{
+				Port: 8080,
+			},
+		},
+	}
+}
+
 var _ = Describe("MCPServer Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
@@ -63,23 +87,7 @@ var _ = Describe("MCPServer Controller", func() {
 			By("creating the custom resource for the Kind MCPServer")
 			err := k8sClient.Get(ctx, typeNamespacedName, mcpserver)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &mcpv1alpha1.MCPServer{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: mcpv1alpha1.MCPServerSpec{
-						Source: mcpv1alpha1.Source{
-							Type: mcpv1alpha1.SourceTypeContainerImage,
-							ContainerImage: &mcpv1alpha1.ContainerImageSource{
-								Ref: "docker.io/library/test-image:latest",
-							},
-						},
-						Config: mcpv1alpha1.ServerConfig{
-							Port: 8080,
-						},
-					},
-				}
+				resource := newTestMCPServer(resourceName)
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 		})
@@ -120,26 +128,10 @@ var _ = Describe("MCPServer Controller", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Env: []corev1.EnvVar{
-							{Name: "TOKEN", Value: "test-token"},
-							{Name: "LOG_LEVEL", Value: "debug"},
-						},
-					},
-				},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Env = []corev1.EnvVar{
+				{Name: "TOKEN", Value: "test-token"},
+				{Name: "LOG_LEVEL", Value: "debug"},
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
@@ -238,24 +230,8 @@ var _ = Describe("MCPServer Controller", func() {
 		})
 
 		It("should update deployment when args are removed", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port:      8080,
-						Arguments: []string{"--verbose", "--port=8080"},
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Arguments = []string{"--verbose", "--port=8080"}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -317,26 +293,10 @@ var _ = Describe("MCPServer Controller", func() {
 		})
 
 		It("should update deployment when serviceAccountName is removed", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Security: mcpv1alpha1.SecurityConfig{
-							ServiceAccountName: "my-sa",
-						},
-					},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Runtime = mcpv1alpha1.RuntimeConfig{
+				Security: mcpv1alpha1.SecurityConfig{
+					ServiceAccountName: "my-sa",
 				},
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -405,28 +365,12 @@ var _ = Describe("MCPServer Controller", func() {
 		It("should propagate container security context to the deployment", func() {
 			runAsUser := int64(1001)
 			runAsGroup := int64(0)
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Security: mcpv1alpha1.SecurityConfig{
-							SecurityContext: &corev1.SecurityContext{
-								RunAsUser:  &runAsUser,
-								RunAsGroup: &runAsGroup,
-							},
-						},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Runtime = mcpv1alpha1.RuntimeConfig{
+				Security: mcpv1alpha1.SecurityConfig{
+					SecurityContext: &corev1.SecurityContext{
+						RunAsUser:  &runAsUser,
+						RunAsGroup: &runAsGroup,
 					},
 				},
 			}
@@ -457,28 +401,12 @@ var _ = Describe("MCPServer Controller", func() {
 		It("should propagate pod security context to the deployment", func() {
 			runAsUser := int64(1001)
 			fsGroup := int64(1001)
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Security: mcpv1alpha1.SecurityConfig{
-							PodSecurityContext: &corev1.PodSecurityContext{
-								RunAsUser: &runAsUser,
-								FSGroup:   &fsGroup,
-							},
-						},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Runtime = mcpv1alpha1.RuntimeConfig{
+				Security: mcpv1alpha1.SecurityConfig{
+					PodSecurityContext: &corev1.PodSecurityContext{
+						RunAsUser: &runAsUser,
+						FSGroup:   &fsGroup,
 					},
 				},
 			}
@@ -510,31 +438,15 @@ var _ = Describe("MCPServer Controller", func() {
 			runAsUser := int64(1001)
 			fsGroup := int64(1001)
 			readOnly := true
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Runtime = mcpv1alpha1.RuntimeConfig{
+				Security: mcpv1alpha1.SecurityConfig{
+					PodSecurityContext: &corev1.PodSecurityContext{
+						RunAsUser: &runAsUser,
+						FSGroup:   &fsGroup,
 					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Security: mcpv1alpha1.SecurityConfig{
-							PodSecurityContext: &corev1.PodSecurityContext{
-								RunAsUser: &runAsUser,
-								FSGroup:   &fsGroup,
-							},
-							SecurityContext: &corev1.SecurityContext{
-								ReadOnlyRootFilesystem: &readOnly,
-							},
-						},
+					SecurityContext: &corev1.SecurityContext{
+						ReadOnlyRootFilesystem: &readOnly,
 					},
 				},
 			}
@@ -567,23 +479,7 @@ var _ = Describe("MCPServer Controller", func() {
 		})
 
 		It("should apply default restricted security contexts when not specified", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName + "-none",
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName + "-none")
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -644,26 +540,8 @@ var _ = Describe("MCPServer Controller", func() {
 		})
 
 		It("should set replicas on deployment when specified", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Replicas: ptr.To(int32(3)),
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Runtime.Replicas = ptr.To(int32(3))
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -685,24 +563,8 @@ var _ = Describe("MCPServer Controller", func() {
 		})
 
 		It("should default to 1 replica when not specified", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					// No Runtime section - replicas should default to 1
-				},
-			}
+			// No Runtime section - replicas should default to 1
+			resource := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -724,26 +586,8 @@ var _ = Describe("MCPServer Controller", func() {
 		})
 
 		It("should allow 0 replicas for scale-to-zero", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Replicas: ptr.To(int32(0)),
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Runtime.Replicas = ptr.To(int32(0))
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -765,26 +609,8 @@ var _ = Describe("MCPServer Controller", func() {
 		})
 
 		It("should update deployment when replicas changes", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Replicas: ptr.To(int32(2)),
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Runtime.Replicas = ptr.To(int32(2))
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -827,26 +653,8 @@ var _ = Describe("MCPServer Controller", func() {
 		})
 
 		It("should update deployment when replicas is removed", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Replicas: ptr.To(int32(3)),
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Runtime.Replicas = ptr.To(int32(3))
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -889,26 +697,8 @@ var _ = Describe("MCPServer Controller", func() {
 		})
 
 		It("should correctly handle MCPServer status after spec update", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Replicas: ptr.To(int32(1)),
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Runtime.Replicas = ptr.To(int32(1))
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -1001,23 +791,7 @@ var _ = Describe("MCPServer Controller", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
 
@@ -1216,32 +990,16 @@ var _ = Describe("MCPServer Controller", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
+				{
+					SecretRef: &corev1.SecretEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "my-secret"},
 					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						EnvFrom: []corev1.EnvFromSource{
-							{
-								SecretRef: &corev1.SecretEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{Name: "my-secret"},
-								},
-							},
-							{
-								ConfigMapRef: &corev1.ConfigMapEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{Name: "my-configmap"},
-								},
-							},
-						},
+				},
+				{
+					ConfigMapRef: &corev1.ConfigMapEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "my-configmap"},
 					},
 				},
 			}
@@ -1347,27 +1105,11 @@ var _ = Describe("MCPServer Controller", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						EnvFrom: []corev1.EnvFromSource{
-							{
-								ConfigMapRef: &corev1.ConfigMapEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-configmap"},
-								},
-							},
-						},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
+				{
+					ConfigMapRef: &corev1.ConfigMapEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-configmap"},
 					},
 				},
 			}
@@ -1452,27 +1194,11 @@ var _ = Describe("MCPServer Controller", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						EnvFrom: []corev1.EnvFromSource{
-							{
-								SecretRef: &corev1.SecretEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-secret"},
-								},
-							},
-						},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
+				{
+					SecretRef: &corev1.SecretEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-secret"},
 					},
 				},
 			}
@@ -1595,30 +1321,14 @@ var _ = Describe("MCPServer Controller", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Env: []corev1.EnvVar{
-							{
-								Name: "MY_CONFIG_VAR",
-								ValueFrom: &corev1.EnvVarSource{
-									ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-env-configmap"},
-										Key:                  "some-key",
-									},
-								},
-							},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Env = []corev1.EnvVar{
+				{
+					Name: "MY_CONFIG_VAR",
+					ValueFrom: &corev1.EnvVarSource{
+						ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-env-configmap"},
+							Key:                  "some-key",
 						},
 					},
 				},
@@ -1706,30 +1416,14 @@ var _ = Describe("MCPServer Controller", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Env: []corev1.EnvVar{
-							{
-								Name: "MY_SECRET_VAR",
-								ValueFrom: &corev1.EnvVarSource{
-									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-env-secret"},
-										Key:                  "some-key",
-									},
-								},
-							},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Env = []corev1.EnvVar{
+				{
+					Name: "MY_SECRET_VAR",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-env-secret"},
+							Key:                  "some-key",
 						},
 					},
 				},
@@ -1827,26 +1521,8 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 		})
 
 		It("should set the address URL with default path after reconciliation", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Replicas: ptr.To(int32(1)),
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Runtime.Replicas = ptr.To(int32(1))
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -1865,23 +1541,8 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 		})
 
 		It("should use the correct port in the address URL", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 3001,
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Port = 3001
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -1900,24 +1561,8 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 		})
 
 		It("should use custom path in the address URL when specified", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Path: "/sse",
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Path = "/sse"
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -1936,26 +1581,8 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 		})
 
 		It("should persist the address URL across reconciliations", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Replicas: ptr.To(int32(1)),
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Runtime.Replicas = ptr.To(int32(1))
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -2001,23 +1628,7 @@ var _ = Describe("MCPServer Controller - Service Update", func() {
 		})
 
 		It("should update the Service port when config.port changes", func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
@@ -2073,23 +1684,7 @@ var _ = Describe("MCPServer Controller - reconcileDeployment", func() {
 	}
 
 	BeforeEach(func() {
-		resource := &mcpv1alpha1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: "default",
-			},
-			Spec: mcpv1alpha1.MCPServerSpec{
-				Source: mcpv1alpha1.Source{
-					Type: mcpv1alpha1.SourceTypeContainerImage,
-					ContainerImage: &mcpv1alpha1.ContainerImageSource{
-						Ref: "docker.io/library/test-image:latest",
-					},
-				},
-				Config: mcpv1alpha1.ServerConfig{
-					Port: 8080,
-				},
-			},
-		}
+		resource := newTestMCPServer(resourceName)
 		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 	})
 
@@ -2134,24 +1729,8 @@ var _ = Describe("MCPServer Controller - reconcileDeployment", func() {
 
 	It("should recover when existing deployment has empty containers list", func() {
 		By("Setting up a fake client with a deployment that has no containers")
-		mcpServer := &mcpv1alpha1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-empty-containers",
-				Namespace: "default",
-				UID:       "fake-uid",
-			},
-			Spec: mcpv1alpha1.MCPServerSpec{
-				Source: mcpv1alpha1.Source{
-					Type: mcpv1alpha1.SourceTypeContainerImage,
-					ContainerImage: &mcpv1alpha1.ContainerImageSource{
-						Ref: "docker.io/library/test-image:latest",
-					},
-				},
-				Config: mcpv1alpha1.ServerConfig{
-					Port: 8080,
-				},
-			},
-		}
+		mcpServer := newTestMCPServer("test-empty-containers")
+		mcpServer.UID = "fake-uid"
 
 		brokenDeployment := &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
@@ -2215,23 +1794,7 @@ var _ = Describe("MCPServer Controller - Deployment Reconciliation Failures", fu
 	}
 
 	BeforeEach(func() {
-		resource := &mcpv1alpha1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: "default",
-			},
-			Spec: mcpv1alpha1.MCPServerSpec{
-				Source: mcpv1alpha1.Source{
-					Type: mcpv1alpha1.SourceTypeContainerImage,
-					ContainerImage: &mcpv1alpha1.ContainerImageSource{
-						Ref: "docker.io/library/test-image:latest",
-					},
-				},
-				Config: mcpv1alpha1.ServerConfig{
-					Port: 8080,
-				},
-			},
-		}
+		resource := newTestMCPServer(resourceName)
 		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 	})
 
@@ -2363,23 +1926,7 @@ var _ = Describe("MCPServer Controller - reconcileService", func() {
 	}
 
 	BeforeEach(func() {
-		resource := &mcpv1alpha1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: "default",
-			},
-			Spec: mcpv1alpha1.MCPServerSpec{
-				Source: mcpv1alpha1.Source{
-					Type: mcpv1alpha1.SourceTypeContainerImage,
-					ContainerImage: &mcpv1alpha1.ContainerImageSource{
-						Ref: "docker.io/library/test-image:latest",
-					},
-				},
-				Config: mcpv1alpha1.ServerConfig{
-					Port: 8080,
-				},
-			},
-		}
+		resource := newTestMCPServer(resourceName)
 		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 	})
 
@@ -2436,23 +1983,7 @@ var _ = Describe("MCPServer Controller - Service Reconciliation Failures", func(
 	}
 
 	BeforeEach(func() {
-		resource := &mcpv1alpha1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: "default",
-			},
-			Spec: mcpv1alpha1.MCPServerSpec{
-				Source: mcpv1alpha1.Source{
-					Type: mcpv1alpha1.SourceTypeContainerImage,
-					ContainerImage: &mcpv1alpha1.ContainerImageSource{
-						Ref: "docker.io/library/test-image:latest",
-					},
-				},
-				Config: mcpv1alpha1.ServerConfig{
-					Port: 8080,
-				},
-			},
-		}
+		resource := newTestMCPServer(resourceName)
 		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 	})
 
@@ -2845,31 +2376,15 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path: "/etc/config",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
-									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "test-configmap",
-										},
-									},
-								},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/config",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeConfigMap,
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "test-configmap",
 							},
 						},
 					},
@@ -2947,30 +2462,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path: "/etc/secret",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeSecret,
-									Secret: &corev1.SecretVolumeSource{
-										SecretName: "test-secret",
-									},
-								},
-							},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/secret",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeSecret,
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: "test-secret",
 						},
 					},
 				},
@@ -3059,41 +2558,25 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/config",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeConfigMap,
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "test-multi-configmap",
+							},
 						},
 					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path: "/etc/config",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
-									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "test-multi-configmap",
-										},
-									},
-								},
-							},
-							{
-								Path: "/etc/secret",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeSecret,
-									Secret: &corev1.SecretVolumeSource{
-										SecretName: "test-multi-secret",
-									},
-								},
-							},
+				},
+				{
+					Path: "/etc/secret",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeSecret,
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: "test-multi-secret",
 						},
 					},
 				},
@@ -3187,32 +2670,16 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path:        "/etc/config",
-								Permissions: mcpv1alpha1.MountPermissionsReadWrite, // Explicitly set to read-write
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
-									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "test-configmap-rw",
-										},
-									},
-								},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path:        "/etc/config",
+					Permissions: mcpv1alpha1.MountPermissionsReadWrite, // Explicitly set to read-write
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeConfigMap,
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "test-configmap-rw",
 							},
 						},
 					},
@@ -3273,30 +2740,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path:        "/app/logs",
-								Permissions: mcpv1alpha1.MountPermissionsReadWrite,
-								Source: mcpv1alpha1.StorageSource{
-									Type:     mcpv1alpha1.StorageTypeEmptyDir,
-									EmptyDir: &corev1.EmptyDirVolumeSource{},
-								},
-							},
-						},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path:        "/app/logs",
+					Permissions: mcpv1alpha1.MountPermissionsReadWrite,
+					Source: mcpv1alpha1.StorageSource{
+						Type:     mcpv1alpha1.StorageTypeEmptyDir,
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
 				},
 			}
@@ -3357,31 +2808,15 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		BeforeEach(func() {
 			sizeLimit := resource.MustParse("100Mi")
-			mcpServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path:        "/tmp/cache",
-								Permissions: mcpv1alpha1.MountPermissionsReadWrite,
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeEmptyDir,
-									EmptyDir: &corev1.EmptyDirVolumeSource{
-										SizeLimit: &sizeLimit,
-									},
-								},
-							},
+			mcpServer := newTestMCPServer(resourceName)
+			mcpServer.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path:        "/tmp/cache",
+					Permissions: mcpv1alpha1.MountPermissionsReadWrite,
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeEmptyDir,
+						EmptyDir: &corev1.EmptyDirVolumeSource{
+							SizeLimit: &sizeLimit,
 						},
 					},
 				},
@@ -3446,41 +2881,25 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
-			mcpServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
+			mcpServer := newTestMCPServer(resourceName)
+			mcpServer.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/config",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeConfigMap,
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "test-mixed-configmap",
+							},
 						},
 					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path: "/etc/config",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
-									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "test-mixed-configmap",
-										},
-									},
-								},
-							},
-							{
-								Path:        "/app/logs",
-								Permissions: mcpv1alpha1.MountPermissionsReadWrite,
-								Source: mcpv1alpha1.StorageSource{
-									Type:     mcpv1alpha1.StorageTypeEmptyDir,
-									EmptyDir: &corev1.EmptyDirVolumeSource{},
-								},
-							},
-						},
+				},
+				{
+					Path:        "/app/logs",
+					Permissions: mcpv1alpha1.MountPermissionsReadWrite,
+					Source: mcpv1alpha1.StorageSource{
+						Type:     mcpv1alpha1.StorageTypeEmptyDir,
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
 				},
 			}
@@ -3555,31 +2974,15 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path: "/etc/config",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
-									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "nonexistent-configmap",
-										},
-									},
-								},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/config",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeConfigMap,
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "nonexistent-configmap",
 							},
 						},
 					},
@@ -3630,30 +3033,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path: "/etc/secret",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeSecret,
-									Secret: &corev1.SecretVolumeSource{
-										SecretName: "nonexistent-secret",
-									},
-								},
-							},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/secret",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeSecret,
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: "nonexistent-secret",
 						},
 					},
 				},
@@ -3704,33 +3091,17 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		BeforeEach(func() {
 			// Don't create the ConfigMap - it should be optional
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path: "/etc/config",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
-									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "optional-configmap",
-										},
-										Optional: ptr.To(true),
-									},
-								},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/config",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeConfigMap,
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "optional-configmap",
 							},
+							Optional: ptr.To(true),
 						},
 					},
 				},
@@ -3785,31 +3156,15 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		BeforeEach(func() {
 			// Don't create the Secret - it should be optional
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path: "/etc/secret",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeSecret,
-									Secret: &corev1.SecretVolumeSource{
-										SecretName: "optional-secret",
-										Optional:   ptr.To(true),
-									},
-								},
-							},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/secret",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeSecret,
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: "optional-secret",
+							Optional:   ptr.To(true),
 						},
 					},
 				},
@@ -3863,31 +3218,15 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path: "/etc/config",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
-									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "", // Empty name
-										},
-									},
-								},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/config",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeConfigMap,
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "", // Empty name
 							},
 						},
 					},
@@ -3938,30 +3277,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path: "/etc/secret",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeSecret,
-									Secret: &corev1.SecretVolumeSource{
-										SecretName: "", // Empty name
-									},
-								},
-							},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/secret",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeSecret,
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: "", // Empty name
 						},
 					},
 				},
@@ -4713,36 +4036,18 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
+			mcpServer := newTestMCPServer(resourceName)
+			mcpServer.Spec.Runtime.Resources = &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("256Mi"),
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Resources: &corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("100m"),
-								corev1.ResourceMemory: resource.MustParse("256Mi"),
-							},
-							Limits: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("500m"),
-								corev1.ResourceMemory: resource.MustParse("512Mi"),
-							},
-						},
-					},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("500m"),
+					corev1.ResourceMemory: resource.MustParse("512Mi"),
 				},
 			}
-			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
 		})
 
 		AfterEach(func() {
@@ -4873,29 +4178,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		It("should handle resources with only requests (no limits)", func() {
-			mcpServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-only-requests",
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Resources: &corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("100m"),
-								corev1.ResourceMemory: resource.MustParse("128Mi"),
-							},
-						},
-					},
+			mcpServer := newTestMCPServer("test-only-requests")
+			mcpServer.Spec.Runtime.Resources = &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("128Mi"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
@@ -4928,29 +4215,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		It("should handle resources with only limits (no requests)", func() {
-			mcpServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-only-limits",
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Resources: &corev1.ResourceRequirements{
-							Limits: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("500m"),
-								corev1.ResourceMemory: resource.MustParse("512Mi"),
-							},
-						},
-					},
+			mcpServer := newTestMCPServer("test-only-limits")
+			mcpServer.Spec.Runtime.Resources = &corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("500m"),
+					corev1.ResourceMemory: resource.MustParse("512Mi"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
@@ -4983,31 +4252,13 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		It("should handle resources with only CPU (no memory)", func() {
-			mcpServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-only-cpu",
-					Namespace: "default",
+			mcpServer := newTestMCPServer("test-only-cpu")
+			mcpServer.Spec.Runtime.Resources = &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU: resource.MustParse("100m"),
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Resources: &corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU: resource.MustParse("100m"),
-							},
-							Limits: corev1.ResourceList{
-								corev1.ResourceCPU: resource.MustParse("200m"),
-							},
-						},
-					},
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU: resource.MustParse("200m"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
@@ -5041,31 +4292,13 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		It("should handle resources with only memory (no CPU)", func() {
-			mcpServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-only-memory",
-					Namespace: "default",
+			mcpServer := newTestMCPServer("test-only-memory")
+			mcpServer.Spec.Runtime.Resources = &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("256Mi"),
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Resources: &corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceMemory: resource.MustParse("256Mi"),
-							},
-							Limits: corev1.ResourceList{
-								corev1.ResourceMemory: resource.MustParse("512Mi"),
-							},
-						},
-					},
+				Limits: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("512Mi"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
@@ -5111,23 +4344,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
 
@@ -5195,44 +4412,26 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		}
 
 		BeforeEach(func() {
-			mcpServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
+			mcpServer := newTestMCPServer(resourceName)
+			mcpServer.Spec.Runtime.Health = mcpv1alpha1.HealthConfig{
+				LivenessProbe: &corev1.Probe{
+					ProbeHandler: corev1.ProbeHandler{
+						HTTPGet: &corev1.HTTPGetAction{
+							Path: "/health",
+							Port: intstr.FromInt(8080),
+						},
+					},
+					InitialDelaySeconds: 10,
+					PeriodSeconds:       30,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
+				ReadinessProbe: &corev1.Probe{
+					ProbeHandler: corev1.ProbeHandler{
+						TCPSocket: &corev1.TCPSocketAction{
+							Port: intstr.FromInt(8080),
 						},
 					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Health: mcpv1alpha1.HealthConfig{
-							LivenessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/health",
-										Port: intstr.FromInt(8080),
-									},
-								},
-								InitialDelaySeconds: 10,
-								PeriodSeconds:       30,
-							},
-							ReadinessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									TCPSocket: &corev1.TCPSocketAction{
-										Port: intstr.FromInt(8080),
-									},
-								},
-								InitialDelaySeconds: 5,
-								PeriodSeconds:       10,
-							},
-						},
-					},
+					InitialDelaySeconds: 5,
+					PeriodSeconds:       10,
 				},
 			}
 			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
@@ -5393,35 +4592,15 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		It("should handle only liveness probe (no readiness)", func() {
-			mcpServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-only-liveness",
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Health: mcpv1alpha1.HealthConfig{
-							LivenessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/health",
-										Port: intstr.FromInt(8080),
-									},
-								},
-								InitialDelaySeconds: 10,
-							},
-						},
+			mcpServer := newTestMCPServer("test-only-liveness")
+			mcpServer.Spec.Runtime.Health.LivenessProbe = &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/health",
+						Port: intstr.FromInt(8080),
 					},
 				},
+				InitialDelaySeconds: 10,
 			}
 			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
 			defer func() {
@@ -5453,34 +4632,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		It("should handle only readiness probe (no liveness)", func() {
-			mcpServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-only-readiness",
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-					Runtime: mcpv1alpha1.RuntimeConfig{
-						Health: mcpv1alpha1.HealthConfig{
-							ReadinessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									TCPSocket: &corev1.TCPSocketAction{
-										Port: intstr.FromInt(8080),
-									},
-								},
-								InitialDelaySeconds: 5,
-							},
-						},
+			mcpServer := newTestMCPServer("test-only-readiness")
+			mcpServer.Spec.Runtime.Health.ReadinessProbe = &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					TCPSocket: &corev1.TCPSocketAction{
+						Port: intstr.FromInt(8080),
 					},
 				},
+				InitialDelaySeconds: 5,
 			}
 			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
 			defer func() {
@@ -5525,23 +4684,7 @@ var _ = Describe("MCPServer Controller - Owned Resource Cleanup", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
 
@@ -5671,27 +4814,11 @@ var _ = Describe("MCPServer Controller - Error Recovery", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						EnvFrom: []corev1.EnvFromSource{
-							{
-								ConfigMapRef: &corev1.ConfigMapEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
-								},
-							},
-						},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
+				{
+					ConfigMapRef: &corev1.ConfigMapEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
 					},
 				},
 			}
@@ -5779,27 +4906,11 @@ var _ = Describe("MCPServer Controller - Error Recovery", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						EnvFrom: []corev1.EnvFromSource{
-							{
-								SecretRef: &corev1.SecretEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-								},
-							},
-						},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
+				{
+					SecretRef: &corev1.SecretEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
 					},
 				},
 			}
@@ -5887,30 +4998,14 @@ var _ = Describe("MCPServer Controller - Error Recovery", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Storage: []mcpv1alpha1.StorageMount{
-							{
-								Path: "/etc/config",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
-									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
-									},
-								},
-							},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/config",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeConfigMap,
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
 						},
 					},
 				},
@@ -5995,30 +5090,14 @@ var _ = Describe("MCPServer Controller - Error Recovery", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Env: []corev1.EnvVar{
-							{
-								Name: "RECOVERY_VAR",
-								ValueFrom: &corev1.EnvVarSource{
-									ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
-										Key:                  "some-key",
-									},
-								},
-							},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Env = []corev1.EnvVar{
+				{
+					Name: "RECOVERY_VAR",
+					ValueFrom: &corev1.EnvVarSource{
+						ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
+							Key:                  "some-key",
 						},
 					},
 				},
@@ -6107,30 +5186,14 @@ var _ = Describe("MCPServer Controller - Error Recovery", func() {
 		}
 
 		BeforeEach(func() {
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-						Env: []corev1.EnvVar{
-							{
-								Name: "SECRET_RECOVERY_VAR",
-								ValueFrom: &corev1.EnvVarSource{
-									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-										Key:                  "some-key",
-									},
-								},
-							},
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Env = []corev1.EnvVar{
+				{
+					Name: "SECRET_RECOVERY_VAR",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+							Key:                  "some-key",
 						},
 					},
 				},
@@ -6221,23 +5284,7 @@ var _ = Describe("MCPServer Controller - Optimistic Locking Conflicts", func() {
 	}
 
 	BeforeEach(func() {
-		resource := &mcpv1alpha1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: "default",
-			},
-			Spec: mcpv1alpha1.MCPServerSpec{
-				Source: mcpv1alpha1.Source{
-					Type: mcpv1alpha1.SourceTypeContainerImage,
-					ContainerImage: &mcpv1alpha1.ContainerImageSource{
-						Ref: "docker.io/library/test-image:latest",
-					},
-				},
-				Config: mcpv1alpha1.ServerConfig{
-					Port: 8080,
-				},
-			},
-		}
+		resource := newTestMCPServer(resourceName)
 		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 	})
 
@@ -6473,23 +5520,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			Expect(k8sClient.Create(ctx, foreignDeployment)).To(Succeed())
 
 			By("Creating the MCPServer CR")
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
 
@@ -6570,23 +5601,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			Expect(k8sClient.Create(ctx, foreignService)).To(Succeed())
 
 			By("Creating the MCPServer CR")
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
 
@@ -6664,23 +5679,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			Expect(k8sClient.Create(ctx, unownedDeployment)).To(Succeed())
 
 			By("Creating the MCPServer CR")
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
 
@@ -6739,23 +5738,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 
 		BeforeEach(func() {
 			By("Creating MCPServer first to create Deployment")
-			mcpServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-				},
-			}
+			mcpServer := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
 
 			By("Pre-creating a Service with no owner")
@@ -6830,23 +5813,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 
 		BeforeEach(func() {
 			By("Creating MCPServer")
-			resource := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-				},
-			}
+			resource := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			By("Pre-creating a Deployment with multiple non-controller owners")
@@ -6954,23 +5921,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 
 		BeforeEach(func() {
 			By("Creating MCPServer first to create Deployment")
-			mcpServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: 8080,
-					},
-				},
-			}
+			mcpServer := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
 
 			By("Pre-creating a Service with multiple non-controller owners")
@@ -7300,23 +6251,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			samePort := int32(8080)
 
 			By("Creating first MCPServer")
-			oldMCPServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: samePort,
-					},
-				},
-			}
+			oldMCPServer := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, oldMCPServer)).To(Succeed())
 
 			By("Reconciling to create service")
@@ -7347,23 +6282,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			Expect(k8sClient.Update(ctx, service)).To(Succeed())
 
 			By("Creating new MCPServer with same name and SAME port")
-			newMCPServer := &mcpv1alpha1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Source: mcpv1alpha1.Source{
-						Type: mcpv1alpha1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1alpha1.ContainerImageSource{
-							Ref: "docker.io/library/test-image:latest",
-						},
-					},
-					Config: mcpv1alpha1.ServerConfig{
-						Port: samePort, // Same port as before
-					},
-				},
-			}
+			newMCPServer := newTestMCPServer(resourceName)
 			Expect(k8sClient.Create(ctx, newMCPServer)).To(Succeed())
 
 			By("Reconciling new MCPServer")
