@@ -2352,6 +2352,175 @@ var _ = Describe("MCPServer Controller - Deployment Reconciliation Failures", fu
 	})
 })
 
+var _ = Describe("MCPServer Controller - Transient Validation Errors", func() {
+	const resourceName = "test-transient-validation"
+
+	ctx := context.Background()
+
+	typeNamespacedName := types.NamespacedName{
+		Name:      resourceName,
+		Namespace: "default",
+	}
+
+	BeforeEach(func() {
+		resource := &mcpv1alpha1.MCPServer{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      resourceName,
+				Namespace: "default",
+			},
+			Spec: mcpv1alpha1.MCPServerSpec{
+				Source: mcpv1alpha1.Source{
+					Type: mcpv1alpha1.SourceTypeContainerImage,
+					ContainerImage: &mcpv1alpha1.ContainerImageSource{
+						Ref: "docker.io/library/test-image:latest",
+					},
+				},
+				Config: mcpv1alpha1.ServerConfig{
+					Port: 8080,
+					Storage: []mcpv1alpha1.StorageMount{
+						{
+							Path: "/data",
+							Source: mcpv1alpha1.StorageSource{
+								Type: mcpv1alpha1.StorageTypeConfigMap,
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "test-config",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		resource := &mcpv1alpha1.MCPServer{}
+		err := k8sClient.Get(ctx, typeNamespacedName, resource)
+		if err == nil {
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		}
+	})
+
+	It("should return error and not update status on transient ConfigMap validation failure", func() {
+		By("Creating interceptor that returns 500 on ConfigMap Get")
+		wrappedClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+		Expect(err).NotTo(HaveOccurred())
+
+		interceptedClient := interceptor.NewClient(wrappedClient, interceptor.Funcs{
+			Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if _, ok := obj.(*corev1.ConfigMap); ok && key.Name == "test-config" {
+					return &errors.StatusError{
+						ErrStatus: metav1.Status{
+							Status:  metav1.StatusFailure,
+							Code:    500,
+							Reason:  metav1.StatusReasonInternalError,
+							Message: "simulated API server error",
+						},
+					}
+				}
+				return c.Get(ctx, key, obj, opts...)
+			},
+		})
+
+		transientReconciler := &MCPServerReconciler{
+			Client: interceptedClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		By("Reconciling with transient ConfigMap validation failure")
+		_, err = transientReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("transient error validating ConfigMap"))
+
+		By("Verifying status conditions are NOT updated")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+		// Status should have no conditions set - the transient path preserves
+		// existing status and does not write new conditions
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).To(BeNil())
+
+		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+		Expect(readyCondition).To(BeNil())
+	})
+
+	It("should preserve existing status conditions on transient error after prior successful reconcile", func() {
+		By("First reconcile succeeds with ConfigMap present")
+		configMap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-config",
+				Namespace: "default",
+			},
+			Data: map[string]string{"key": "value"},
+		}
+		Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
+		initialReconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+		_, err := initialReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying Accepted=True was set")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionTrue))
+
+		By("Creating interceptor that returns 500 on ConfigMap Get for subsequent reconcile")
+		wrappedClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+		Expect(err).NotTo(HaveOccurred())
+
+		interceptedClient := interceptor.NewClient(wrappedClient, interceptor.Funcs{
+			Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if _, ok := obj.(*corev1.ConfigMap); ok && key.Name == "test-config" {
+					return &errors.StatusError{
+						ErrStatus: metav1.Status{
+							Status:  metav1.StatusFailure,
+							Code:    500,
+							Reason:  metav1.StatusReasonInternalError,
+							Message: "simulated API server error",
+						},
+					}
+				}
+				return c.Get(ctx, key, obj, opts...)
+			},
+		})
+
+		transientReconciler := &MCPServerReconciler{
+			Client: interceptedClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		By("Reconciling with transient failure")
+		_, err = transientReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("transient error validating ConfigMap"))
+
+		By("Verifying previous Accepted=True condition is preserved")
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		acceptedCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionTrue))
+		Expect(acceptedCondition.Reason).To(Equal("Valid"))
+
+		By("Cleaning up ConfigMap")
+		Expect(k8sClient.Delete(ctx, configMap)).To(Succeed())
+	})
+})
+
 var _ = Describe("MCPServer Controller - reconcileService", func() {
 	const resourceName = "test-reconcile-service"
 
