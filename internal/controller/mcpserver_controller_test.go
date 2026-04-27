@@ -1926,31 +1926,15 @@ var _ = Describe("MCPServer Controller - Transient Validation Errors", func() {
 	}
 
 	BeforeEach(func() {
-		resource := &mcpv1alpha1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: "default",
-			},
-			Spec: mcpv1alpha1.MCPServerSpec{
-				Source: mcpv1alpha1.Source{
-					Type: mcpv1alpha1.SourceTypeContainerImage,
-					ContainerImage: &mcpv1alpha1.ContainerImageSource{
-						Ref: "docker.io/library/test-image:latest",
-					},
-				},
-				Config: mcpv1alpha1.ServerConfig{
-					Port: 8080,
-					Storage: []mcpv1alpha1.StorageMount{
-						{
-							Path: "/data",
-							Source: mcpv1alpha1.StorageSource{
-								Type: mcpv1alpha1.StorageTypeConfigMap,
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "test-config",
-									},
-								},
-							},
+		resource := newTestMCPServer(resourceName)
+		resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			{
+				Path: "/data",
+				Source: mcpv1alpha1.StorageSource{
+					Type: mcpv1alpha1.StorageTypeConfigMap,
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: "test-config",
 						},
 					},
 				},
