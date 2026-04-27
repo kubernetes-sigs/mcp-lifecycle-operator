@@ -997,104 +997,104 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			By("Cleanup")
 			Expect(k8sClient.Delete(ctx, newMCPServer)).To(Succeed())
 		})
+	})
 
-		Context("When a Deployment is orphaned and MCPServer recreated with same image", func() {
-			const resourceName = "test-orphaned-deploy-same-img"
+	Context("When a Deployment is orphaned and MCPServer recreated with same image", func() {
+		const resourceName = "test-orphaned-deploy-same-img"
 
-			typeNamespacedName := types.NamespacedName{
-				Name:      resourceName,
-				Namespace: "default",
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		It("should adopt deployment when MCPServer is recreated with same image", func() {
+			sameImage := "docker.io/library/same-image:v1.0"
+
+			By("Creating first MCPServer")
+			oldMCPServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: sameImage,
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+				},
 			}
+			Expect(k8sClient.Create(ctx, oldMCPServer)).To(Succeed())
 
-			It("should adopt deployment when MCPServer is recreated with same image", func() {
-				sameImage := "docker.io/library/same-image:v1.0"
-
-				By("Creating first MCPServer")
-				oldMCPServer := &mcpv1alpha1.MCPServer{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: mcpv1alpha1.MCPServerSpec{
-						Source: mcpv1alpha1.Source{
-							Type: mcpv1alpha1.SourceTypeContainerImage,
-							ContainerImage: &mcpv1alpha1.ContainerImageSource{
-								Ref: sameImage,
-							},
-						},
-						Config: mcpv1alpha1.ServerConfig{
-							Port: 8080,
-						},
-					},
-				}
-				Expect(k8sClient.Create(ctx, oldMCPServer)).To(Succeed())
-
-				By("Reconciling to create deployment")
-				reconciler := &MCPServerReconciler{
-					Client: k8sClient,
-					Scheme: k8sClient.Scheme(),
-				}
-				_, err := reconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: typeNamespacedName,
-				})
-				Expect(err).NotTo(HaveOccurred())
-
-				By("Verifying deployment was created with old MCPServer owner")
-				deployment := &appsv1.Deployment{}
-				Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
-				Expect(deployment.OwnerReferences).To(HaveLen(1))
-				oldUID := oldMCPServer.UID
-				Expect(deployment.OwnerReferences[0].UID).To(Equal(oldUID))
-
-				By("Deleting MCPServer but keeping deployment")
-				Expect(k8sClient.Get(ctx, typeNamespacedName, oldMCPServer)).To(Succeed())
-				oldMCPServer.Finalizers = nil
-				Expect(k8sClient.Update(ctx, oldMCPServer)).To(Succeed())
-				Expect(k8sClient.Delete(ctx, oldMCPServer)).To(Succeed())
-
-				// Manually set owner reference to simulate orphaned deployment
-				deployment.OwnerReferences[0].UID = types.UID("old-deleted-uid")
-				Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
-
-				By("Creating new MCPServer with same image")
-				newMCPServer := &mcpv1alpha1.MCPServer{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: mcpv1alpha1.MCPServerSpec{
-						Source: mcpv1alpha1.Source{
-							Type: mcpv1alpha1.SourceTypeContainerImage,
-							ContainerImage: &mcpv1alpha1.ContainerImageSource{
-								Ref: sameImage, // Same image as before
-							},
-						},
-						Config: mcpv1alpha1.ServerConfig{
-							Port: 8080,
-						},
-					},
-				}
-				Expect(k8sClient.Create(ctx, newMCPServer)).To(Succeed())
-
-				By("Reconciling new MCPServer")
-				_, err = reconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: typeNamespacedName,
-				})
-				Expect(err).NotTo(HaveOccurred())
-
-				By("Verifying deployment was adopted despite same image")
-				Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
-				Expect(deployment.OwnerReferences).To(HaveLen(1))
-				Expect(deployment.OwnerReferences[0].UID).To(Equal(newMCPServer.UID), "Owner UID should be updated even when image is the same")
-				Expect(deployment.OwnerReferences[0].Name).To(Equal(resourceName))
-				Expect(deployment.OwnerReferences[0].Kind).To(Equal("MCPServer"))
-
-				By("Verifying deployment image is still the same")
-				Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal(sameImage))
-
-				By("Cleanup")
-				Expect(k8sClient.Delete(ctx, newMCPServer)).To(Succeed())
+			By("Reconciling to create deployment")
+			reconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
 			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying deployment was created with old MCPServer owner")
+			deployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+			Expect(deployment.OwnerReferences).To(HaveLen(1))
+			oldUID := oldMCPServer.UID
+			Expect(deployment.OwnerReferences[0].UID).To(Equal(oldUID))
+
+			By("Deleting MCPServer but keeping deployment")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, oldMCPServer)).To(Succeed())
+			oldMCPServer.Finalizers = nil
+			Expect(k8sClient.Update(ctx, oldMCPServer)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, oldMCPServer)).To(Succeed())
+
+			// Manually set owner reference to simulate orphaned deployment
+			deployment.OwnerReferences[0].UID = types.UID("old-deleted-uid")
+			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
+
+			By("Creating new MCPServer with same image")
+			newMCPServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: sameImage, // Same image as before
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, newMCPServer)).To(Succeed())
+
+			By("Reconciling new MCPServer")
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying deployment was adopted despite same image")
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+			Expect(deployment.OwnerReferences).To(HaveLen(1))
+			Expect(deployment.OwnerReferences[0].UID).To(Equal(newMCPServer.UID), "Owner UID should be updated even when image is the same")
+			Expect(deployment.OwnerReferences[0].Name).To(Equal(resourceName))
+			Expect(deployment.OwnerReferences[0].Kind).To(Equal("MCPServer"))
+
+			By("Verifying deployment image is still the same")
+			Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal(sameImage))
+
+			By("Cleanup")
+			Expect(k8sClient.Delete(ctx, newMCPServer)).To(Succeed())
 		})
 	})
 })
