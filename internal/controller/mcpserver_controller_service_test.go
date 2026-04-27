@@ -25,6 +25,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -398,5 +399,74 @@ var _ = Describe("MCPServer Controller - Service Reconciliation Failures", func(
 		Expect(readyCondition.Message).To(ContainSubstring("simulated service update failure"))
 
 		Expect(mcpServer.Status.DeploymentName).To(Equal(resourceName))
+	})
+})
+
+var _ = Describe("MCPServer Controller - Server-Side Apply for Status", func() {
+	const resourceName = "test-ssa-status"
+	const subResourceStatus = "status"
+
+	ctx := context.Background()
+
+	typeNamespacedName := types.NamespacedName{
+		Name:      resourceName,
+		Namespace: "default",
+	}
+
+	BeforeEach(func() {
+		resource := newTestMCPServer(resourceName)
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		resource := &mcpv1alpha1.MCPServer{}
+		err := k8sClient.Get(ctx, typeNamespacedName, resource)
+		if err == nil {
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		}
+	})
+
+	It("should use SubResourceApply for all status updates and never SubResourceUpdate or SubResourcePatch", func() {
+		applyCallCount := 0
+		updateCalled := false
+		patchCalled := false
+
+		wrappedClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+		Expect(err).NotTo(HaveOccurred())
+
+		interceptedClient := interceptor.NewClient(wrappedClient, interceptor.Funcs{
+			SubResourceApply: func(ctx context.Context, c client.Client, subResourceName string, obj runtime.ApplyConfiguration, opts ...client.SubResourceApplyOption) error {
+				if subResourceName == subResourceStatus {
+					applyCallCount++
+				}
+				return c.SubResource(subResourceName).Apply(ctx, obj, opts...)
+			},
+			SubResourceUpdate: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+				if subResourceName == subResourceStatus {
+					updateCalled = true
+				}
+				return c.SubResource(subResourceName).Update(ctx, obj, opts...)
+			},
+			SubResourcePatch: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+				if subResourceName == subResourceStatus {
+					patchCalled = true
+				}
+				return c.SubResource(subResourceName).Patch(ctx, obj, patch, opts...)
+			},
+		})
+
+		controllerReconciler := &MCPServerReconciler{
+			Client: interceptedClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(applyCallCount).To(BeNumerically(">", 0), "expected status updates to use SubResourceApply (SSA)")
+		Expect(updateCalled).To(BeFalse(), "status should not use SubResourceUpdate")
+		Expect(patchCalled).To(BeFalse(), "status should not use SubResourcePatch")
 	})
 })
