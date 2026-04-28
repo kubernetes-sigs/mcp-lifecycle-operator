@@ -12,7 +12,7 @@ This guide will walk you through deploying your first MCP server using the MCP L
 
 ### Option A: Install from Release (Recommended)
 
-Install the operator and CRDs directly from the [latest release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/tag/v0.1.0):
+Install the operator and CRDs directly from the [`v0.1.0` release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/tag/v0.1.0):
 
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/download/v0.1.0/install.yaml

@@ -81,7 +81,7 @@ spec:
     health:
       readinessProbe:
         httpGet:
-          path: /health
+          path: /healthz
           port: 8080
     security:
       serviceAccountName: mcp-viewer
