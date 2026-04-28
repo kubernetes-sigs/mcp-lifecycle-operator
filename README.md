@@ -165,22 +165,11 @@ spec:
     port: 8080
 ```
 
-### Custom MCP Server
+## Documentation
 
-```yaml
-apiVersion: mcp.x-k8s.io/v1alpha1
-kind: MCPServer
-metadata:
-  name: custom-server
-  namespace: default
-spec:
-  source:
-    type: ContainerImage
-    containerImage:
-      ref: my-registry.io/custom-mcp-server:1.0.0
-  config:
-    port: 8000
-```
+- [Quickstart Guide](https://mcp-lifecycle-operator.sigs.k8s.io/guides/quickstart/) - Get up and running quickly
+- [API Reference](https://mcp-lifecycle-operator.sigs.k8s.io/reference/) - Full MCPServer API documentation
+- [Contributing](https://mcp-lifecycle-operator.sigs.k8s.io/contributing/) - How to contribute to the project
 
 ## Development
 
