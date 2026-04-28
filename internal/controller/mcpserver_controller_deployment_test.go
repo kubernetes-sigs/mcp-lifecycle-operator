@@ -929,7 +929,10 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		}, deployment)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(deployment.Spec.Template.Spec.Containers[0].LivenessProbe).To(BeNil())
-		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe).To(BeNil())
+		// With no user-specified readiness probe, the default TCP socket readiness probe is injected
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe).NotTo(BeNil())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket).NotTo(BeNil())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket.Port.IntVal).To(Equal(int32(8080)))
 	})
 
 	It("should handle only liveness probe (no readiness)", func() {
@@ -969,7 +972,10 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(deployment.Spec.Template.Spec.Containers[0].LivenessProbe).NotTo(BeNil())
 		Expect(deployment.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet).NotTo(BeNil())
-		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe).To(BeNil())
+		// With no user-specified readiness probe, the default TCP socket readiness probe is injected
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe).NotTo(BeNil())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket).NotTo(BeNil())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket.Port.IntVal).To(Equal(int32(8080)))
 	})
 
 	It("should handle only readiness probe (no liveness)", func() {
@@ -1009,5 +1015,134 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		Expect(deployment.Spec.Template.Spec.Containers[0].LivenessProbe).To(BeNil())
 		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe).NotTo(BeNil())
 		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket).NotTo(BeNil())
+	})
+
+	It("should inject default MCP readiness probe when no health config is specified", func() {
+		mcpServer := newTestMCPServer("test-default-probe")
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			err := k8sClient.Get(ctx, client.ObjectKey{Name: "test-default-probe", Namespace: "default"}, mcpServer)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, mcpServer)).To(Succeed())
+			}
+		}()
+
+		controllerReconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: "test-default-probe", Namespace: "default"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		deployment := &appsv1.Deployment{}
+		err = k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-default-probe",
+			Namespace: "default",
+		}, deployment)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Default readiness probe should be a TCP socket probe on port 8080
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe).NotTo(BeNil())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket).NotTo(BeNil())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket.Port.IntVal).To(Equal(int32(8080)))
+		// No liveness probe should be set
+		Expect(deployment.Spec.Template.Spec.Containers[0].LivenessProbe).To(BeNil())
+	})
+
+	It("should use custom port in default readiness probe", func() {
+		mcpServer := newTestMCPServer("test-default-probe-custom-port")
+		mcpServer.Spec.Config.Port = 9090
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			err := k8sClient.Get(ctx, client.ObjectKey{Name: "test-default-probe-custom-port", Namespace: "default"}, mcpServer)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, mcpServer)).To(Succeed())
+			}
+		}()
+
+		controllerReconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: "test-default-probe-custom-port", Namespace: "default"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		deployment := &appsv1.Deployment{}
+		err = k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-default-probe-custom-port",
+			Namespace: "default",
+		}, deployment)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Default readiness probe should use the custom port
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe).NotTo(BeNil())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket).NotTo(BeNil())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket.Port.IntVal).To(Equal(int32(9090)))
+	})
+
+	It("should create TCP socket probe with given port using Kubernetes default timing", func() {
+		probe := defaultMCPReadinessProbe(8080)
+		Expect(probe).NotTo(BeNil())
+		Expect(probe.TCPSocket).NotTo(BeNil())
+		Expect(probe.TCPSocket.Port.IntVal).To(Equal(int32(8080)))
+		Expect(probe.InitialDelaySeconds).To(BeZero(), "should use Kubernetes default")
+		Expect(probe.PeriodSeconds).To(BeZero(), "should use Kubernetes default")
+	})
+
+	It("should use provided port in default readiness probe", func() {
+		probe := defaultMCPReadinessProbe(9090)
+		Expect(probe).NotTo(BeNil())
+		Expect(probe.TCPSocket).NotTo(BeNil())
+		Expect(probe.TCPSocket.Port.IntVal).To(Equal(int32(9090)))
+	})
+
+	It("should not inject default readiness probe when custom readiness probe is specified", func() {
+		mcpServer := newTestMCPServer("test-custom-overrides-default")
+		mcpServer.Spec.Runtime.Health.ReadinessProbe = &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				TCPSocket: &corev1.TCPSocketAction{
+					Port: intstr.FromInt(3000),
+				},
+			},
+			InitialDelaySeconds: 15,
+			PeriodSeconds:       20,
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			err := k8sClient.Get(ctx, client.ObjectKey{Name: "test-custom-overrides-default", Namespace: "default"}, mcpServer)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, mcpServer)).To(Succeed())
+			}
+		}()
+
+		controllerReconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: "test-custom-overrides-default", Namespace: "default"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		deployment := &appsv1.Deployment{}
+		err = k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-custom-overrides-default",
+			Namespace: "default",
+		}, deployment)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Custom readiness probe should be used, not the default
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe).NotTo(BeNil())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket).NotTo(BeNil())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket.Port.IntVal).To(Equal(int32(3000)))
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.InitialDelaySeconds).To(Equal(int32(15)))
+		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.PeriodSeconds).To(Equal(int32(20)))
 	})
 })

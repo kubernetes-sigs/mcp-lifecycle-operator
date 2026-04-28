@@ -23,9 +23,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -52,7 +54,17 @@ import (
 
 const (
 	fieldManager = "mcpserver-controller"
+
+	// defaultMCPPath is the default HTTP path for MCP endpoints, matching the
+	// kubebuilder default on ServerConfig.Path.
+	defaultMCPPath = "/mcp"
+
+	// mcpClientName is the client name sent during MCP handshake.
+	mcpClientName = "mcp-lifecycle-operator"
 )
+
+// MCPClientVersion is the version sent during MCP handshake. Bump with releases.
+var MCPClientVersion = "v0.1.0"
 
 // ValidationError represents a permanent configuration validation error.
 // These errors indicate the MCPServer configuration is invalid and should not be retried.
@@ -82,18 +94,29 @@ const (
 
 // Reasons for Ready condition.
 const (
-	ReasonAvailable             = "Available"
-	ReasonConfigurationInvalid  = "ConfigurationInvalid"
-	ReasonDeploymentUnavailable = "DeploymentUnavailable"
-	ReasonServiceUnavailable    = "ServiceUnavailable"
-	ReasonScaledToZero          = "ScaledToZero"
-	ReasonInitializing          = "Initializing"
+	ReasonAvailable              = "Available"
+	ReasonConfigurationInvalid   = "ConfigurationInvalid"
+	ReasonDeploymentUnavailable  = "DeploymentUnavailable"
+	ReasonServiceUnavailable     = "ServiceUnavailable"
+	ReasonScaledToZero           = "ScaledToZero"
+	ReasonInitializing           = "Initializing"
+	ReasonMCPEndpointUnavailable = "MCPEndpointUnavailable"
 )
 
 // Reconciliation constants.
 const (
 	// requeueDelayDeploymentUnavailable is the delay before requeuing when a deployment is not yet available.
 	requeueDelayDeploymentUnavailable = 15 * time.Second
+	// requeueDelayMCPHandshake is the initial delay before requeuing when an MCP handshake fails.
+	requeueDelayMCPHandshake = 10 * time.Second
+	// maxRequeueDelayMCPHandshake is the maximum requeue delay after exponential backoff.
+	maxRequeueDelayMCPHandshake = 2 * time.Minute
+	// mcpHandshakeTimeout is the context timeout for a single MCP handshake attempt.
+	mcpHandshakeTimeout = 15 * time.Second
+	// maxMCPHandshakeRetries is the maximum number of MCP handshake failures before
+	// the controller stops requeuing. The status will remain MCPEndpointUnavailable
+	// until the next spec change triggers a new reconciliation.
+	maxMCPHandshakeRetries = 10
 )
 
 // Index keys for field indexing.
@@ -107,7 +130,8 @@ const (
 // MCPServerReconciler reconciles a MCPServer object
 type MCPServerReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme    *runtime.Scheme
+	MCPDialer func(ctx context.Context, url string) error // nil = use real MCP handshake
 }
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch;create;update;patch;delete
@@ -260,7 +284,54 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Build status
 	path := mcpServer.Spec.Config.Path
 	if path == "" {
-		path = "/mcp"
+		path = defaultMCPPath
+	}
+
+	mcpURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d%s",
+		mcpServer.Name, mcpServer.Namespace, mcpServer.Spec.Config.Port, path)
+
+	// If deployment-level readiness reports Available, verify the MCP endpoint.
+	// Only perform the handshake on transitions: skip if the endpoint was already
+	// verified for this generation (Ready=True, reason=Available, matching generation).
+	if readyCondition.Status == metav1.ConditionTrue && readyCondition.Reason == ReasonAvailable {
+		existingReady := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeReady)
+		alreadyVerified := existingReady != nil &&
+			existingReady.Status == metav1.ConditionTrue &&
+			existingReady.Reason == ReasonAvailable &&
+			mcpServer.Status.ObservedGeneration == mcpServer.Generation
+
+		if !alreadyVerified {
+			dialer := r.MCPDialer
+			if dialer == nil {
+				dialer = r.verifyMCPEndpoint
+			}
+			dialCtx, dialCancel := context.WithTimeout(ctx, mcpHandshakeTimeout)
+			defer dialCancel()
+			if err := dialer(dialCtx, mcpURL); err != nil {
+				// An auth rejection (401/403) proves the server is running and
+				// listening for MCP requests - treat it as reachable.
+				if isHTTPAuthError(err) {
+					logger.Info("MCP endpoint returned auth error, treating as reachable", "url", mcpURL, "error", err)
+				} else {
+					logger.Info("MCP endpoint handshake failed", "url", mcpURL, "error", err)
+					readyCondition = newCondition(
+						ConditionTypeReady,
+						metav1.ConditionFalse,
+						ReasonMCPEndpointUnavailable,
+						fmt.Sprintf("MCP endpoint is not serving a valid MCP protocol: %v", err),
+						mcpServer.Generation,
+					)
+					// Only preserve LastTransitionTime on False -> False (steady state).
+					// A True -> False transition must record a new timestamp so the
+					// backoff retry counter starts from the correct point.
+					if existingReady == nil || existingReady.Status != metav1.ConditionTrue {
+						preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
+					}
+				}
+			} else {
+				logger.Info("MCP endpoint verified successfully", "url", mcpURL)
+			}
+		}
 	}
 
 	status := acv1alpha1.MCPServerStatus().
@@ -268,8 +339,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		WithDeploymentName(existingDeployment.Name).
 		WithServiceName(mcpServer.Name).
 		WithAddress(acv1alpha1.MCPServerAddress().
-			WithURL(fmt.Sprintf("http://%s.%s.svc.cluster.local:%d%s",
-				mcpServer.Name, mcpServer.Namespace, mcpServer.Spec.Config.Port, path))).
+			WithURL(mcpURL)).
 		WithConditions(
 			conditionToAC(acceptedCondition),
 			conditionToAC(readyCondition),
@@ -291,7 +361,100 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{RequeueAfter: requeueDelayDeploymentUnavailable}, nil
 	}
 
+	// If MCP endpoint is not yet reachable, requeue with exponential backoff up to a max retry count.
+	if readyCondition.Status == metav1.ConditionFalse && readyCondition.Reason == ReasonMCPEndpointUnavailable {
+		retryCount := mcpHandshakeRetryCount(mcpServer.Status.Conditions)
+		if retryCount >= maxMCPHandshakeRetries {
+			logger.Info("MCP handshake retries exhausted, not requeuing",
+				"retries", retryCount, "max", maxMCPHandshakeRetries)
+			return ctrl.Result{}, nil
+		}
+		delay := mcpHandshakeBackoff(retryCount)
+		logger.Info("MCP endpoint not yet reachable, requeuing with backoff",
+			"requeueAfter", delay, "retry", retryCount+1, "maxRetries", maxMCPHandshakeRetries)
+		return ctrl.Result{RequeueAfter: delay}, nil
+	}
+
 	return ctrl.Result{}, nil
+}
+
+// verifyMCPEndpoint performs an MCP initialize handshake against the given URL
+// to verify the endpoint actually speaks the MCP protocol.
+// It uses a dedicated context for the connection so that cancelling it tears
+// down the transport without sending an HTTP DELETE to the server (which some
+// MCP servers do not handle gracefully).
+func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string) error {
+	// Use a child context so we can cancel the connection without affecting
+	// the caller's context. Cancelling instead of calling session.Close()
+	// avoids sending an HTTP DELETE that can destabilize some MCP servers.
+	connCtx, connCancel := context.WithCancel(ctx)
+	defer connCancel()
+
+	mcpClient := mcp.NewClient(
+		&mcp.Implementation{
+			Name:    mcpClientName,
+			Version: MCPClientVersion,
+		},
+		nil,
+	)
+
+	transport := &mcp.StreamableClientTransport{
+		Endpoint:             url,
+		HTTPClient:           &http.Client{Timeout: 10 * time.Second},
+		DisableStandaloneSSE: true,
+		MaxRetries:           -1, // disable retries; the controller handles requeue
+	}
+
+	_, err := mcpClient.Connect(connCtx, transport, nil)
+	return err
+}
+
+// mcpHandshakeBackoff computes an exponential backoff delay for MCP handshake
+// retries: 10s, 20s, 40s, 80s, capped at maxRequeueDelayMCPHandshake.
+func mcpHandshakeBackoff(retryCount int) time.Duration {
+	delay := requeueDelayMCPHandshake
+	for range retryCount {
+		delay *= 2
+		if delay > maxRequeueDelayMCPHandshake {
+			return maxRequeueDelayMCPHandshake
+		}
+	}
+	return delay
+}
+
+// mcpHandshakeRetryCount estimates how many consecutive MCP handshake failures
+// have occurred by computing elapsed time since the Ready condition last
+// transitioned to MCPEndpointUnavailable.
+func mcpHandshakeRetryCount(conditions []metav1.Condition) int {
+	existing := meta.FindStatusCondition(conditions, ConditionTypeReady)
+	if existing == nil || existing.Reason != ReasonMCPEndpointUnavailable {
+		return 0
+	}
+	elapsed := time.Since(existing.LastTransitionTime.Time)
+	// Walk the backoff schedule to count how many retries fit in the elapsed time.
+	total := time.Duration(0)
+	count := 0
+	for count < maxMCPHandshakeRetries {
+		total += mcpHandshakeBackoff(count)
+		if total > elapsed {
+			break
+		}
+		count++
+	}
+	return count
+}
+
+// isHTTPAuthError checks whether the error from the MCP SDK indicates an HTTP
+// 401 Unauthorized or 403 Forbidden response. The SDK does not wrap these with
+// a sentinel error type; it returns a plain error whose message ends with the
+// status text from net/http (e.g. "POST http://...: Unauthorized").
+func isHTTPAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.HasSuffix(msg, ": "+http.StatusText(http.StatusUnauthorized)) ||
+		strings.HasSuffix(msg, ": "+http.StatusText(http.StatusForbidden))
 }
 
 // determineReadyCondition analyzes deployment status and accepted condition to determine
@@ -601,16 +764,24 @@ func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1alpha1.MCPServer)
 		container.Resources = *mcpServer.Spec.Runtime.Resources
 	}
 
-	// Apply health probes if specified.
-	// The probes are passed directly to the container spec without any transformation,
-	// providing full compatibility with the Kubernetes Probe API. This allows users to
-	// configure all probe types (httpGet, tcpSocket, exec, grpc) and all parameters
-	// (delays, periods, thresholds) using standard Kubernetes probe configuration.
+	// Apply health probes.
+	// User-specified probes are passed directly to the container spec without any
+	// transformation, providing full compatibility with the Kubernetes Probe API.
+	// This allows users to configure all probe types (httpGet, tcpSocket, exec, grpc)
+	// and all parameters (delays, periods, thresholds) using standard Kubernetes
+	// probe configuration.
+	//
+	// When no readiness probe is specified, a default TCP socket probe is injected
+	// targeting the configured MCP port. This ensures that containers not listening
+	// on the expected port will not report as Ready. The controller-level MCP
+	// handshake provides the semantic protocol validation.
 	if mcpServer.Spec.Runtime.Health.LivenessProbe != nil {
 		container.LivenessProbe = mcpServer.Spec.Runtime.Health.LivenessProbe
 	}
 	if mcpServer.Spec.Runtime.Health.ReadinessProbe != nil {
 		container.ReadinessProbe = mcpServer.Spec.Runtime.Health.ReadinessProbe
+	} else {
+		container.ReadinessProbe = defaultMCPReadinessProbe(mcpServer.Spec.Config.Port)
 	}
 
 	// Process storage mounts
@@ -906,6 +1077,23 @@ func defaultContainerSecurityContext() *corev1.SecurityContext {
 		RunAsNonRoot:             ptr.To(true),
 		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 		SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+	}
+}
+
+// defaultMCPReadinessProbe returns a TCP socket readiness probe targeting the
+// configured MCP port. This is injected when the user does not specify a custom
+// readiness probe, ensuring that containers not listening on the expected port
+// will not report as Ready. A TCP probe is used instead of HTTP GET because
+// the MCP Streamable HTTP spec only requires POST support on the endpoint path;
+// a GET probe would reject valid MCP servers that do not serve GET.
+// The controller-level MCP handshake provides the semantic protocol validation.
+func defaultMCPReadinessProbe(port int32) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			TCPSocket: &corev1.TCPSocketAction{
+				Port: intstr.FromInt32(port),
+			},
+		},
 	}
 }
 

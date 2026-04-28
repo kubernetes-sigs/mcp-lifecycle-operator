@@ -694,8 +694,9 @@ var _ = Describe("MCPServer Controller", func() {
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 			controllerReconciler := &MCPServerReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:    k8sClient,
+				Scheme:    k8sClient.Scheme(),
+				MCPDialer: func(ctx context.Context, url string) error { return nil },
 			}
 
 			By("Initial reconciliation creates deployment with 1 replica")
@@ -844,8 +845,9 @@ var _ = Describe("MCPServer Controller", func() {
 
 		It("should NOT requeue when Deployment becomes available", func() {
 			controllerReconciler := &MCPServerReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:    k8sClient,
+				Scheme:    k8sClient.Scheme(),
+				MCPDialer: func(ctx context.Context, url string) error { return nil },
 			}
 
 			By("Initial reconciliation creates deployment")
@@ -895,8 +897,9 @@ var _ = Describe("MCPServer Controller", func() {
 
 		It("should eventually reach Ready=True after Deployment becomes available", func() {
 			controllerReconciler := &MCPServerReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:    k8sClient,
+				Scheme:    k8sClient.Scheme(),
+				MCPDialer: func(ctx context.Context, url string) error { return nil },
 			}
 
 			By("Initial reconciliation creates deployment")
