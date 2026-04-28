@@ -19,31 +19,30 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 
 ## Quick Start
 
-### 1. Install the CRDs
+### 1. Install the Operator
 
-First, install the Custom Resource Definitions:
+#### Option A: Install from Release (Recommended)
+
+Install the operator and CRDs directly from the latest release:
 
 ```bash
-make install
+kubectl apply -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/download/v0.1.0/install.yaml
 ```
 
-This creates the `MCPServer` CRD in your cluster.
+This installs the CRDs, the controller Deployment, and all necessary RBAC resources in the `mcp-lifecycle-operator-system` namespace.
 
-### 2. Run the Controller
+#### Option B: Run Locally (for Development)
 
-You have two options:
-
-#### Option A: Run Locally (Recommended for Testing)
-
-Run the controller on your local machine (it will connect to your cluster):
+Clone the repository and run the controller on your local machine:
 
 ```bash
-make run
+make install  # Install the CRDs
+make run      # Run the controller locally
 ```
 
 Keep this terminal open. The controller logs will appear here.
 
-#### Option B: Deploy to Cluster
+#### Option C: Build and Deploy from Source
 
 Build and deploy the controller as a Deployment in your cluster:
 
@@ -57,7 +56,7 @@ make deploy IMG=<your-registry>/mcp-lifecycle-operator:latest
 
 Note: `docker-buildx` builds for multiple architectures (amd64, arm64, s390x, ppc64le) and pushes automatically.
 
-### 3. Create a Test MCPServer
+### 2. Create a Test MCPServer
 
 In a new terminal, create a test `MCPServer` resource:
 
@@ -78,7 +77,7 @@ spec:
 EOF
 ```
 
-### 4. Verify the Deployment
+### 3. Verify the Deployment
 
 Check that the operator created the resources:
 
@@ -122,7 +121,7 @@ status:
       reason: Available
 ```
 
-### 5. Test the Service
+### 4. Test the Service
 
 Port-forward to test connectivity:
 
@@ -137,15 +136,16 @@ curl http://localhost:8080/mcp
 
 You should see a response from the MCP server.
 
-### 6. Uninstall (Optional)
+### 5. Uninstall (Optional)
 
 To remove the CRDs and operator:
 
 ```bash
-# If you deployed to cluster
-make undeploy
+# If you installed from the release
+kubectl delete -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/download/v0.1.0/install.yaml
 
-# Remove the CRDs
+# If you deployed from source
+make undeploy
 make uninstall
 ```
 

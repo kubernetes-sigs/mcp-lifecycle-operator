@@ -34,6 +34,14 @@ spec:
     port: 8080
 ```
 
+## Install
+
+Install the operator from the [latest release (v0.1.0)](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/tag/v0.1.0):
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/download/v0.1.0/install.yaml
+```
+
 ## Get Started
 
 Learn more about the operator in the [Introduction](introduction.md), or jump straight to the [Getting Started Guide](guides/quickstart.md) to deploy your first MCP server. You can also explore the [examples](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples).

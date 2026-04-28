@@ -6,35 +6,32 @@ This guide will walk you through deploying your first MCP server using the MCP L
 
 - Kubernetes cluster (v1.28+)
 - kubectl configured to access your cluster
-- Go 1.25+ (for building from source)
+- Go 1.25+ (only needed for building from source)
 
 ## Installation
 
-### 1. Install the CRDs
+### Option A: Install from Release (Recommended)
 
-First, install the Custom Resource Definitions:
+Install the operator and CRDs directly from the [latest release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/tag/v0.1.0):
 
 ```bash
-make install
+kubectl apply -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/download/v0.1.0/install.yaml
 ```
 
-This creates the `MCPServer` CRD in your cluster.
+This installs the CRDs, the controller Deployment, and all necessary RBAC resources in the `mcp-lifecycle-operator-system` namespace.
 
-### 2. Run the Controller
+### Option B: Run Locally (for Development)
 
-You have two options:
-
-#### Option A: Run Locally (Recommended for Testing)
-
-Run the controller on your local machine (it will connect to your cluster):
+Clone the repository and run the controller on your local machine:
 
 ```bash
-make run
+make install  # Install the CRDs
+make run      # Run the controller locally
 ```
 
 Keep this terminal open. The controller logs will appear here.
 
-#### Option B: Deploy to Cluster
+### Option C: Build and Deploy from Source
 
 Build and deploy the controller as a Deployment in your cluster:
 
@@ -237,10 +234,11 @@ kubectl delete configmap kubernetes-mcp-server-config
 To uninstall the operator:
 
 ```bash
-# If you deployed to cluster
-make undeploy
+# If you installed from the release
+kubectl delete -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/download/v0.1.0/install.yaml
 
-# Remove the CRDs
+# If you deployed from source
+make undeploy
 make uninstall
 ```
 
