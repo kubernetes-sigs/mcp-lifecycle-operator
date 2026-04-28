@@ -23,7 +23,7 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 
 #### Option A: Install from Release (Recommended)
 
-Install the operator and CRDs directly from the latest release:
+Install the operator and CRDs directly from the [v0.1.0 release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/tag/v0.1.0):
 
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/download/v0.1.0/install.yaml
@@ -131,6 +131,10 @@ kubectl port-forward service/test-server 8080:8080
 
 Then in another terminal:
 ```bash
+# Test the health endpoint
+curl http://localhost:8080/healthz
+
+# Test the MCP endpoint
 curl http://localhost:8080/mcp
 ```
 
