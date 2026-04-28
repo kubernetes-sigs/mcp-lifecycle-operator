@@ -1,10 +1,9 @@
 # MCP Lifecycle Operator
 
-A Kubernetes operator that provides a declarative API to deploy, manage, and safely roll out MCP Servers, handling their full lifecycle with production-grade automation and ecosystem integrations.
+A Kubernetes operator that provides a declarative API to deploy, manage, and safely roll out [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers on Kubernetes, handling their full lifecycle with production-grade automation and ecosystem integrations.
 
-## Overview
-
-The MCP Lifecycle Operator simplifies the deployment and management of [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers on Kubernetes. It provides a declarative, Kubernetes-native way to run MCP servers as scalable, production-ready services.
+!!! warning "Alpha"
+    This project is currently in **alpha** (`v1alpha1`). APIs and behavior may change in future releases.
 
 ## Core Capabilities
 
@@ -37,7 +36,7 @@ spec:
 
 ## Get Started
 
-Ready to deploy your first MCP server? Check out our [Getting Started Guide](guides/quickstart.md) or explore the [examples](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples).
+Learn more about the operator in the [Introduction](introduction.md), or jump straight to the [Getting Started Guide](guides/quickstart.md) to deploy your first MCP server. You can also explore the [examples](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples).
 
 ## Community
 

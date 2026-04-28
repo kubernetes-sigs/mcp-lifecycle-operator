@@ -103,9 +103,7 @@ kubernetes-mcp-server   True    True       quay.io/containers/kubernetes_mcp_ser
 
 The `ADDRESS` column shows the cluster-internal URL that can be used by other workloads to connect to the MCP server.
 
-### View Status Details
-
-The status includes the service address for easy discovery:
+The status includes conditions and the service address for easy discovery:
 
 ```yaml
 status:

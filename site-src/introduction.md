@@ -4,15 +4,6 @@
 
 The MCP Lifecycle Operator is a Kubernetes operator that automates the deployment and management of Model Context Protocol (MCP) servers. It provides a Kubernetes-native way to run MCP servers as production-ready services in your cluster.
 
-## Goals and Objectives
-
-The operator aims to:
-
-- **Simplify Deployment**: Provide a declarative API for deploying MCP servers without manual Kubernetes resource management
-- **Production Grade**: Include built-in health checks, security configurations, and lifecycle management
-- **Kubernetes Native**: Integrate seamlessly with standard Kubernetes resources like ConfigMaps and Secrets
-- **Ecosystem Integration**: Work with existing Kubernetes tools and workflows
-
 ## API Resources
 
 ### MCPServer
@@ -33,12 +24,16 @@ spec:
 
 #### Server Configuration
 
-Configure the server's runtime behavior:
+Configure the server's networking, arguments, environment variables, and storage mounts:
 
 ```yaml
 spec:
   config:
-    port: 8080              # Server port
+    port: 8080              # Server port (required)
+    path: /mcp              # HTTP path (default: /mcp)
+    arguments:              # Command-line arguments
+      - --config
+      - /etc/mcp-config/config.toml
     env:                    # Environment variables
       - name: LOG_LEVEL
         value: info
@@ -60,21 +55,36 @@ spec:
           type: ConfigMap
           configMap:
             name: mcp-server-config
+      - path: /tmp
+        permissions: ReadWrite
+        source:
+          type: EmptyDir
+          emptyDir:
+            sizeLimit: 100Mi
 ```
 
-#### Health and Security
+#### Runtime Configuration
 
-Configure health checks and security contexts:
+Configure replicas, resource limits, health probes, and security:
 
 ```yaml
 spec:
   runtime:
+    replicas: 2
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
     health:
       readinessProbe:
         httpGet:
           path: /health
           port: 8080
     security:
+      serviceAccountName: mcp-viewer
       securityContext:
         runAsNonRoot: true
         readOnlyRootFilesystem: true

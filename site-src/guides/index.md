@@ -11,6 +11,7 @@ Welcome to the MCP Lifecycle Operator guides! These guides will help you get sta
 Check out the [examples directory](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples) for complete, working examples:
 
 - **[Kubernetes MCP Server](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples/kubernetes-mcp-server)** - Deploy the Kubernetes MCP Server with ConfigMap configurations
+- **[Everything MCP Server](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples/everything-mcp-server)** - Deploy the Everything MCP Server
 
 ## Additional Resources
 
