@@ -12,10 +12,10 @@ This guide will walk you through deploying your first MCP server using the MCP L
 
 ### Option A: Install from Release (Recommended)
 
-Install the operator and CRDs directly from the [`v0.1.0` release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/tag/v0.1.0):
+Install the operator and CRDs directly from the [latest release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/latest):
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/download/v0.1.0/install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/latest/download/install.yaml
 ```
 
 This installs the CRDs, the controller Deployment, and all necessary RBAC resources in the `mcp-lifecycle-operator-system` namespace.
@@ -235,7 +235,7 @@ To uninstall the operator:
 
 ```bash
 # If you installed from the release
-kubectl delete -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/download/v0.1.0/install.yaml
+kubectl delete -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/latest/download/install.yaml
 
 # If you deployed from source
 make undeploy

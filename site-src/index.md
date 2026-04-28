@@ -36,10 +36,10 @@ spec:
 
 ## Install
 
-Install the operator from the [v0.1.0 release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/tag/v0.1.0):
+Install the operator from the [latest release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/latest):
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/download/v0.1.0/install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/latest/download/install.yaml
 ```
 
 ## Get Started
