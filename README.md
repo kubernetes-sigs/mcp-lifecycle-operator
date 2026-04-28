@@ -6,7 +6,7 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 
 - Kubernetes cluster (v1.28+)
 - kubectl configured to access your cluster
-- Go 1.24+ (for building from source)
+- Go 1.25+ (for building from source)
 
 ## Testing on Your Cluster
 
@@ -90,24 +90,27 @@ kubectl get pods -l mcp-server=test-server
 
 Expected output from `kubectl get mcpservers`:
 ```
-NAME          PHASE     IMAGE                                      PORT   ADDRESS                                            AGE
-test-server   Running   aliok/mcp-server-streamable-http:latest   8081   http://test-server.default.svc.cluster.local:8081/mcp  1m
+NAME          READY   ACCEPTED   IMAGE                                      PORT   ADDRESS                                               AGE
+test-server   True    True       aliok/mcp-server-streamable-http:latest    8081   http://test-server.default.svc.cluster.local:8081/mcp   1m
 ```
 
 The `ADDRESS` column shows the cluster-internal URL that can be used by other workloads to connect to the MCP server.
 
-The status includes the service address for easy discovery:
+The status includes conditions and the service address for easy discovery:
 
 ```yaml
 status:
-  phase: Running
   deploymentName: test-server
   serviceName: test-server
   address:
     url: http://test-server.default.svc.cluster.local:8081/mcp
   conditions:
+    - type: Accepted
+      status: "True"
+      reason: Valid
     - type: Ready
       status: "True"
+      reason: Available
 ```
 
 ### 5. Test the Service
