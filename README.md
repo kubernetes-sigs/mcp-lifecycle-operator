@@ -145,6 +145,7 @@ make uninstall
 For complete examples with ConfigMap support and detailed documentation, see the [examples/](./examples/) directory:
 
 - **[kubernetes-mcp-server](./examples/kubernetes-mcp-server/)** - Deploy the Kubernetes MCP Server with basic and ConfigMap-based configurations
+- **[everything-mcp-server](./examples/everything-mcp-server/)** - Deploy the Everything MCP Server
 
 ## Example MCPServer Resources
 
