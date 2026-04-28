@@ -6,8 +6,10 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 
 ## Documentation
 
+- [Introduction](https://mcp-lifecycle-operator.sigs.k8s.io/introduction/) - Architecture and MCPServer API overview
 - [Quickstart Guide](https://mcp-lifecycle-operator.sigs.k8s.io/guides/quickstart/) - Get up and running quickly
 - [API Reference](https://mcp-lifecycle-operator.sigs.k8s.io/reference/) - Full MCPServer API documentation
+- [Complete MCPServer example](./config/samples/mcp_v1alpha1_mcpserver_complete.yaml) - YAML showing all available fields
 - [Contributing](https://mcp-lifecycle-operator.sigs.k8s.io/contributing/) - How to contribute to the project
 
 ## Prerequisites

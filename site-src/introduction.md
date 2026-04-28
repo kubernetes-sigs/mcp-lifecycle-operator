@@ -125,5 +125,6 @@ The operator watches for `MCPServer` resources and automatically:
 - **Get Started**: Follow the [Quickstart Guide](guides/quickstart.md)
 - **Examples**: Check out the [examples directory](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples)
 - **API Reference**: See the [API documentation](reference/) for all available fields
+- **Complete Example**: See the [complete MCPServer sample](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/blob/main/config/samples/mcp_v1alpha1_mcpserver_complete.yaml) for a YAML with every field
 - **Contributing**: Read the [Contributing Guide](contributing/index.md) to get involved
 - **Community**: Join [SIG Apps](https://github.com/kubernetes/community/blob/main/sig-apps/README.md) meetings and discussions
