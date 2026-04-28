@@ -2,13 +2,21 @@
 
 A Kubernetes operator that provides a declarative API to deploy, manage, and safely roll out MCP Servers, handling their full lifecycle with production-grade automation and ecosystem integrations.
 
+> **Note:** This project is currently in **alpha** (`v1alpha1`). APIs and behavior may change in future releases.
+
+## Documentation
+
+- [Quickstart Guide](https://mcp-lifecycle-operator.sigs.k8s.io/guides/quickstart/) - Get up and running quickly
+- [API Reference](https://mcp-lifecycle-operator.sigs.k8s.io/reference/) - Full MCPServer API documentation
+- [Contributing](https://mcp-lifecycle-operator.sigs.k8s.io/contributing/) - How to contribute to the project
+
 ## Prerequisites
 
 - Kubernetes cluster (v1.28+)
 - kubectl configured to access your cluster
 - Go 1.25+ (for building from source)
 
-## Testing on Your Cluster
+## Quick Start
 
 ### 1. Install the CRDs
 
@@ -142,35 +150,10 @@ make uninstall
 
 ## Examples
 
-For complete examples with ConfigMap support and detailed documentation, see the [examples/](./examples/) directory:
+For more examples, see the [examples/](./examples/) directory:
 
 - **[kubernetes-mcp-server](./examples/kubernetes-mcp-server/)** - Deploy the Kubernetes MCP Server with basic and ConfigMap-based configurations
 - **[everything-mcp-server](./examples/everything-mcp-server/)** - Deploy the Everything MCP Server
-
-## Example MCPServer Resources
-
-### Kubernetes MCP Server
-
-```yaml
-apiVersion: mcp.x-k8s.io/v1alpha1
-kind: MCPServer
-metadata:
-  name: kubernetes-mcp-server
-  namespace: default
-spec:
-  source:
-    type: ContainerImage
-    containerImage:
-      ref: quay.io/containers/kubernetes_mcp_server:latest
-  config:
-    port: 8080
-```
-
-## Documentation
-
-- [Quickstart Guide](https://mcp-lifecycle-operator.sigs.k8s.io/guides/quickstart/) - Get up and running quickly
-- [API Reference](https://mcp-lifecycle-operator.sigs.k8s.io/reference/) - Full MCPServer API documentation
-- [Contributing](https://mcp-lifecycle-operator.sigs.k8s.io/contributing/) - How to contribute to the project
 
 ## Development
 
