@@ -63,9 +63,9 @@ spec:
   source:
     type: ContainerImage
     containerImage:
-      ref: aliok/mcp-server-streamable-http:latest
+      ref: quay.io/containers/kubernetes_mcp_server:latest
   config:
-    port: 8081
+    port: 8080
 EOF
 ```
 
@@ -90,8 +90,8 @@ kubectl get pods -l mcp-server=test-server
 
 Expected output from `kubectl get mcpservers`:
 ```
-NAME          READY   ACCEPTED   IMAGE                                      PORT   ADDRESS                                               AGE
-test-server   True    True       aliok/mcp-server-streamable-http:latest    8081   http://test-server.default.svc.cluster.local:8081/mcp   1m
+NAME          READY   ACCEPTED   IMAGE                                                  PORT   ADDRESS                                               AGE
+test-server   True    True       quay.io/containers/kubernetes_mcp_server:latest         8080   http://test-server.default.svc.cluster.local:8080/mcp   1m
 ```
 
 The `ADDRESS` column shows the cluster-internal URL that can be used by other workloads to connect to the MCP server.
@@ -103,7 +103,7 @@ status:
   deploymentName: test-server
   serviceName: test-server
   address:
-    url: http://test-server.default.svc.cluster.local:8081/mcp
+    url: http://test-server.default.svc.cluster.local:8080/mcp
   conditions:
     - type: Accepted
       status: "True"
@@ -118,12 +118,12 @@ status:
 Port-forward to test connectivity:
 
 ```bash
-kubectl port-forward service/test-server 8081:8081
+kubectl port-forward service/test-server 8080:8080
 ```
 
 Then in another terminal:
 ```bash
-curl http://localhost:8081/mcp
+curl http://localhost:8080/mcp
 ```
 
 You should see a response from the MCP server.
@@ -148,21 +148,21 @@ For complete examples with ConfigMap support and detailed documentation, see the
 
 ## Example MCPServer Resources
 
-### Streamable HTTP MCP Server
+### Kubernetes MCP Server
 
 ```yaml
 apiVersion: mcp.x-k8s.io/v1alpha1
 kind: MCPServer
 metadata:
-  name: streamable-http-server
+  name: kubernetes-mcp-server
   namespace: default
 spec:
   source:
     type: ContainerImage
     containerImage:
-      ref: aliok/mcp-server-streamable-http:latest
+      ref: quay.io/containers/kubernetes_mcp_server:latest
   config:
-    port: 8081
+    port: 8080
 ```
 
 ### Custom MCP Server
