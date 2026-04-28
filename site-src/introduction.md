@@ -38,7 +38,7 @@ Configure the server's runtime behavior:
 ```yaml
 spec:
   config:
-    port: 8081              # Server port
+    port: 8080              # Server port
     env:                    # Environment variables
       - name: LOG_LEVEL
         value: info
@@ -73,7 +73,7 @@ spec:
       readinessProbe:
         httpGet:
           path: /health
-          port: 8081
+          port: 8080
     security:
       securityContext:
         runAsNonRoot: true
@@ -86,15 +86,17 @@ The operator automatically manages the server lifecycle and provides status info
 
 ```yaml
 status:
-  phase: Running                    # Current state
-  deploymentName: my-mcp-server     # Created Deployment
-  serviceName: my-mcp-server        # Created Service
+  deploymentName: my-mcp-server
+  serviceName: my-mcp-server
   address:
-    url: http://my-mcp-server.default.svc.cluster.local:8081/mcp
+    url: http://my-mcp-server.default.svc.cluster.local:8080/mcp
   conditions:
+    - type: Accepted
+      status: "True"
+      reason: Valid
     - type: Ready
       status: "True"
-      reason: DeploymentReady
+      reason: Available
 ```
 
 The `address.url` field provides the cluster-internal URL that other workloads can use to connect to the MCP server.

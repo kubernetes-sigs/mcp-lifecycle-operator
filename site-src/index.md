@@ -30,9 +30,9 @@ spec:
   source:
     type: ContainerImage
     containerImage:
-      ref: my-registry/mcp-server:latest
+      ref: quay.io/containers/kubernetes_mcp_server:latest
   config:
-    port: 8081
+    port: 8080
 ```
 
 ## Get Started

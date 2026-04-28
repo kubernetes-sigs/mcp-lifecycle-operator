@@ -97,8 +97,8 @@ kubectl get pods -l mcp-server=kubernetes-mcp-server
 Expected output from `kubectl get mcpservers`:
 
 ```
-NAME                    PHASE     IMAGE                                         PORT   ADDRESS                                                     AGE
-kubernetes-mcp-server   Running   quay.io/containers/kubernetes_mcp_server:latest   8080   http://kubernetes-mcp-server.default.svc.cluster.local:8080/mcp  1m
+NAME                    READY   ACCEPTED   IMAGE                                                  PORT   ADDRESS                                                          AGE
+kubernetes-mcp-server   True    True       quay.io/containers/kubernetes_mcp_server:latest         8080   http://kubernetes-mcp-server.default.svc.cluster.local:8080/mcp   1m
 ```
 
 The `ADDRESS` column shows the cluster-internal URL that can be used by other workloads to connect to the MCP server.
@@ -109,14 +109,17 @@ The status includes the service address for easy discovery:
 
 ```yaml
 status:
-  phase: Running
   deploymentName: kubernetes-mcp-server
   serviceName: kubernetes-mcp-server
   address:
     url: http://kubernetes-mcp-server.default.svc.cluster.local:8080/mcp
   conditions:
+    - type: Accepted
+      status: "True"
+      reason: Valid
     - type: Ready
       status: "True"
+      reason: Available
 ```
 
 ## Test the Service
