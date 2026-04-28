@@ -14,7 +14,6 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 
 - Kubernetes cluster (v1.28+)
 - kubectl configured to access your cluster
-- Go 1.25+ (for building from source)
 
 ## Quick Start
 
@@ -156,6 +155,10 @@ For more examples, see the [examples/](./examples/) directory:
 - **[everything-mcp-server](./examples/everything-mcp-server/)** - Deploy the Everything MCP Server
 
 ## Development
+
+### Prerequisites
+
+- Go 1.25+
 
 ### Building
 
