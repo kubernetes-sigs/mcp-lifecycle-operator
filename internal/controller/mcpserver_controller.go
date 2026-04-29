@@ -21,9 +21,11 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -119,6 +121,10 @@ const (
 	// until the next spec change triggers a new reconciliation.
 	maxMCPHandshakeRetries = 10
 )
+
+// configHashAnnotation is the pod template annotation key used to trigger
+// rolling updates when referenced ConfigMap or Secret data changes.
+const configHashAnnotation = "mcp.x-k8s.io/config-hash"
 
 // Index keys for field indexing.
 const (
@@ -659,6 +665,10 @@ func (r *MCPServerReconciler) reconcileDeployment(
 		return nil, err
 	}
 
+	if err := r.applyConfigHash(ctx, mcpServer, deployment); err != nil {
+		return nil, err
+	}
+
 	existingDeployment := &appsv1.Deployment{}
 	err = r.Get(ctx, client.ObjectKey{Name: deployment.Name, Namespace: deployment.Namespace}, existingDeployment)
 	if err != nil && apierrors.IsNotFound(err) {
@@ -727,11 +737,13 @@ func (r *MCPServerReconciler) reconcileDeployment(
 			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].ReadinessProbe, newPodSpec.Containers[0].ReadinessProbe) ||
 			oldPodSpec.ServiceAccountName != newPodSpec.ServiceAccountName ||
 			!equality.Semantic.DeepEqual(existingDeployment.Spec.Replicas, deployment.Spec.Replicas) ||
+			!equality.Semantic.DeepEqual(existingDeployment.Spec.Template.Annotations, deployment.Spec.Template.Annotations) ||
 			ownershipChanged
 	}
 	if needsUpdate {
 		logger.Info("Updating Deployment", "name", existingDeployment.Name)
 		existingDeployment.Spec.Replicas = deployment.Spec.Replicas
+		existingDeployment.Spec.Template.Annotations = deployment.Spec.Template.Annotations
 		existingDeployment.Spec.Template.Spec = deployment.Spec.Template.Spec
 		if err := r.Update(ctx, existingDeployment); err != nil {
 			logger.Error(err, "Failed to update Deployment")
@@ -1487,6 +1499,102 @@ func extractSecretNames(obj client.Object) []string {
 	}
 
 	return secrets
+}
+
+// applyConfigHash computes the config hash and sets it as a pod template
+// annotation on the deployment. This is extracted from reconcileDeployment
+// to keep cyclomatic complexity in check.
+func (r *MCPServerReconciler) applyConfigHash(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+	deployment *appsv1.Deployment,
+) error {
+	configHash, err := r.computeConfigHash(ctx, mcpServer)
+	if err != nil {
+		return err
+	}
+	if configHash != "" {
+		if deployment.Spec.Template.Annotations == nil {
+			deployment.Spec.Template.Annotations = make(map[string]string)
+		}
+		deployment.Spec.Template.Annotations[configHashAnnotation] = configHash
+	}
+	return nil
+}
+
+// computeConfigHash computes a SHA-256 hash of all ConfigMap and Secret data
+// referenced by the MCPServer. This hash is placed in a pod template annotation
+// so that changes to referenced resource data trigger a rolling update.
+// Returns "" if no ConfigMaps or Secrets are referenced.
+func (r *MCPServerReconciler) computeConfigHash(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+) (string, error) {
+	configMapNames := extractConfigMapNames(mcpServer)
+	secretNames := extractSecretNames(mcpServer)
+
+	if len(configMapNames) == 0 && len(secretNames) == 0 {
+		return "", nil
+	}
+
+	h := sha256.New()
+
+	sort.Strings(configMapNames)
+	for _, name := range configMapNames {
+		cm := &corev1.ConfigMap{}
+		if err := r.Get(ctx, client.ObjectKey{
+			Name:      name,
+			Namespace: mcpServer.Namespace,
+		}, cm); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return "", err
+		}
+		keys := make([]string, 0, len(cm.Data)+len(cm.BinaryData))
+		for k := range cm.Data {
+			keys = append(keys, k)
+		}
+		for k := range cm.BinaryData {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, _ = fmt.Fprintf(h, "configmap/%s/%s=", name, k)
+			if v, ok := cm.Data[k]; ok {
+				_, _ = fmt.Fprint(h, v)
+			} else {
+				_, _ = h.Write(cm.BinaryData[k])
+			}
+			_, _ = h.Write([]byte{0})
+		}
+	}
+
+	sort.Strings(secretNames)
+	for _, name := range secretNames {
+		secret := &corev1.Secret{}
+		if err := r.Get(ctx, client.ObjectKey{
+			Name:      name,
+			Namespace: mcpServer.Namespace,
+		}, secret); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return "", err
+		}
+		keys := make([]string, 0, len(secret.Data))
+		for k := range secret.Data {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, _ = fmt.Fprintf(h, "secret/%s/%s=", name, k)
+			_, _ = h.Write(secret.Data[k])
+			_, _ = h.Write([]byte{0})
+		}
+	}
+
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 // findMCPServersForResource is a generic helper that finds all MCPServers
