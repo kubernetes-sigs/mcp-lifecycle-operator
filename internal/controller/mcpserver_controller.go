@@ -1525,7 +1525,7 @@ func (r *MCPServerReconciler) applyConfigHash(
 // computeConfigHash computes a SHA-256 hash of all ConfigMap and Secret data
 // referenced by the MCPServer. This hash is placed in a pod template annotation
 // so that changes to referenced resource data trigger a rolling update.
-// Returns "" if no ConfigMaps or Secrets are referenced.
+// Returns "" if no refs are listed or all referenced resources are not found.
 func (r *MCPServerReconciler) computeConfigHash(
 	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
@@ -1538,6 +1538,7 @@ func (r *MCPServerReconciler) computeConfigHash(
 	}
 
 	h := sha256.New()
+	dataWritten := false
 
 	sort.Strings(configMapNames)
 	for _, name := range configMapNames {
@@ -1551,6 +1552,7 @@ func (r *MCPServerReconciler) computeConfigHash(
 			}
 			return "", err
 		}
+		dataWritten = true
 		keys := make([]string, 0, len(cm.Data)+len(cm.BinaryData))
 		for k := range cm.Data {
 			keys = append(keys, k)
@@ -1582,6 +1584,7 @@ func (r *MCPServerReconciler) computeConfigHash(
 			}
 			return "", err
 		}
+		dataWritten = true
 		keys := make([]string, 0, len(secret.Data))
 		for k := range secret.Data {
 			keys = append(keys, k)
@@ -1592,6 +1595,10 @@ func (r *MCPServerReconciler) computeConfigHash(
 			_, _ = h.Write(secret.Data[k])
 			_, _ = h.Write([]byte{0})
 		}
+	}
+
+	if !dataWritten {
+		return "", nil
 	}
 
 	return fmt.Sprintf("%x", h.Sum(nil)), nil

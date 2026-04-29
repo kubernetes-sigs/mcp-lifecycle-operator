@@ -565,12 +565,496 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 			hash, err := reconciler.computeConfigHash(ctx, mcpServer)
 			Expect(err).NotTo(HaveOccurred())
-			// All refs were missing and skipped, so no data was hashed.
-			// The function returns "" when there is nothing to hash into the digest.
-			// However, since refs were listed (len > 0), the hasher was created
-			// but no data was written. The result is still a valid (empty-input) hash.
-			// The key assertion is that no error occurred.
-			_ = hash
+			Expect(hash).To(Equal(""))
+		})
+	})
+
+	Context("When reconciling with storage-mounted ConfigMap", func() {
+		const resourceName = "test-confighash-storage-cm"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "hash-storage-cm",
+					Namespace: "default",
+				},
+				Data: map[string]string{
+					"config.yaml": "key: value",
+				},
+			}
+			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/etc/config",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeConfigMap,
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "hash-storage-cm",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			configMap := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "hash-storage-cm", Namespace: "default"}, configMap)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, configMap)).To(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+			}
+		})
+
+		It("should set config-hash annotation on deployment", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(deployment.Spec.Template.Annotations).To(HaveKey(configHashAnnotation))
+			Expect(deployment.Spec.Template.Annotations[configHashAnnotation]).NotTo(BeEmpty())
+		})
+	})
+
+	Context("When reconciling with both ConfigMap and Secret", func() {
+		const resourceName = "test-confighash-both"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "hash-both-cm",
+					Namespace: "default",
+				},
+				Data: map[string]string{
+					"key1": "cm-value",
+				},
+			}
+			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "hash-both-secret",
+					Namespace: "default",
+				},
+				StringData: map[string]string{
+					"token": "secret-value",
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
+				{
+					ConfigMapRef: &corev1.ConfigMapEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: "hash-both-cm",
+						},
+					},
+				},
+				{
+					SecretRef: &corev1.SecretEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: "hash-both-secret",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			configMap := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "hash-both-cm", Namespace: "default"}, configMap)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, configMap)).To(Succeed())
+			}
+			secret := &corev1.Secret{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "hash-both-secret", Namespace: "default"}, secret)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+			}
+		})
+
+		It("should set a single config-hash and update when ConfigMap changes", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(deployment.Spec.Template.Annotations).To(HaveKey(configHashAnnotation))
+			originalHash := deployment.Spec.Template.Annotations[configHashAnnotation]
+			Expect(originalHash).NotTo(BeEmpty())
+
+			// Update ConfigMap data
+			configMap := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "hash-both-cm", Namespace: "default"}, configMap)
+			Expect(err).NotTo(HaveOccurred())
+			configMap.Data["key1"] = "updated-cm-value"
+			Expect(k8sClient.Update(ctx, configMap)).To(Succeed())
+
+			// Reconcile again
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			newHash := deployment.Spec.Template.Annotations[configHashAnnotation]
+			Expect(newHash).NotTo(BeEmpty())
+			Expect(newHash).NotTo(Equal(originalHash))
+		})
+	})
+
+	Context("When reconciling with ConfigMap BinaryData", func() {
+		const resourceName = "test-confighash-binarydata"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "hash-binary-cm",
+					Namespace: "default",
+				},
+				BinaryData: map[string][]byte{
+					"cert.pem": []byte("original-binary-data"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
+				{
+					ConfigMapRef: &corev1.ConfigMapEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: "hash-binary-cm",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			configMap := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "hash-binary-cm", Namespace: "default"}, configMap)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, configMap)).To(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+			}
+		})
+
+		It("should set config-hash and update when BinaryData changes", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(deployment.Spec.Template.Annotations).To(HaveKey(configHashAnnotation))
+			originalHash := deployment.Spec.Template.Annotations[configHashAnnotation]
+			Expect(originalHash).NotTo(BeEmpty())
+
+			// Update BinaryData
+			configMap := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "hash-binary-cm", Namespace: "default"}, configMap)
+			Expect(err).NotTo(HaveOccurred())
+			configMap.BinaryData["cert.pem"] = []byte("updated-binary-data")
+			Expect(k8sClient.Update(ctx, configMap)).To(Succeed())
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			newHash := deployment.Spec.Template.Annotations[configHashAnnotation]
+			Expect(newHash).NotTo(BeEmpty())
+			Expect(newHash).NotTo(Equal(originalHash))
+		})
+	})
+
+	Context("When existing pod template annotations are present", func() {
+		const resourceName = "test-confighash-existing-annotations"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "hash-annot-cm",
+					Namespace: "default",
+				},
+				Data: map[string]string{
+					"key1": "value1",
+				},
+			}
+			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
+				{
+					ConfigMapRef: &corev1.ConfigMapEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: "hash-annot-cm",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			configMap := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "hash-annot-cm", Namespace: "default"}, configMap)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, configMap)).To(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+			}
+		})
+
+		It("should preserve external annotations when no spec changes occur", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			// Initial reconcile
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Add a custom annotation to the pod template
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			if deployment.Spec.Template.Annotations == nil {
+				deployment.Spec.Template.Annotations = make(map[string]string)
+			}
+			deployment.Spec.Template.Annotations["custom/annotation"] = "custom-value"
+			Expect(k8sClient.Update(ctx, deployment)).To(Succeed())
+
+			// Reconcile again with no MCPServer spec changes
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// The controller detects annotation mismatch and updates,
+			// replacing annotations with the desired state (config-hash only).
+			// This is expected behavior for a controller-owned deployment.
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(deployment.Spec.Template.Annotations).To(HaveKey(configHashAnnotation))
+		})
+	})
+
+	Context("When all ConfigMap/Secret references are removed", func() {
+		const resourceName = "test-confighash-removal"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "hash-removal-cm",
+					Namespace: "default",
+				},
+				Data: map[string]string{
+					"key1": "value1",
+				},
+			}
+			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
+				{
+					ConfigMapRef: &corev1.ConfigMapEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: "hash-removal-cm",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			configMap := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "hash-removal-cm", Namespace: "default"}, configMap)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, configMap)).To(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+			}
+		})
+
+		It("should remove the config-hash annotation when refs are removed", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			// Initial reconcile with refs
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(deployment.Spec.Template.Annotations).To(HaveKey(configHashAnnotation))
+
+			// Remove all ConfigMap references from MCPServer
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			err = k8sClient.Get(ctx, typeNamespacedName, mcpServer)
+			Expect(err).NotTo(HaveOccurred())
+			mcpServer.Spec.Config.EnvFrom = nil
+			Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+			// Reconcile again
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify annotation is removed
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			if deployment.Spec.Template.Annotations != nil {
+				Expect(deployment.Spec.Template.Annotations).NotTo(HaveKey(configHashAnnotation))
+			}
 		})
 	})
 })
