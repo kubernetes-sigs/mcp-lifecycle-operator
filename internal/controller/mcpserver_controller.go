@@ -141,6 +141,14 @@ const (
 	secretIndexKey = "spec.secretRefs"
 )
 
+// Custom metadata annotations
+const (
+	// managedExtraLabels tracks custom labels added via .spec.ExtraLabels
+	managedExtraLabels = "mcp.x-k8s.io/managed-extra-labels"
+	// managedExtraAnnotations tracks custom annotations added via .spec.Extra
+	managedExtraAnnotations = "mcp.x-k8s.io/managed-extra-annotations"
+)
+
 // MCPServerReconciler reconciles a MCPServer object
 type MCPServerReconciler struct {
 	client.Client
@@ -710,6 +718,8 @@ func (r *MCPServerReconciler) reconcileDeployment(
 			oldPodSpec.ServiceAccountName != newPodSpec.ServiceAccountName ||
 			!equality.Semantic.DeepEqual(existingDeployment.Spec.Replicas, deployment.Spec.Replicas) ||
 			!equality.Semantic.DeepEqual(existingDeployment.Spec.Template.Annotations, deployment.Spec.Template.Annotations) ||
+			deploymentAnnotationsChanged(mcpServer, existingDeployment) ||
+			deploymentLabelsChanged(mcpServer, existingDeployment) ||
 			ownershipChanged
 	}
 	if needsUpdate {
@@ -717,6 +727,9 @@ func (r *MCPServerReconciler) reconcileDeployment(
 		existingDeployment.Spec.Replicas = deployment.Spec.Replicas
 		existingDeployment.Spec.Template.Annotations = deployment.Spec.Template.Annotations
 		existingDeployment.Spec.Template.Spec = deployment.Spec.Template.Spec
+		if err := applyCustomDeploymentMetadata(mcpServer, existingDeployment); err != nil {
+			return nil, fmt.Errorf("applying custom metadata failed; %w", err)
+		}
 		if err := r.Update(ctx, existingDeployment); err != nil {
 			logger.Error(err, "Failed to update Deployment")
 			return nil, err
@@ -964,12 +977,17 @@ func (r *MCPServerReconciler) reconcileService(
 		ownershipChanged = oldOwnerUID != string(newOwner.UID)
 	}
 
-	// Update if ports or session affinity changed, or if we adopted an orphaned resource
+	// Update if ports changed OR if we adopted an orphaned resource
 	needsUpdate := !equality.Semantic.DeepEqual(service.Spec.Ports, existingService.Spec.Ports) ||
 		existingService.Spec.SessionAffinity != service.Spec.SessionAffinity ||
+		serviceLabelsChanged(mcpServer, existingService) ||
+		serviceAnnotationsChanged(mcpServer, existingService) ||
 		ownershipChanged
 	if needsUpdate {
 		logger.Info("Updating Service", "name", existingService.Name)
+		if err := applyCustomServiceMetadata(mcpServer, existingService); err != nil {
+			return fmt.Errorf("applying custom service metadata; %w", err)
+		}
 		existingService.Spec.Ports = service.Spec.Ports
 		existingService.Spec.SessionAffinity = service.Spec.SessionAffinity
 		if err := r.Update(ctx, existingService); err != nil {
