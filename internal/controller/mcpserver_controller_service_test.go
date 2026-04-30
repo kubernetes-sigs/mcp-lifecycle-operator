@@ -250,6 +250,7 @@ var _ = Describe("MCPServer Controller - reconcileService", func() {
 		}, svc)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(svc.Name).To(Equal(resourceName))
+		Expect(svc.Spec.SessionAffinity).To(Equal(corev1.ServiceAffinityClientIP))
 	})
 
 	It("should not error when service already exists", func() {

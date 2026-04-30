@@ -964,11 +964,14 @@ func (r *MCPServerReconciler) reconcileService(
 		ownershipChanged = oldOwnerUID != string(newOwner.UID)
 	}
 
-	// Update if ports changed OR if we adopted an orphaned resource
-	needsUpdate := !equality.Semantic.DeepEqual(service.Spec.Ports, existingService.Spec.Ports) || ownershipChanged
+	// Update if ports or session affinity changed, or if we adopted an orphaned resource
+	needsUpdate := !equality.Semantic.DeepEqual(service.Spec.Ports, existingService.Spec.Ports) ||
+		existingService.Spec.SessionAffinity != service.Spec.SessionAffinity ||
+		ownershipChanged
 	if needsUpdate {
 		logger.Info("Updating Service", "name", existingService.Name)
 		existingService.Spec.Ports = service.Spec.Ports
+		existingService.Spec.SessionAffinity = service.Spec.SessionAffinity
 		if err := r.Update(ctx, existingService); err != nil {
 			logger.Error(err, "Failed to update Service")
 			return err
@@ -998,6 +1001,7 @@ func (r *MCPServerReconciler) createService(mcpServer *mcpv1alpha1.MCPServer) *c
 			Selector: map[string]string{
 				"mcp-server": mcpServer.Name,
 			},
+			SessionAffinity: corev1.ServiceAffinityClientIP,
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "mcp",
