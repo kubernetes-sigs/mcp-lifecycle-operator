@@ -1,0 +1,18 @@
+apiVersion: v2
+name: mcp-lifecycle-operator
+description: A Kubernetes operator that provides a declarative API to deploy, manage, and safely roll out MCP Servers
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">= 1.28.0"
+home: https://github.com/kubernetes-sigs/mcp-lifecycle-operator
+sources:
+  - https://github.com/kubernetes-sigs/mcp-lifecycle-operator
+keywords:
+  - kubernetes
+  - operator
+  - mcp
+  - model-context-protocol
+maintainers:
+  - name: mcp-lifecycle-operator maintainers
+    url: https://github.com/kubernetes-sigs/mcp-lifecycle-operator

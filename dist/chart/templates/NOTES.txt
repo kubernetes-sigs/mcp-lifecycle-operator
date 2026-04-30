@@ -1,0 +1,27 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} has been deployed successfully!
+
+1. Verify the operator is running:
+
+  kubectl get deployment -n {{ .Release.Namespace }} {{ include "mcp-lifecycle-operator.fullname" . }}-controller-manager
+
+2. Create an MCPServer resource:
+
+  kubectl apply -f - <<EOF
+  apiVersion: mcp.x-k8s.io/v1alpha1
+  kind: MCPServer
+  metadata:
+    name: test-server
+  spec:
+    source:
+      type: ContainerImage
+      containerImage:
+        ref: quay.io/containers/kubernetes_mcp_server:latest
+    config:
+      port: 8080
+  EOF
+
+3. Check the MCPServer status:
+
+  kubectl get mcpservers
+
+For more information, visit: {{ .Chart.Home }}
