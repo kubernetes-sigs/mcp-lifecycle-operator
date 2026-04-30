@@ -317,54 +317,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		mcpServer.Name, mcpServer.Namespace, mcpServer.Spec.Config.Port, path)
 
 	// If deployment-level readiness reports Available, verify the MCP endpoint.
-	// Only perform the handshake on transitions: skip if the endpoint was already
-	// verified for this generation (Ready=True, reason=Available, matching generation).
 	var serverInfo *mcpv1alpha1.MCPServerInfo
-	if readyCondition.Status == metav1.ConditionTrue && readyCondition.Reason == ReasonAvailable {
-		existingReady := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeReady)
-		alreadyVerified := existingReady != nil &&
-			existingReady.Status == metav1.ConditionTrue &&
-			existingReady.Reason == ReasonAvailable &&
-			mcpServer.Status.ObservedGeneration == mcpServer.Generation
-
-		if !alreadyVerified {
-			dialer := r.MCPDialer
-			if dialer == nil {
-				dialer = r.verifyMCPEndpoint
-			}
-			dialCtx, dialCancel := context.WithTimeout(ctx, mcpHandshakeTimeout)
-			defer dialCancel()
-			info, err := dialer(dialCtx, mcpURL)
-			if err != nil {
-				// An auth rejection (401/403) proves the server is running and
-				// listening for MCP requests - treat it as reachable.
-				if isHTTPAuthError(err) {
-					logger.Info("MCP endpoint returned auth error, treating as reachable", "url", mcpURL, "error", err)
-				} else {
-					logger.Info("MCP endpoint handshake failed", "url", mcpURL, "error", err)
-					readyCondition = newCondition(
-						ConditionTypeReady,
-						metav1.ConditionFalse,
-						ReasonMCPEndpointUnavailable,
-						fmt.Sprintf("MCP endpoint is not serving a valid MCP protocol: %v", err),
-						mcpServer.Generation,
-					)
-					// Only preserve LastTransitionTime on False -> False (steady state).
-					// A True -> False transition must record a new timestamp so the
-					// backoff retry counter starts from the correct point.
-					if existingReady == nil || existingReady.Status != metav1.ConditionTrue {
-						preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
-					}
-				}
-			} else {
-				logger.Info("MCP endpoint verified successfully", "url", mcpURL)
-				serverInfo = info
-			}
-		} else {
-			// Handshake skipped - carry forward previously discovered server info.
-			serverInfo = mcpServer.Status.ServerInfo
-		}
-	}
+	readyCondition, serverInfo = r.reconcileHandshake(ctx, mcpServer, mcpURL, readyCondition)
 
 	status := acv1alpha1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
@@ -436,6 +390,60 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 // It uses a dedicated context for the connection so that cancelling it tears
 // down the transport without sending an HTTP DELETE to the server (which some
 // MCP servers do not handle gracefully).
+// reconcileHandshake performs the MCP handshake when the deployment is available,
+// skipping it when the endpoint was already verified for the current generation.
+func (r *MCPServerReconciler) reconcileHandshake(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+	mcpURL string,
+	readyCondition metav1.Condition,
+) (metav1.Condition, *mcpv1alpha1.MCPServerInfo) {
+	logger := log.FromContext(ctx)
+
+	if readyCondition.Status != metav1.ConditionTrue || readyCondition.Reason != ReasonAvailable {
+		return readyCondition, nil
+	}
+
+	existingReady := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeReady)
+	alreadyVerified := existingReady != nil &&
+		existingReady.Status == metav1.ConditionTrue &&
+		existingReady.Reason == ReasonAvailable &&
+		mcpServer.Status.ObservedGeneration == mcpServer.Generation
+
+	if alreadyVerified {
+		return readyCondition, mcpServer.Status.ServerInfo
+	}
+
+	dialer := r.MCPDialer
+	if dialer == nil {
+		dialer = r.verifyMCPEndpoint
+	}
+	dialCtx, dialCancel := context.WithTimeout(ctx, mcpHandshakeTimeout)
+	defer dialCancel()
+	info, err := dialer(dialCtx, mcpURL)
+	if err != nil {
+		if isHTTPAuthError(err) {
+			logger.Info("MCP endpoint returned auth error, treating as reachable", "url", mcpURL, "error", err)
+			return readyCondition, nil
+		}
+		logger.Info("MCP endpoint handshake failed", "url", mcpURL, "error", err)
+		cond := newCondition(
+			ConditionTypeReady,
+			metav1.ConditionFalse,
+			ReasonMCPEndpointUnavailable,
+			fmt.Sprintf("MCP endpoint is not serving a valid MCP protocol: %v", err),
+			mcpServer.Generation,
+		)
+		if existingReady == nil || existingReady.Status != metav1.ConditionTrue {
+			preserveLastTransitionTime(&cond, mcpServer.Status.Conditions)
+		}
+		return cond, nil
+	}
+
+	logger.Info("MCP endpoint verified successfully", "url", mcpURL)
+	return readyCondition, info
+}
+
 func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
 	connCtx, connCancel := context.WithCancel(ctx)
 	defer connCancel()
