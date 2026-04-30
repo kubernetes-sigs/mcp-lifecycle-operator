@@ -332,10 +332,16 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		)
 
 	if serverInfo != nil {
-		si := acv1alpha1.MCPServerInfo().
-			WithName(serverInfo.Name).
-			WithVersion(serverInfo.Version).
-			WithProtocolVersion(serverInfo.ProtocolVersion)
+		si := acv1alpha1.MCPServerInfo()
+		if serverInfo.Name != "" {
+			si = si.WithName(serverInfo.Name)
+		}
+		if serverInfo.Version != "" {
+			si = si.WithVersion(serverInfo.Version)
+		}
+		if serverInfo.ProtocolVersion != "" {
+			si = si.WithProtocolVersion(serverInfo.ProtocolVersion)
+		}
 		if serverInfo.Instructions != "" {
 			si = si.WithInstructions(serverInfo.Instructions)
 		}
@@ -408,7 +414,8 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	alreadyVerified := existingReady != nil &&
 		existingReady.Status == metav1.ConditionTrue &&
 		existingReady.Reason == ReasonAvailable &&
-		mcpServer.Status.ObservedGeneration == mcpServer.Generation
+		mcpServer.Status.ObservedGeneration == mcpServer.Generation &&
+		mcpServer.Status.ServerInfo != nil
 
 	if alreadyVerified {
 		return readyCondition, mcpServer.Status.ServerInfo

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -307,7 +308,10 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 				if shouldFail {
 					return nil, fmt.Errorf("intentional failure")
 				}
-				return nil, nil
+				return &mcpv1alpha1.MCPServerInfo{
+					Name:            "test-server",
+					ProtocolVersion: "2025-03-26",
+				}, nil
 			},
 		}
 
@@ -737,5 +741,96 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(readyCondition).NotTo(BeNil())
 		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+	})
+})
+
+var _ = Describe("extractServerInfo", func() {
+	It("should return nil for nil input", func() {
+		Expect(extractServerInfo(nil)).To(BeNil())
+	})
+
+	It("should extract protocol version and instructions", func() {
+		result := &mcp.InitializeResult{
+			ProtocolVersion: "2025-03-26",
+			Instructions:    "A test server",
+		}
+		info := extractServerInfo(result)
+		Expect(info).NotTo(BeNil())
+		Expect(info.ProtocolVersion).To(Equal("2025-03-26"))
+		Expect(info.Instructions).To(Equal("A test server"))
+		Expect(info.Name).To(BeEmpty())
+		Expect(info.Version).To(BeEmpty())
+		Expect(info.Capabilities).To(BeNil())
+	})
+
+	It("should extract server name and version from ServerInfo", func() {
+		result := &mcp.InitializeResult{
+			ProtocolVersion: "2025-03-26",
+			ServerInfo: &mcp.Implementation{
+				Name:    "my-server",
+				Version: "1.2.3",
+			},
+		}
+		info := extractServerInfo(result)
+		Expect(info).NotTo(BeNil())
+		Expect(info.Name).To(Equal("my-server"))
+		Expect(info.Version).To(Equal("1.2.3"))
+	})
+
+	It("should handle nil ServerInfo", func() {
+		result := &mcp.InitializeResult{
+			ProtocolVersion: "2025-03-26",
+		}
+		info := extractServerInfo(result)
+		Expect(info).NotTo(BeNil())
+		Expect(info.Name).To(BeEmpty())
+		Expect(info.Version).To(BeEmpty())
+	})
+
+	It("should detect all capabilities when present", func() {
+		result := &mcp.InitializeResult{
+			ProtocolVersion: "2025-03-26",
+			Capabilities: &mcp.ServerCapabilities{
+				Tools:       &mcp.ToolCapabilities{},
+				Resources:   &mcp.ResourceCapabilities{},
+				Prompts:     &mcp.PromptCapabilities{},
+				Logging:     &mcp.LoggingCapabilities{},
+				Completions: &mcp.CompletionCapabilities{},
+			},
+		}
+		info := extractServerInfo(result)
+		Expect(info).NotTo(BeNil())
+		Expect(info.Capabilities).NotTo(BeNil())
+		Expect(info.Capabilities.Tools).To(BeTrue())
+		Expect(info.Capabilities.Resources).To(BeTrue())
+		Expect(info.Capabilities.Prompts).To(BeTrue())
+		Expect(info.Capabilities.Logging).To(BeTrue())
+		Expect(info.Capabilities.Completions).To(BeTrue())
+	})
+
+	It("should detect partial capabilities", func() {
+		result := &mcp.InitializeResult{
+			ProtocolVersion: "2025-03-26",
+			Capabilities: &mcp.ServerCapabilities{
+				Tools: &mcp.ToolCapabilities{},
+			},
+		}
+		info := extractServerInfo(result)
+		Expect(info).NotTo(BeNil())
+		Expect(info.Capabilities).NotTo(BeNil())
+		Expect(info.Capabilities.Tools).To(BeTrue())
+		Expect(info.Capabilities.Resources).To(BeFalse())
+		Expect(info.Capabilities.Prompts).To(BeFalse())
+		Expect(info.Capabilities.Logging).To(BeFalse())
+		Expect(info.Capabilities.Completions).To(BeFalse())
+	})
+
+	It("should handle nil Capabilities", func() {
+		result := &mcp.InitializeResult{
+			ProtocolVersion: "2025-03-26",
+		}
+		info := extractServerInfo(result)
+		Expect(info).NotTo(BeNil())
+		Expect(info.Capabilities).To(BeNil())
 	})
 })
