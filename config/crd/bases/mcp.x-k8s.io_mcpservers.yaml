@@ -1634,6 +1634,54 @@ spec:
                   When observedGeneration matches metadata.generation, the status is up-to-date.
                 format: int64
                 type: integer
+              serverInfo:
+                description: |-
+                  ServerInfo contains identity and capability information reported by the
+                  MCP server during the protocol initialize handshake.
+                  This field is populated only after a successful handshake.
+                properties:
+                  capabilities:
+                    description: Capabilities lists which MCP protocol features the
+                      server supports.
+                    properties:
+                      completions:
+                        description: Completions indicates the server supports argument
+                          autocompletion.
+                        type: boolean
+                      logging:
+                        description: Logging indicates the server supports sending
+                          log messages.
+                        type: boolean
+                      prompts:
+                        description: Prompts indicates the server supports prompt
+                          templates.
+                        type: boolean
+                      resources:
+                        description: Resources indicates the server supports resource
+                          listing and reading.
+                        type: boolean
+                      tools:
+                        description: Tools indicates the server supports tool listing
+                          and invocation.
+                        type: boolean
+                    type: object
+                  instructions:
+                    description: |-
+                      Instructions describes how to use the server and its features.
+                      This can be used by clients to improve the LLM's understanding of
+                      available tools, resources, etc.
+                    type: string
+                  name:
+                    description: Name is the server's self-reported name.
+                    type: string
+                  protocolVersion:
+                    description: ProtocolVersion is the MCP protocol version negotiated
+                      during the handshake.
+                    type: string
+                  version:
+                    description: Version is the server's self-reported version.
+                    type: string
+                type: object
               serviceName:
                 description: ServiceName is the name of the Service created for this
                   MCPServer.

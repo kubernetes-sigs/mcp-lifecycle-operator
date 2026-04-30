@@ -45,8 +45,8 @@ import (
 const testRecorderBuffer = 10000
 
 // testMCPDialerNoop succeeds without dialing; used so envtests do not run real MCP handshakes.
-func testMCPDialerNoop(context.Context, string) error {
-	return nil
+func testMCPDialerNoop(context.Context, string) (*mcpv1alpha1.MCPServerInfo, error) {
+	return nil, nil
 }
 
 func newReconcilerForTestWithFakeEvents(cli client.Client, sch *runtime.Scheme) (*MCPServerReconciler, *events.FakeRecorder) {

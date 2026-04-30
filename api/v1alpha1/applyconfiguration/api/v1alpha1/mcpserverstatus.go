@@ -37,6 +37,10 @@ type MCPServerStatusApplyConfiguration struct {
 	ServiceName *string `json:"serviceName,omitempty"`
 	// Address contains the address of the MCP server service.
 	Address *MCPServerAddressApplyConfiguration `json:"address,omitempty"`
+	// ServerInfo contains identity and capability information reported by the
+	// MCP server during the protocol initialize handshake.
+	// This field is populated only after a successful handshake.
+	ServerInfo *MCPServerInfoApplyConfiguration `json:"serverInfo,omitempty"`
 	// Conditions represent the latest available observations of the MCPServer's state.
 	//
 	// Standard condition types:
@@ -95,6 +99,14 @@ func (b *MCPServerStatusApplyConfiguration) WithServiceName(value string) *MCPSe
 // If called multiple times, the Address field is set to the value of the last call.
 func (b *MCPServerStatusApplyConfiguration) WithAddress(value *MCPServerAddressApplyConfiguration) *MCPServerStatusApplyConfiguration {
 	b.Address = value
+	return b
+}
+
+// WithServerInfo sets the ServerInfo field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ServerInfo field is set to the value of the last call.
+func (b *MCPServerStatusApplyConfiguration) WithServerInfo(value *MCPServerInfoApplyConfiguration) *MCPServerStatusApplyConfiguration {
+	b.ServerInfo = value
 	return b
 }
 

@@ -358,6 +358,48 @@ type MCPServerAddress struct {
 	URL string `json:"url,omitempty"`
 }
 
+// MCPServerCapabilities describes which MCP protocol capabilities the server advertises
+// during the initialize handshake.
+type MCPServerCapabilities struct {
+	// Tools indicates the server supports tool listing and invocation.
+	// +optional
+	Tools bool `json:"tools,omitempty"`
+	// Resources indicates the server supports resource listing and reading.
+	// +optional
+	Resources bool `json:"resources,omitempty"`
+	// Prompts indicates the server supports prompt templates.
+	// +optional
+	Prompts bool `json:"prompts,omitempty"`
+	// Logging indicates the server supports sending log messages.
+	// +optional
+	Logging bool `json:"logging,omitempty"`
+	// Completions indicates the server supports argument autocompletion.
+	// +optional
+	Completions bool `json:"completions,omitempty"`
+}
+
+// MCPServerInfo contains identity and capability information reported by the
+// MCP server during the protocol initialize handshake.
+type MCPServerInfo struct {
+	// Name is the server's self-reported name.
+	// +optional
+	Name string `json:"name,omitempty"`
+	// Version is the server's self-reported version.
+	// +optional
+	Version string `json:"version,omitempty"`
+	// ProtocolVersion is the MCP protocol version negotiated during the handshake.
+	// +optional
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+	// Instructions describes how to use the server and its features.
+	// This can be used by clients to improve the LLM's understanding of
+	// available tools, resources, etc.
+	// +optional
+	Instructions string `json:"instructions,omitempty"`
+	// Capabilities lists which MCP protocol features the server supports.
+	// +optional
+	Capabilities *MCPServerCapabilities `json:"capabilities,omitempty"`
+}
+
 // MCPServerStatus defines the observed state of MCPServer.
 type MCPServerStatus struct {
 	// ObservedGeneration reflects the generation most recently observed by the controller.
@@ -377,6 +419,12 @@ type MCPServerStatus struct {
 	// Address contains the address of the MCP server service.
 	// +optional
 	Address *MCPServerAddress `json:"address,omitempty"`
+
+	// ServerInfo contains identity and capability information reported by the
+	// MCP server during the protocol initialize handshake.
+	// This field is populated only after a successful handshake.
+	// +optional
+	ServerInfo *MCPServerInfo `json:"serverInfo,omitempty"`
 
 	// Conditions represent the latest available observations of the MCPServer's state.
 	//

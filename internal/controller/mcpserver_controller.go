@@ -146,7 +146,7 @@ type MCPServerReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
 	Recorder  events.EventRecorder
-	MCPDialer func(ctx context.Context, url string) error // nil = use real MCP handshake
+	MCPDialer func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) // nil = use real MCP handshake
 }
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch;create;update;patch;delete
@@ -319,6 +319,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// If deployment-level readiness reports Available, verify the MCP endpoint.
 	// Only perform the handshake on transitions: skip if the endpoint was already
 	// verified for this generation (Ready=True, reason=Available, matching generation).
+	var serverInfo *mcpv1alpha1.MCPServerInfo
 	if readyCondition.Status == metav1.ConditionTrue && readyCondition.Reason == ReasonAvailable {
 		existingReady := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeReady)
 		alreadyVerified := existingReady != nil &&
@@ -333,7 +334,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 			dialCtx, dialCancel := context.WithTimeout(ctx, mcpHandshakeTimeout)
 			defer dialCancel()
-			if err := dialer(dialCtx, mcpURL); err != nil {
+			info, err := dialer(dialCtx, mcpURL)
+			if err != nil {
 				// An auth rejection (401/403) proves the server is running and
 				// listening for MCP requests - treat it as reachable.
 				if isHTTPAuthError(err) {
@@ -356,7 +358,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				}
 			} else {
 				logger.Info("MCP endpoint verified successfully", "url", mcpURL)
+				serverInfo = info
 			}
+		} else {
+			// Handshake skipped - carry forward previously discovered server info.
+			serverInfo = mcpServer.Status.ServerInfo
 		}
 	}
 
@@ -370,6 +376,25 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			conditionToAC(acceptedCondition),
 			conditionToAC(readyCondition),
 		)
+
+	if serverInfo != nil {
+		si := acv1alpha1.MCPServerInfo().
+			WithName(serverInfo.Name).
+			WithVersion(serverInfo.Version).
+			WithProtocolVersion(serverInfo.ProtocolVersion)
+		if serverInfo.Instructions != "" {
+			si = si.WithInstructions(serverInfo.Instructions)
+		}
+		if serverInfo.Capabilities != nil {
+			si = si.WithCapabilities(acv1alpha1.MCPServerCapabilities().
+				WithTools(serverInfo.Capabilities.Tools).
+				WithResources(serverInfo.Capabilities.Resources).
+				WithPrompts(serverInfo.Capabilities.Prompts).
+				WithLogging(serverInfo.Capabilities.Logging).
+				WithCompletions(serverInfo.Capabilities.Completions))
+		}
+		status = status.WithServerInfo(si)
+	}
 
 	if err := r.applyStatus(ctx, mcpServer, status); err != nil {
 		logger.Error(err, "Failed to apply MCPServer status")
@@ -406,13 +431,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 // verifyMCPEndpoint performs an MCP initialize handshake against the given URL
 // to verify the endpoint actually speaks the MCP protocol.
+// On success it returns the server's self-reported identity and capabilities
+// extracted from the InitializeResult.
 // It uses a dedicated context for the connection so that cancelling it tears
 // down the transport without sending an HTTP DELETE to the server (which some
 // MCP servers do not handle gracefully).
-func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string) error {
-	// Use a child context so we can cancel the connection without affecting
-	// the caller's context. Cancelling instead of calling session.Close()
-	// avoids sending an HTTP DELETE that can destabilize some MCP servers.
+func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
 	connCtx, connCancel := context.WithCancel(ctx)
 	defer connCancel()
 
@@ -431,8 +455,37 @@ func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string)
 		MaxRetries:           -1, // disable retries; the controller handles requeue
 	}
 
-	_, err := mcpClient.Connect(connCtx, transport, nil)
-	return err
+	session, err := mcpClient.Connect(connCtx, transport, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return extractServerInfo(session.InitializeResult()), nil
+}
+
+// extractServerInfo converts an MCP InitializeResult into our CRD type.
+func extractServerInfo(res *mcp.InitializeResult) *mcpv1alpha1.MCPServerInfo {
+	if res == nil {
+		return nil
+	}
+	info := &mcpv1alpha1.MCPServerInfo{
+		ProtocolVersion: res.ProtocolVersion,
+		Instructions:    res.Instructions,
+	}
+	if res.ServerInfo != nil {
+		info.Name = res.ServerInfo.Name
+		info.Version = res.ServerInfo.Version
+	}
+	if res.Capabilities != nil {
+		info.Capabilities = &mcpv1alpha1.MCPServerCapabilities{
+			Tools:       res.Capabilities.Tools != nil,
+			Resources:   res.Capabilities.Resources != nil,
+			Prompts:     res.Capabilities.Prompts != nil,
+			Logging:     res.Capabilities.Logging != nil,
+			Completions: res.Capabilities.Completions != nil,
+		}
+	}
+	return info
 }
 
 // mcpHandshakeBackoff computes an exponential backoff delay for MCP handshake
