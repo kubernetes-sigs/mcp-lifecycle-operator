@@ -581,6 +581,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(readyCondition).NotTo(BeNil())
 		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil(), "auth error should set non-nil empty serverInfo to prevent re-dial")
 	})
 
 	It("should populate status.serverInfo from successful handshake", func() {
@@ -741,6 +742,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(readyCondition).NotTo(BeNil())
 		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil(), "auth error should set non-nil empty serverInfo to prevent re-dial")
 	})
 })
 

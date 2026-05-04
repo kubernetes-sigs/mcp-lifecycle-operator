@@ -389,13 +389,6 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-// verifyMCPEndpoint performs an MCP initialize handshake against the given URL
-// to verify the endpoint actually speaks the MCP protocol.
-// On success it returns the server's self-reported identity and capabilities
-// extracted from the InitializeResult.
-// It uses a dedicated context for the connection so that cancelling it tears
-// down the transport without sending an HTTP DELETE to the server (which some
-// MCP servers do not handle gracefully).
 // reconcileHandshake performs the MCP handshake when the deployment is available,
 // skipping it when the endpoint was already verified for the current generation.
 func (r *MCPServerReconciler) reconcileHandshake(
@@ -431,7 +424,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	if err != nil {
 		if isHTTPAuthError(err) {
 			logger.Info("MCP endpoint returned auth error, treating as reachable", "url", mcpURL, "error", err)
-			return readyCondition, nil
+			return readyCondition, &mcpv1alpha1.MCPServerInfo{}
 		}
 		logger.Info("MCP endpoint handshake failed", "url", mcpURL, "error", err)
 		cond := newCondition(
@@ -451,6 +444,13 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	return readyCondition, info
 }
 
+// verifyMCPEndpoint performs an MCP initialize handshake against the given URL
+// to verify the endpoint actually speaks the MCP protocol.
+// On success it returns the server's self-reported identity and capabilities
+// extracted from the InitializeResult.
+// It uses a dedicated context for the connection so that cancelling it tears
+// down the transport without sending an HTTP DELETE to the server (which some
+// MCP servers do not handle gracefully).
 func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
 	connCtx, connCancel := context.WithCancel(ctx)
 	defer connCancel()
