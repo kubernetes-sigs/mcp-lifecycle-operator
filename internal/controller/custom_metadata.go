@@ -13,6 +13,27 @@ import (
 
 var ErrNilMap = errors.New("destination map not initialized")
 
+const jsonNull = "null"
+
+var reservedLabelKeys = map[string]bool{
+	"app":        true,
+	"mcp-server": true,
+}
+
+func filterReservedKeys(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return m
+	}
+	filtered := make(map[string]string, len(m))
+	for k, v := range m {
+		if reservedLabelKeys[k] {
+			continue
+		}
+		filtered[k] = v
+	}
+	return filtered
+}
+
 // mergeMaps is a custom function aimed at merging maps
 // It will merge maps with exception of attempts to override
 // application defined map keys
@@ -20,22 +41,12 @@ func mergeMaps(dst, src map[string]string) error {
 	if dst == nil {
 		return ErrNilMap
 	}
-	// if no custom map is provided,
-	// not further processing is needed
 	if len(src) == 0 {
 		return nil
 	}
 
-	// copy source to destination map
-	// if destination map is empty
-	if len(dst) == 0 && len(src) > 0 {
-		maps.Copy(dst, src)
-		return nil
-	}
-
 	for k, v := range src {
-		// prevent overriding known application labels
-		if k == "app" || k == "mcp-server" {
+		if reservedLabelKeys[k] {
 			continue
 		}
 
@@ -52,7 +63,9 @@ func applyCustomDeploymentMetadata(mcpServer *mcpv1alpha1.MCPServer, deployment 
 		}
 	}
 
-	if !maps.Equal(mcpServer.Spec.ExtraLabels, currentLabels) {
+	effectiveLabels := filterReservedKeys(mcpServer.Spec.ExtraLabels)
+
+	if !maps.Equal(effectiveLabels, currentLabels) {
 		for key := range currentLabels {
 			delete(deployment.Labels, key)
 			delete(deployment.Spec.Template.Labels, key)
@@ -75,15 +88,14 @@ func applyCustomDeploymentMetadata(mcpServer *mcpv1alpha1.MCPServer, deployment 
 		delete(deployment.Annotations, managedExtraAnnotations)
 	}
 
-	if len(mcpServer.Spec.ExtraLabels) == 0 &&
+	if len(effectiveLabels) == 0 &&
 		len(mcpServer.Spec.ExtraAnnotations) == 0 &&
 		len(currentLabels) == 0 &&
 		len(currentAnnotations) == 0 {
 		return nil
 	}
 
-	// apply extra labels to deployment if supplied
-	if mcpServer.Spec.ExtraLabels != nil {
+	if len(effectiveLabels) > 0 {
 		if deployment.Labels == nil {
 			deployment.Labels = make(map[string]string)
 		}
@@ -129,20 +141,20 @@ func applyCustomDeploymentMetadata(mcpServer *mcpv1alpha1.MCPServer, deployment 
 		deployment.Annotations = make(map[string]string)
 	}
 
-	extraLabelsByte, err := json.Marshal(mcpServer.Spec.ExtraLabels)
+	extraLabelsByte, err := json.Marshal(effectiveLabels)
 	if err != nil {
 		return fmt.Errorf("marshaling .spec.extraLabels failed; %w", err)
 	}
-	if len(extraLabelsByte) != 0 && string(extraLabelsByte) != "null" {
-		deployment.Annotations[managedExtraLabels] = fmt.Sprintf("%s", extraLabelsByte)
+	if len(extraLabelsByte) != 0 && string(extraLabelsByte) != jsonNull {
+		deployment.Annotations[managedExtraLabels] = string(extraLabelsByte)
 	}
 
 	extraAnnotationsByte, err := json.Marshal(mcpServer.Spec.ExtraAnnotations)
 	if err != nil {
 		return fmt.Errorf("marshaling .spec.extraAnnotations failed; %w", err)
 	}
-	if len(extraAnnotationsByte) != 0 && string(extraAnnotationsByte) != "null" {
-		deployment.Annotations[managedExtraAnnotations] = fmt.Sprintf("%s", extraAnnotationsByte)
+	if len(extraAnnotationsByte) != 0 && string(extraAnnotationsByte) != jsonNull {
+		deployment.Annotations[managedExtraAnnotations] = string(extraAnnotationsByte)
 	}
 
 	return nil
@@ -150,7 +162,15 @@ func applyCustomDeploymentMetadata(mcpServer *mcpv1alpha1.MCPServer, deployment 
 
 func applyCustomServiceMetadata(mcpServer *mcpv1alpha1.MCPServer, service *corev1.Service) error {
 	currentLabels := make(map[string]string)
-	if !maps.Equal(mcpServer.Spec.ExtraLabels, currentLabels) {
+	if managedLabels, ok := service.Annotations[managedExtraLabels]; ok {
+		if err := json.Unmarshal([]byte(managedLabels), &currentLabels); err != nil {
+			return fmt.Errorf("retrieving current custom labels failed; %w", err)
+		}
+	}
+
+	effectiveLabels := filterReservedKeys(mcpServer.Spec.ExtraLabels)
+
+	if !maps.Equal(effectiveLabels, currentLabels) {
 		for key := range currentLabels {
 			delete(service.Labels, key)
 		}
@@ -171,7 +191,7 @@ func applyCustomServiceMetadata(mcpServer *mcpv1alpha1.MCPServer, service *corev
 		delete(service.Annotations, managedExtraAnnotations)
 	}
 
-	if len(mcpServer.Spec.ExtraLabels) == 0 &&
+	if len(effectiveLabels) == 0 &&
 		len(mcpServer.Spec.ExtraAnnotations) == 0 &&
 		len(currentLabels) == 0 &&
 		len(currentAnnotations) == 0 {
@@ -186,7 +206,7 @@ func applyCustomServiceMetadata(mcpServer *mcpv1alpha1.MCPServer, service *corev
 		service.Annotations = make(map[string]string)
 	}
 
-	if mcpServer.Spec.ExtraLabels != nil {
+	if len(effectiveLabels) > 0 {
 		if err := mergeMaps(service.Labels, mcpServer.Spec.ExtraLabels); err != nil {
 			return fmt.Errorf("appending service labels failed; %w", err)
 		}
@@ -198,26 +218,28 @@ func applyCustomServiceMetadata(mcpServer *mcpv1alpha1.MCPServer, service *corev
 		}
 	}
 
-	extraLabelsByte, err := json.Marshal(mcpServer.Spec.ExtraLabels)
+	extraLabelsByte, err := json.Marshal(effectiveLabels)
 	if err != nil {
 		return fmt.Errorf("marshaling .spec.extraLabels failed; %w", err)
 	}
-	if len(extraLabelsByte) != 0 && string(extraLabelsByte) != "null" {
-		service.Annotations[managedExtraLabels] = fmt.Sprintf("%s", extraLabelsByte)
+	if len(extraLabelsByte) != 0 && string(extraLabelsByte) != jsonNull {
+		service.Annotations[managedExtraLabels] = string(extraLabelsByte)
 	}
 
 	extraAnnotationsByte, err := json.Marshal(mcpServer.Spec.ExtraAnnotations)
 	if err != nil {
 		return fmt.Errorf("marshaling .spec.extraAnnotations failed; %w", err)
 	}
-	if len(extraAnnotationsByte) != 0 && string(extraAnnotationsByte) != "null" {
-		service.Annotations[managedExtraAnnotations] = fmt.Sprintf("%s", extraAnnotationsByte)
+	if len(extraAnnotationsByte) != 0 && string(extraAnnotationsByte) != jsonNull {
+		service.Annotations[managedExtraAnnotations] = string(extraAnnotationsByte)
 	}
 
 	return nil
 }
 
 func deploymentLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, deployment *appsv1.Deployment) bool {
+	effectiveLabels := filterReservedKeys(mcpServer.Spec.ExtraLabels)
+
 	var currentLabels map[string]string
 	vals, ok := deployment.Annotations[managedExtraLabels]
 	if ok {
@@ -226,12 +248,12 @@ func deploymentLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, deployment *appsv
 		}
 
 		if len(currentLabels) > 0 {
-			if len(mcpServer.Spec.ExtraLabels) != 0 &&
-				!maps.Equal(currentLabels, mcpServer.Spec.ExtraLabels) {
+			if len(effectiveLabels) != 0 &&
+				!maps.Equal(currentLabels, effectiveLabels) {
 				return true
 			}
 
-			if len(mcpServer.Spec.ExtraLabels) == 0 {
+			if len(effectiveLabels) == 0 {
 				return true
 			}
 
@@ -248,7 +270,7 @@ func deploymentLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, deployment *appsv
 	}
 
 	if len(currentLabels) == 0 &&
-		len(mcpServer.Spec.ExtraLabels) != 0 {
+		len(effectiveLabels) != 0 {
 		return true
 	}
 
@@ -273,7 +295,7 @@ func deploymentAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, deployment *
 				return true
 			}
 
-			// check if current annoations and .spec.ExtraAnnotations match
+			// check if current annotations and .spec.ExtraAnnotations match
 			for k := range currentAnnotations {
 				if _, ok := deployment.Annotations[k]; !ok {
 					return true
@@ -294,6 +316,8 @@ func deploymentAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, deployment *
 }
 
 func serviceLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, service *corev1.Service) bool {
+	effectiveLabels := filterReservedKeys(mcpServer.Spec.ExtraLabels)
+
 	var currentLabels map[string]string
 	vals, ok := service.Annotations[managedExtraLabels]
 	if ok {
@@ -302,12 +326,12 @@ func serviceLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, service *corev1.Serv
 		}
 
 		if len(currentLabels) > 0 {
-			if len(mcpServer.Spec.ExtraLabels) != 0 &&
-				!maps.Equal(currentLabels, mcpServer.Spec.ExtraLabels) {
+			if len(effectiveLabels) != 0 &&
+				!maps.Equal(currentLabels, effectiveLabels) {
 				return true
 			}
 
-			if len(mcpServer.Spec.ExtraLabels) == 0 {
+			if len(effectiveLabels) == 0 {
 				return true
 			}
 
@@ -318,11 +342,10 @@ func serviceLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, service *corev1.Serv
 				}
 			}
 		}
-
 	}
 
 	if len(currentLabels) == 0 &&
-		len(mcpServer.Spec.ExtraLabels) != 0 {
+		len(effectiveLabels) != 0 {
 		return true
 	}
 
@@ -347,7 +370,7 @@ func serviceAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, service *corev1
 				return true
 			}
 
-			// check if current labels and .spec.ExtraAnnotations match
+			// check if current annotations and .spec.ExtraAnnotations match
 			for k := range currentAnnotations {
 				if _, ok := service.Annotations[k]; !ok {
 					return true

@@ -131,7 +131,6 @@ func Test_mergeMaps(t *testing.T) {
 			},
 			want: want{
 				m: map[string]string{
-					"app": "web",
 					"env": "production",
 				},
 				wantErr: false,
@@ -441,7 +440,9 @@ func Test_applyCustomDeploymentMetadata(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			applyCustomDeploymentMetadata(tc.args.mcp, tc.args.deployment)
+			if err := applyCustomDeploymentMetadata(tc.args.mcp, tc.args.deployment); err != nil {
+				t.Fatalf("applyCustomDeploymentMetadata returned unexpected error: %v", err)
+			}
 			if !maps.Equal(tc.args.deployment.Labels, tc.want.Labels) {
 				t.Errorf("wanted deployment labels to be %v but got, %v",
 					tc.want.Labels,
@@ -531,6 +532,100 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 			},
 		},
 		{
+			name: "remove all custom labels on service",
+			args: extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				service: &corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							"app":                      "webserver",
+							"kubernetes.io/managed-by": "mcp-lifecycle-operator",
+						},
+						Annotations: map[string]string{
+							"mcp.x-k8s.io/managed-extra-labels": "{\"kubernetes.io/managed-by\":\"mcp-lifecycle-operator\"}",
+						},
+					},
+				},
+			},
+			want: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "webserver",
+					},
+					Annotations: map[string]string{},
+				},
+			},
+		},
+		{
+			name: "remove some custom labels on service",
+			args: extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{
+							"department": "procurement",
+						},
+					},
+				},
+				service: &corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							"app":                      "webserver",
+							"department":               "procurement",
+							"kubernetes.io/managed-by": "mcp-lifecycle-operator",
+						},
+						Annotations: map[string]string{
+							"mcp.x-k8s.io/managed-extra-labels": "{\"kubernetes.io/managed-by\":\"mcp-lifecycle-operator\",\"department\":\"procurement\"}",
+						},
+					},
+				},
+			},
+			want: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app":        "webserver",
+						"department": "procurement",
+					},
+					Annotations: map[string]string{
+						"mcp.x-k8s.io/managed-extra-labels": "{\"department\":\"procurement\"}",
+					},
+				},
+			},
+		},
+		{
+			name: "reserved keys in spec are not tracked or removed",
+			args: extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{
+							"app":        "should-be-ignored",
+							"mcp-server": "should-be-ignored",
+							"env":        "production",
+						},
+					},
+				},
+				service: &corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							"app": "webserver",
+						},
+					},
+				},
+			},
+			want: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "webserver",
+						"env": "production",
+					},
+					Annotations: map[string]string{
+						"mcp.x-k8s.io/managed-extra-labels": "{\"env\":\"production\"}",
+					},
+				},
+			},
+		},
+		{
 			name: "render service with extra annotations",
 			args: extraMetaArgs{
 				mcp: &mcpv1alpha1.MCPServer{
@@ -564,7 +659,9 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			applyCustomServiceMetadata(tc.args.mcp, tc.args.service)
+			if err := applyCustomServiceMetadata(tc.args.mcp, tc.args.service); err != nil {
+				t.Fatalf("applyCustomServiceMetadata returned unexpected error: %v", err)
+			}
 			if !maps.Equal(tc.want.Labels, tc.args.service.Labels) {
 				t.Errorf("wanted service labels to be %v but got, %v",
 					tc.want.Labels,

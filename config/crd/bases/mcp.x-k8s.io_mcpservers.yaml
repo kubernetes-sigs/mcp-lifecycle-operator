@@ -582,16 +582,15 @@ spec:
               extraAnnotations:
                 additionalProperties:
                   type: string
-                description: |-
-                  ExtraAnnotations provides end users a mechanism to add annotations to the MCPServer object child resources.
-                  The annotations would be appended to the existing annotations on the child resources
+                description: ExtraAnnotations are applied to the Deployment metadata,
+                  PodTemplate metadata, and Service metadata.
                 type: object
               extraLabels:
                 additionalProperties:
                   type: string
-                description: |-
-                  ExtraLabels provides end users a mechanism to add labels to the MCPServer object child resources.
-                  The labels should be appended to the existing labels
+                description: ExtraLabels are applied to the Deployment metadata, PodTemplate
+                  metadata, and Service metadata. The operator-managed keys "app"
+                  and "mcp-server" cannot be overridden.
                 type: object
               runtime:
                 description: |-

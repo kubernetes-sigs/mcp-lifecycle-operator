@@ -762,33 +762,9 @@ func (r *MCPServerReconciler) reconcileDeployment(
 		ownershipChanged = oldOwnerUID != string(newOwner.UID)
 	}
 
-	oldPodSpec := existingDeployment.Spec.Template.Spec
-	newPodSpec := deployment.Spec.Template.Spec
-
-	var needsUpdate bool
-	if len(oldPodSpec.Containers) == 0 {
+	needsUpdate := deploymentNeedsUpdate(mcpServer, existingDeployment, deployment, ownershipChanged)
+	if needsUpdate && len(existingDeployment.Spec.Template.Spec.Containers) == 0 {
 		logger.Info("Recovering deployment with empty containers list", "name", existingDeployment.Name)
-		needsUpdate = true
-	} else {
-		needsUpdate = !equality.Semantic.DeepDerivative(newPodSpec, oldPodSpec) ||
-			// Explicit DeepEqual checks for fields that can be zeroed/removed by the user.
-			// DeepDerivative skips zero-value fields in the desired spec, so removals
-			// (clearing args, env, volumes, etc.) would go undetected without these.
-			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].Args, newPodSpec.Containers[0].Args) ||
-			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].Env, newPodSpec.Containers[0].Env) ||
-			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].EnvFrom, newPodSpec.Containers[0].EnvFrom) ||
-			!equality.Semantic.DeepEqual(oldPodSpec.SecurityContext, newPodSpec.SecurityContext) ||
-			!equality.Semantic.DeepEqual(oldPodSpec.Volumes, newPodSpec.Volumes) ||
-			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].VolumeMounts, newPodSpec.Containers[0].VolumeMounts) ||
-			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].Resources, newPodSpec.Containers[0].Resources) ||
-			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].LivenessProbe, newPodSpec.Containers[0].LivenessProbe) ||
-			!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].ReadinessProbe, newPodSpec.Containers[0].ReadinessProbe) ||
-			oldPodSpec.ServiceAccountName != newPodSpec.ServiceAccountName ||
-			!equality.Semantic.DeepEqual(existingDeployment.Spec.Replicas, deployment.Spec.Replicas) ||
-			!equality.Semantic.DeepEqual(existingDeployment.Spec.Template.Annotations, deployment.Spec.Template.Annotations) ||
-			deploymentAnnotationsChanged(mcpServer, existingDeployment) ||
-			deploymentLabelsChanged(mcpServer, existingDeployment) ||
-			ownershipChanged
 	}
 	if needsUpdate {
 		logger.Info("Updating Deployment", "name", existingDeployment.Name)
@@ -814,6 +790,35 @@ func (r *MCPServerReconciler) reconcileDeployment(
 	}
 
 	return existingDeployment, nil
+}
+
+func deploymentNeedsUpdate(mcpServer *mcpv1alpha1.MCPServer, existing, desired *appsv1.Deployment, ownershipChanged bool) bool {
+	oldPodSpec := existing.Spec.Template.Spec
+	newPodSpec := desired.Spec.Template.Spec
+
+	if len(oldPodSpec.Containers) == 0 {
+		return true
+	}
+
+	return !equality.Semantic.DeepDerivative(newPodSpec, oldPodSpec) ||
+		// Explicit DeepEqual checks for fields that can be zeroed/removed by the user.
+		// DeepDerivative skips zero-value fields in the desired spec, so removals
+		// (clearing args, env, volumes, etc.) would go undetected without these.
+		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].Args, newPodSpec.Containers[0].Args) ||
+		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].Env, newPodSpec.Containers[0].Env) ||
+		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].EnvFrom, newPodSpec.Containers[0].EnvFrom) ||
+		!equality.Semantic.DeepEqual(oldPodSpec.SecurityContext, newPodSpec.SecurityContext) ||
+		!equality.Semantic.DeepEqual(oldPodSpec.Volumes, newPodSpec.Volumes) ||
+		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].VolumeMounts, newPodSpec.Containers[0].VolumeMounts) ||
+		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].Resources, newPodSpec.Containers[0].Resources) ||
+		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].LivenessProbe, newPodSpec.Containers[0].LivenessProbe) ||
+		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].ReadinessProbe, newPodSpec.Containers[0].ReadinessProbe) ||
+		oldPodSpec.ServiceAccountName != newPodSpec.ServiceAccountName ||
+		!equality.Semantic.DeepEqual(existing.Spec.Replicas, desired.Spec.Replicas) ||
+		!equality.Semantic.DeepEqual(existing.Spec.Template.Annotations, desired.Spec.Template.Annotations) ||
+		deploymentAnnotationsChanged(mcpServer, existing) ||
+		deploymentLabelsChanged(mcpServer, existing) ||
+		ownershipChanged
 }
 
 // createDeployment creates a Deployment for the MCPServer
