@@ -2,7 +2,7 @@
 # https://github.com/kubernetes-sigs/kubebuilder/blob/v4.11.1/pkg/plugins/golang/v4/scaffolds/internal/templates/dockerfile.go
 
 # Build the manager binary
-FROM golang:1.26.2 AS builder
+FROM golang:1.26.3 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
