@@ -111,8 +111,12 @@ func recordCondition(name, namespace, condType, status, reason string) {
 
 // cleanupMetrics removes all metrics for a deleted MCPServer.
 func cleanupMetrics(name, namespace string) {
-	conditionInfo.DeletePartialMatch(prometheus.Labels{
+	labels := prometheus.Labels{
 		"name":      name,
 		"namespace": namespace,
-	})
+	}
+	conditionInfo.DeletePartialMatch(labels)
+	validationFailuresTotal.DeletePartialMatch(labels)
+	deploymentFailuresTotal.DeletePartialMatch(labels)
+	serviceFailuresTotal.DeletePartialMatch(labels)
 }

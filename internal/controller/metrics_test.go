@@ -180,7 +180,22 @@ var _ = Describe("MCPServer Metrics", func() {
 						Ref: "docker.io/library/test-image:latest",
 					},
 				},
-				Config: mcpv1alpha1.ServerConfig{Port: 8080},
+				Config: mcpv1alpha1.ServerConfig{
+					Port: 8080,
+					Storage: []mcpv1alpha1.StorageMount{
+						{
+							Path: "/config",
+							Source: mcpv1alpha1.StorageSource{
+								Type: mcpv1alpha1.StorageTypeConfigMap,
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "nonexistent-configmap",
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -190,6 +205,7 @@ var _ = Describe("MCPServer Metrics", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(testutil.CollectAndCount(conditionInfo)).To(BeNumerically(">", 0))
+		Expect(testutil.CollectAndCount(validationFailuresTotal)).To(BeNumerically(">", 0))
 
 		// Delete the resource and reconcile again
 		Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -197,6 +213,7 @@ var _ = Describe("MCPServer Metrics", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(testutil.CollectAndCount(conditionInfo)).To(Equal(0))
+		Expect(testutil.CollectAndCount(validationFailuresTotal)).To(Equal(0))
 	})
 
 	It("should record deployment failure metrics and Ready condition when deployment reconciliation fails", func() {
