@@ -28,7 +28,11 @@ package v1alpha1
 type MCPConfigApplyConfiguration struct {
 	// Stateless indicates whether the MCP server is stateless (does not maintain session state).
 	// Only set this to true if the MCP server you are deploying declares that it is stateless.
-	// Defaults to false (stateful)
+	// When true, the generated Service uses SessionAffinity "None", allowing
+	// requests to be freely load-balanced across replicas.
+	// When false or unset, the Service uses SessionAffinity "ClientIP" so that
+	// a given client's requests are routed to the same pod.
+	// Defaults to false (stateful).
 	Stateless *bool `json:"stateless,omitempty"`
 }
 

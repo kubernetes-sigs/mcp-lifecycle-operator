@@ -360,7 +360,7 @@ type MCPServerSpec struct {
 	// This section describes the MCP server's protocol-level behavior,
 	// as opposed to how it is sourced, configured, or managed at runtime.
 	// +optional
-	MCP MCPConfig `json:"mcp,omitempty"`
+	MCP MCPConfig `json:"mcp,omitzero"`
 }
 
 // MCPConfig defines Model Context Protocol specific properties of the server.
@@ -370,7 +370,11 @@ type MCPServerSpec struct {
 type MCPConfig struct {
 	// Stateless indicates whether the MCP server is stateless (does not maintain session state).
 	// Only set this to true if the MCP server you are deploying declares that it is stateless.
-	// Defaults to false (stateful)
+	// When true, the generated Service uses SessionAffinity "None", allowing
+	// requests to be freely load-balanced across replicas.
+	// When false or unset, the Service uses SessionAffinity "ClientIP" so that
+	// a given client's requests are routed to the same pod.
+	// Defaults to false (stateful).
 	// +optional
 	Stateless *bool `json:"stateless,omitempty"`
 }

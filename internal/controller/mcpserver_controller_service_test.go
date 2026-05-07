@@ -308,6 +308,29 @@ var _ = Describe("MCPServer Controller - Stateless Service", func() {
 		Expect(svc.Spec.SessionAffinity).To(Equal(corev1.ServiceAffinityNone))
 	})
 
+	It("should create a service with ClientIP session affinity when mcp is not set", func() {
+		resource := newTestMCPServer(resourceName)
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		err := reconciler.reconcileService(ctx, mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+
+		svc := &corev1.Service{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      resourceName,
+			Namespace: "default",
+		}, svc)).To(Succeed())
+		Expect(svc.Spec.SessionAffinity).To(Equal(corev1.ServiceAffinityClientIP))
+	})
+
 	It("should create a service with ClientIP session affinity when stateless is false", func() {
 		resource := newTestMCPServer(resourceName)
 		resource.Spec.MCP.Stateless = new(false)
@@ -367,6 +390,43 @@ var _ = Describe("MCPServer Controller - Stateless Service", func() {
 		By("Verifying session affinity was updated to None")
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, svc)).To(Succeed())
 		Expect(svc.Spec.SessionAffinity).To(Equal(corev1.ServiceAffinityNone))
+	})
+
+	It("should update session affinity when stateless changes from true to false", func() {
+		resource := newTestMCPServer(resourceName)
+		resource.Spec.MCP.Stateless = new(true)
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+		controllerReconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		By("Reconciling to create the service with no session affinity")
+		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		svc := &corev1.Service{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, svc)).To(Succeed())
+		Expect(svc.Spec.SessionAffinity).To(Equal(corev1.ServiceAffinityNone))
+
+		By("Updating stateless to false")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.MCP.Stateless = new(false)
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		By("Reconciling again to pick up the stateless change")
+		_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying session affinity was updated to ClientIP")
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, svc)).To(Succeed())
+		Expect(svc.Spec.SessionAffinity).To(Equal(corev1.ServiceAffinityClientIP))
 	})
 })
 
