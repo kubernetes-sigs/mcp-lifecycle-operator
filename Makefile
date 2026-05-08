@@ -91,10 +91,6 @@ cover-html: ## Open HTML coverage in a browser (requires cover.out; run make tes
 cover-clean: ## Remove cover.out and out/coverage.{txt,html} from test-cover.
 	rm -f $(COVER_PROFILE) $(COVER_OUTPUT_DIR)/coverage.txt $(COVER_OUTPUT_DIR)/coverage.html
 
-# TODO(user): To use a different vendor for e2e tests, modify the setup under 'test/e2e'.
-# The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
-# CertManager is installed by default; skip with:
-# - CERT_MANAGER_INSTALL_SKIP=true
 KIND_CLUSTER ?= mcp-lifecycle-operator-test-e2e
 
 .PHONY: setup-test-e2e
@@ -111,11 +107,6 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
 	esac
 
-.PHONY: test-e2e
-test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
-	$(MAKE) cleanup-test-e2e
-
 .PHONY: deploy-test-e2e
 deploy-test-e2e: setup-test-e2e manifests generate ## Build and deploy the operator to the Kind cluster for e2e tests.
 	$(MAKE) docker-build IMG=example.com/mcp-lifecycle-operator:e2e
@@ -123,8 +114,8 @@ deploy-test-e2e: setup-test-e2e manifests generate ## Build and deploy the opera
 	$(MAKE) install deploy IMG=example.com/mcp-lifecycle-operator:e2e
 	$(KUBECTL) rollout status deployment/mcp-lifecycle-operator-controller-manager -n mcp-lifecycle-operator-system --timeout=120s
 
-.PHONY: test-e2e-new
-test-e2e-new: ## Run the new e2e tests (requires operator already deployed, see deploy-test-e2e).
+.PHONY: test-e2e
+test-e2e: ## Run the e2e tests (requires operator already deployed, see deploy-test-e2e).
 	go test -tags=e2e_new ./test/e2e_new/ -v -count=1 -timeout 10m
 
 .PHONY: cleanup-test-e2e
