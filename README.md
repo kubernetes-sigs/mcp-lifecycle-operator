@@ -181,7 +181,7 @@ make test
 
 # Run e2e tests (requires Kind)
 make deploy-test-e2e   # creates Kind cluster, builds image, deploys operator
-make test-e2e-new      # runs e2e tests against the cluster
+make test-e2e          # runs e2e tests against the cluster
 make cleanup-test-e2e  # tears down the Kind cluster
 ```
 

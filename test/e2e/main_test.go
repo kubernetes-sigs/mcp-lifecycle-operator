@@ -1,4 +1,4 @@
-//go:build e2e_new
+//go:build e2e
 
 /*
 Copyright 2026 The Kubernetes Authors
@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package e2e_new
+package e2e
 
 import (
 	"context"
@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e_new/framework"
+	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
 )
 
 var testenv env.Environment
