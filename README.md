@@ -176,8 +176,13 @@ make manifests generate
 # Build binary
 make build
 
-# Run tests
+# Run unit tests
 make test
+
+# Run e2e tests (requires Kind)
+make deploy-test-e2e   # creates Kind cluster, builds image, deploys operator
+make test-e2e-new      # runs e2e tests against the cluster
+make cleanup-test-e2e  # tears down the Kind cluster
 ```
 
 ## Community, discussion, contribution, and support

@@ -1,0 +1,175 @@
+//go:build e2e_new
+
+/*
+Copyright 2026 The Kubernetes Authors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package e2e_new
+
+import (
+	"context"
+	"testing"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
+	"sigs.k8s.io/e2e-framework/pkg/features"
+)
+
+func TestMCPServerHappyPath(t *testing.T) {
+	feature := features.New("MCPServer happy path").
+		WithLabel("type", "lifecycle").
+		WithLabel("component", "mcpserver").
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return SetupMCPServer(ctx, t, cfg, "test-server", false)
+		}).
+		Assess("MCPServer becomes Ready", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			WaitForMCPServerCondition(ctx, t, r, server, "Ready", metav1.ConditionTrue)
+			t.Log("MCPServer is Ready")
+
+			return ctx
+		}).
+		Assess("Deployment and Service are created", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := ServerFromContext(ctx)
+			ns := server.Namespace
+			r := cfg.Client().Resources()
+
+			dep := &appsv1.Deployment{}
+			if err := r.Get(ctx, server.Name, ns, dep); err != nil {
+				t.Fatalf("Deployment not found: %v", err)
+			}
+			t.Logf("Deployment %s exists with %d ready replicas", dep.Name, dep.Status.ReadyReplicas)
+
+			svc := &corev1.Service{}
+			if err := r.Get(ctx, server.Name, ns, svc); err != nil {
+				t.Fatalf("Service not found: %v", err)
+			}
+			if svc.Spec.Type != corev1.ServiceTypeClusterIP {
+				t.Fatalf("expected Service type ClusterIP, got %s", svc.Spec.Type)
+			}
+			t.Logf("Service %s exists with type %s", svc.Name, svc.Spec.Type)
+
+			return ctx
+		}).
+		Assess("status fields are populated correctly", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			// Re-fetch to get latest status.
+			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
+				t.Fatalf("failed to get MCPServer: %v", err)
+			}
+
+			// observedGeneration matches generation
+			if server.Status.ObservedGeneration != server.Generation {
+				t.Fatalf("observedGeneration %d != generation %d",
+					server.Status.ObservedGeneration, server.Generation)
+			}
+
+			// address URL is correct
+			AssertAddressURL(t, server, 3001)
+
+			// Accepted condition is True
+			accepted := GetMCPServerCondition(server, "Accepted")
+			if accepted == nil || accepted.Status != metav1.ConditionTrue {
+				t.Fatal("Accepted condition is not True")
+			}
+
+			t.Logf("status: observedGeneration=%d, address=%s, Accepted=True",
+				server.Status.ObservedGeneration, server.Status.Address.URL)
+
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return TeardownMCPServer(ctx, t, cfg)
+		}).
+		Feature()
+
+	testenv.Test(t, feature)
+}
+
+func TestMCPServerUpdatePort(t *testing.T) {
+	feature := features.New("MCPServer port update").
+		WithLabel("type", "update").
+		WithLabel("component", "mcpserver").
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return SetupMCPServer(ctx, t, cfg, "test-server", true)
+		}).
+		Assess("update port from 3001 to 3002", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
+				t.Fatalf("failed to get MCPServer: %v", err)
+			}
+
+			server.Spec.Config.Port = 3002
+			if err := r.Update(ctx, server); err != nil {
+				t.Fatalf("failed to update MCPServer port: %v", err)
+			}
+			t.Log("updated MCPServer port to 3002")
+
+			return ctx
+		}).
+		Assess("MCPServer becomes Ready with updated generation", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			WaitForMCPServerReconciledAndReady(ctx, t, r, server)
+			t.Log("MCPServer is Ready after port update")
+
+			return ctx
+		}).
+		Assess("status and resources reflect updated port", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
+				t.Fatalf("failed to get MCPServer: %v", err)
+			}
+
+			AssertAddressURL(t, server, 3002)
+
+			svc := &corev1.Service{}
+			if err := r.Get(ctx, server.Name, server.Namespace, svc); err != nil {
+				t.Fatalf("Service not found: %v", err)
+			}
+			if len(svc.Spec.Ports) == 0 || svc.Spec.Ports[0].Port != 3002 {
+				actual := int32(0)
+				if len(svc.Spec.Ports) > 0 {
+					actual = svc.Spec.Ports[0].Port
+				}
+				t.Fatalf("expected Service port 3002, got %d", actual)
+			}
+
+			AssertConditionStable(ctx, t, r, server, "Ready", metav1.ConditionTrue)
+
+			t.Logf("port update verified: address=%s, servicePort=%d",
+				server.Status.Address.URL, svc.Spec.Ports[0].Port)
+
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return TeardownMCPServer(ctx, t, cfg)
+		}).
+		Feature()
+
+	testenv.Test(t, feature)
+}

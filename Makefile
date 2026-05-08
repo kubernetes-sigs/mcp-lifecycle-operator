@@ -116,6 +116,17 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 	$(MAKE) cleanup-test-e2e
 
+.PHONY: deploy-test-e2e
+deploy-test-e2e: setup-test-e2e manifests generate ## Build and deploy the operator to the Kind cluster for e2e tests.
+	$(MAKE) docker-build IMG=example.com/mcp-lifecycle-operator:e2e
+	$(KIND) load docker-image example.com/mcp-lifecycle-operator:e2e --name $(KIND_CLUSTER)
+	$(MAKE) install deploy IMG=example.com/mcp-lifecycle-operator:e2e
+	$(KUBECTL) rollout status deployment/mcp-lifecycle-operator-controller-manager -n mcp-lifecycle-operator-system --timeout=120s
+
+.PHONY: test-e2e-new
+test-e2e-new: ## Run the new e2e tests (requires operator already deployed, see deploy-test-e2e).
+	go test -tags=e2e_new ./test/e2e_new/ -v -count=1 -timeout 10m
+
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
