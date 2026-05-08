@@ -29,7 +29,8 @@ jobs:
       - name: Verify kind installation
         run: kind version
 
-      - name: Running Test e2e
-        run: |
-          go mod tidy
-          make test-e2e
+      - name: Deploy operator to Kind cluster
+        run: make deploy-test-e2e
+
+      - name: Run e2e tests
+        run: make test-e2e
