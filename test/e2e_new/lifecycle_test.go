@@ -28,6 +28,8 @@ import (
 
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
+
+	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e_new/framework"
 )
 
 func TestMCPServerHappyPath(t *testing.T) {
@@ -35,19 +37,19 @@ func TestMCPServerHappyPath(t *testing.T) {
 		WithLabel("type", "lifecycle").
 		WithLabel("component", "mcpserver").
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			return SetupMCPServer(ctx, t, cfg, "test-server", false)
+			return f.SetupMCPServer(ctx, t, cfg, "test-server", false)
 		}).
 		Assess("MCPServer becomes Ready", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			server := ServerFromContext(ctx)
+			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			WaitForMCPServerCondition(ctx, t, r, server, "Ready", metav1.ConditionTrue)
+			f.WaitForMCPServerCondition(ctx, t, r, server, "Ready", metav1.ConditionTrue)
 			t.Log("MCPServer is Ready")
 
 			return ctx
 		}).
 		Assess("Deployment and Service are created", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			server := ServerFromContext(ctx)
+			server := f.ServerFromContext(ctx)
 			ns := server.Namespace
 			r := cfg.Client().Resources()
 
@@ -69,7 +71,7 @@ func TestMCPServerHappyPath(t *testing.T) {
 			return ctx
 		}).
 		Assess("status fields are populated correctly", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			server := ServerFromContext(ctx)
+			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
 			// Re-fetch to get latest status.
@@ -84,10 +86,10 @@ func TestMCPServerHappyPath(t *testing.T) {
 			}
 
 			// address URL is correct
-			AssertAddressURL(t, server, 3001)
+			f.AssertAddressURL(t, server, 3001)
 
 			// Accepted condition is True
-			accepted := GetMCPServerCondition(server, "Accepted")
+			accepted := f.GetMCPServerCondition(server, "Accepted")
 			if accepted == nil || accepted.Status != metav1.ConditionTrue {
 				t.Fatal("Accepted condition is not True")
 			}
@@ -98,7 +100,7 @@ func TestMCPServerHappyPath(t *testing.T) {
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			return TeardownMCPServer(ctx, t, cfg)
+			return f.TeardownMCPServer(ctx, t, cfg)
 		}).
 		Feature()
 
@@ -110,10 +112,10 @@ func TestMCPServerUpdatePort(t *testing.T) {
 		WithLabel("type", "update").
 		WithLabel("component", "mcpserver").
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			return SetupMCPServer(ctx, t, cfg, "test-server", true)
+			return f.SetupMCPServer(ctx, t, cfg, "test-server", true)
 		}).
 		Assess("update port from 3001 to 3002", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			server := ServerFromContext(ctx)
+			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
@@ -129,23 +131,23 @@ func TestMCPServerUpdatePort(t *testing.T) {
 			return ctx
 		}).
 		Assess("MCPServer becomes Ready with updated generation", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			server := ServerFromContext(ctx)
+			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			WaitForMCPServerReconciledAndReady(ctx, t, r, server)
+			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
 			t.Log("MCPServer is Ready after port update")
 
 			return ctx
 		}).
 		Assess("status and resources reflect updated port", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			server := ServerFromContext(ctx)
+			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
 				t.Fatalf("failed to get MCPServer: %v", err)
 			}
 
-			AssertAddressURL(t, server, 3002)
+			f.AssertAddressURL(t, server, 3002)
 
 			svc := &corev1.Service{}
 			if err := r.Get(ctx, server.Name, server.Namespace, svc); err != nil {
@@ -159,7 +161,7 @@ func TestMCPServerUpdatePort(t *testing.T) {
 				t.Fatalf("expected Service port 3002, got %d", actual)
 			}
 
-			AssertConditionStable(ctx, t, r, server, "Ready", metav1.ConditionTrue)
+			f.AssertConditionStable(ctx, t, r, server, "Ready", metav1.ConditionTrue)
 
 			t.Logf("port update verified: address=%s, servicePort=%d",
 				server.Status.Address.URL, svc.Spec.Ports[0].Port)
@@ -167,7 +169,7 @@ func TestMCPServerUpdatePort(t *testing.T) {
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			return TeardownMCPServer(ctx, t, cfg)
+			return f.TeardownMCPServer(ctx, t, cfg)
 		}).
 		Feature()
 

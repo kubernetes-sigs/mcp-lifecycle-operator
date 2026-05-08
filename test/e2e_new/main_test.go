@@ -21,6 +21,7 @@ package e2e_new
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -31,7 +32,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	. "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e_new/framework"
+	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e_new/framework"
 )
 
 var testenv env.Environment
@@ -57,12 +58,12 @@ func TestMain(m *testing.M) {
 			return ctx, err
 		}
 		t.Logf("created namespace %s", ns)
-		ctx = context.WithValue(ctx, NsKey, ns)
+		ctx = context.WithValue(ctx, f.NsKey, ns)
 		return ctx, nil
 	})
 
 	testenv.AfterEachTest(func(ctx context.Context, cfg *envconf.Config, t *testing.T) (context.Context, error) {
-		ns := ctx.Value(NsKey).(string)
+		ns := ctx.Value(f.NsKey).(string)
 		if t.Failed() {
 			dumpDiagnostics(ctx, t, cfg, ns)
 		}
@@ -123,6 +124,26 @@ func dumpDiagnostics(ctx context.Context, t *testing.T, cfg *envconf.Config, ns 
 			t.Logf("Event %s %s/%s: %s - %s",
 				e.Type, e.InvolvedObject.Kind, e.InvolvedObject.Name,
 				e.Reason, e.Message)
+		}
+	}
+
+	// Also dump controller-manager pod logs from the operator namespace,
+	// since the controller is relevant to all test failures.
+	t.Log("--- controller-manager logs ---")
+	controllerNs := "mcp-lifecycle-operator-system"
+	rCtrl := cfg.Client().Resources(controllerNs)
+	var ctrlPods corev1.PodList
+	if err := rCtrl.List(ctx, &ctrlPods); err == nil {
+		for _, p := range ctrlPods.Items {
+			if p.Status.Phase == corev1.PodRunning {
+				logs := f.PodLogs(ctx, t, cfg, p.Name, controllerNs)
+				// Truncate to last 50 lines to keep output manageable.
+				lines := strings.Split(logs, "\n")
+				if len(lines) > 50 {
+					lines = lines[len(lines)-50:]
+				}
+				t.Logf("Pod %s (last %d lines):\n%s", p.Name, len(lines), strings.Join(lines, "\n"))
+			}
 		}
 	}
 
