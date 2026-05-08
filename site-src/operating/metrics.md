@@ -51,7 +51,7 @@ Custom metrics use the Prometheus namespace **`mcpserver`** (exported names star
 | `status` | `True`, `False`, or `Unknown` |
 | `reason` | Condition reason (intended to mirror `.status.conditions[]`; see [Gauge versus API status](#gauge-versus-api-status)) |
 
-Only one active series exists per `(name, namespace, type)`. On delete, gauge series for that object are removed; **`*_failures_total` counters are not**—time series may remain in Prometheus.
+Only one active series exists per `(name, namespace, type)`. On delete, both gauge series and **`*_failures_total` counter series** for that object are removed from the exporter.
 
 **Typical reasons**
 
