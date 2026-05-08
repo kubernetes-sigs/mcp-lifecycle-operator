@@ -114,14 +114,11 @@ var _ = Describe("MCPServer Controller - reconcileDeployment", func() {
 			},
 			Spec: appsv1.DeploymentSpec{
 				Selector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{"mcp-server": "test-empty-containers"},
+					MatchLabels: managedWorkloadSelector("test-empty-containers"),
 				},
 				Template: corev1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{
-							"app":        "mcp-server",
-							"mcp-server": "test-empty-containers",
-						},
+						Labels: managedWorkloadLabels("test-empty-containers"),
 					},
 					Spec: corev1.PodSpec{
 						Containers: nil,

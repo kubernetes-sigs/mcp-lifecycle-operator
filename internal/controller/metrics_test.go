@@ -239,7 +239,7 @@ var _ = Describe("MCPServer Metrics", func() {
 
 		// Deployment failure counter incremented
 		Expect(testutil.ToFloat64(deploymentFailuresTotal.WithLabelValues(
-			depFailName, namespace, "ReconcileError",
+			depFailName, namespace, MetricReasonReconcileError,
 		))).To(Equal(1.0))
 
 		// Ready=False condition recorded
@@ -288,7 +288,7 @@ var _ = Describe("MCPServer Metrics", func() {
 
 		// Service failure counter incremented
 		Expect(testutil.ToFloat64(serviceFailuresTotal.WithLabelValues(
-			svcFailName, namespace, "ReconcileError",
+			svcFailName, namespace, MetricReasonReconcileError,
 		))).To(Equal(1.0))
 
 		// Ready=False condition recorded

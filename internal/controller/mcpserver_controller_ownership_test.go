@@ -192,14 +192,11 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 				},
 				Spec: appsv1.DeploymentSpec{
 					Selector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{"mcp-server": resourceName},
+						MatchLabels: managedWorkloadSelector(resourceName),
 					},
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{
-								"app":        "mcp-server",
-								"mcp-server": resourceName,
-							},
+							Labels: managedWorkloadLabels(resourceName),
 						},
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -279,7 +276,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 					},
 				},
 				Spec: corev1.ServiceSpec{
-					Selector: map[string]string{"mcp-server": resourceName},
+					Selector: managedWorkloadSelector(resourceName),
 					Ports: []corev1.ServicePort{
 						{
 							Name:       "http",
@@ -354,11 +351,11 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 				},
 				Spec: appsv1.DeploymentSpec{
 					Selector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{"app": "manual"},
+						MatchLabels: map[string]string{LabelKeyApp: "manual"},
 					},
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{"app": "manual"},
+							Labels: map[string]string{LabelKeyApp: "manual"},
 						},
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -441,7 +438,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 					// No ownerReferences
 				},
 				Spec: corev1.ServiceSpec{
-					Selector: map[string]string{"app": "manual"},
+					Selector: map[string]string{LabelKeyApp: "manual"},
 					Ports: []corev1.ServicePort{
 						{
 							Name:     "http",
@@ -532,19 +529,16 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 				},
 				Spec: appsv1.DeploymentSpec{
 					Selector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{"mcp-server": resourceName},
+						MatchLabels: managedWorkloadSelector(resourceName),
 					},
 					Template: corev1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{
-								"app":        "mcp-server",
-								"mcp-server": resourceName,
-							},
+							Labels: managedWorkloadLabels(resourceName),
 						},
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
 								{
-									Name:  "mcp-server",
+									Name:  ManagedWorkloadName,
 									Image: "manual-image:latest",
 								},
 							},
@@ -639,7 +633,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 					},
 				},
 				Spec: corev1.ServiceSpec{
-					Selector: map[string]string{"app": "manual"},
+					Selector: map[string]string{LabelKeyApp: "manual"},
 					Ports: []corev1.ServicePort{
 						{
 							Name:     "http",

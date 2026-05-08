@@ -16,8 +16,8 @@ var ErrNilMap = errors.New("destination map not initialized")
 const jsonNull = "null"
 
 var reservedLabelKeys = map[string]bool{
-	"app":        true,
-	"mcp-server": true,
+	LabelKeyApp:       true,
+	LabelKeyMCPServer: true,
 }
 
 func filterReservedKeys(m map[string]string) map[string]string {

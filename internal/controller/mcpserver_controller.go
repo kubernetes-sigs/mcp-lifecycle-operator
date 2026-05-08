@@ -194,7 +194,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Validate configuration
 	validationStart := time.Now()
 	if err := r.validateConfig(ctx, mcpServer); err != nil {
-		reconcileDuration.With(prometheus.Labels{"phase": "validation"}).Observe(time.Since(validationStart).Seconds())
+		reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseValidation}).Observe(time.Since(validationStart).Seconds())
 
 		var validationErr *ValidationError
 		if errors.As(err, &validationErr) {
@@ -206,7 +206,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// Don't update status - preserve existing Accepted condition
 		return ctrl.Result{}, err
 	}
-	reconcileDuration.With(prometheus.Labels{"phase": "validation"}).Observe(time.Since(validationStart).Seconds())
+	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseValidation}).Observe(time.Since(validationStart).Seconds())
 
 	// Configuration is valid - create Accepted=True condition
 	acceptedCondition := newCondition(
@@ -230,12 +230,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Configuration is valid, proceed with deployment reconciliation
 	deploymentStart := time.Now()
 	existingDeployment, err := r.reconcileDeployment(ctx, mcpServer)
-	reconcileDuration.With(prometheus.Labels{"phase": "deployment"}).Observe(time.Since(deploymentStart).Seconds())
+	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseDeployment}).Observe(time.Since(deploymentStart).Seconds())
 	if err != nil {
 		deploymentFailuresTotal.With(prometheus.Labels{
 			"name":      mcpServer.Name,
 			"namespace": mcpServer.Namespace,
-			"reason":    "ReconcileError",
+			"reason":    MetricReasonReconcileError,
 		}).Inc()
 		// Deployment reconciliation failed - update status
 		readyCondition := newCondition(
@@ -267,11 +267,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Reconcile Service
 	serviceStart := time.Now()
 	if err := r.reconcileService(ctx, mcpServer); err != nil {
-		reconcileDuration.With(prometheus.Labels{"phase": "service"}).Observe(time.Since(serviceStart).Seconds())
+		reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
 		serviceFailuresTotal.With(prometheus.Labels{
 			"name":      mcpServer.Name,
 			"namespace": mcpServer.Namespace,
-			"reason":    "ReconcileError",
+			"reason":    MetricReasonReconcileError,
 		}).Inc()
 		// Service reconciliation failed - update status
 		readyCondition := newCondition(
@@ -302,7 +302,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Determine Ready condition based on deployment status
-	reconcileDuration.With(prometheus.Labels{"phase": "service"}).Observe(time.Since(serviceStart).Seconds())
+	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
 
 	readyCondition := determineReadyCondition(
 		existingDeployment,
@@ -821,6 +821,17 @@ func deploymentNeedsUpdate(mcpServer *mcpv1alpha1.MCPServer, existing, desired *
 		ownershipChanged
 }
 
+func managedWorkloadLabels(mcpServerName string) map[string]string {
+	return map[string]string{
+		LabelKeyApp:       ManagedWorkloadName,
+		LabelKeyMCPServer: mcpServerName,
+	}
+}
+
+func managedWorkloadSelector(mcpServerName string) map[string]string {
+	return map[string]string{LabelKeyMCPServer: mcpServerName}
+}
+
 // createDeployment creates a Deployment for the MCPServer
 func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1alpha1.MCPServer) (*appsv1.Deployment, error) {
 	// Validate source type and extract image reference
@@ -840,13 +851,10 @@ func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1alpha1.MCPServer)
 	if mcpServer.Spec.Runtime.Replicas != nil {
 		replicas = *mcpServer.Spec.Runtime.Replicas
 	}
-	labels := map[string]string{
-		"app":        "mcp-server",
-		"mcp-server": mcpServer.Name,
-	}
+	labels := managedWorkloadLabels(mcpServer.Name)
 
 	container := corev1.Container{
-		Name:  "mcp-server",
+		Name:  ManagedWorkloadName,
 		Image: imageRef,
 		Ports: []corev1.ContainerPort{
 			{
@@ -915,9 +923,7 @@ func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1alpha1.MCPServer)
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"mcp-server": mcpServer.Name,
-				},
+				MatchLabels: managedWorkloadSelector(mcpServer.Name),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1076,10 +1082,7 @@ func (r *MCPServerReconciler) reconcileService(
 
 // createService creates a Service for the MCPServer
 func (r *MCPServerReconciler) createService(mcpServer *mcpv1alpha1.MCPServer) *corev1.Service {
-	labels := map[string]string{
-		"app":        "mcp-server",
-		"mcp-server": mcpServer.Name,
-	}
+	labels := managedWorkloadLabels(mcpServer.Name)
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1088,10 +1091,8 @@ func (r *MCPServerReconciler) createService(mcpServer *mcpv1alpha1.MCPServer) *c
 			Labels:    labels,
 		},
 		Spec: corev1.ServiceSpec{
-			Type: corev1.ServiceTypeClusterIP,
-			Selector: map[string]string{
-				"mcp-server": mcpServer.Name,
-			},
+			Type:     corev1.ServiceTypeClusterIP,
+			Selector: managedWorkloadSelector(mcpServer.Name),
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "mcp",

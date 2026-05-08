@@ -69,7 +69,7 @@ var (
 	)
 
 	// reconcileDuration tracks the duration of reconciliation phases.
-	// Labels: phase (validation/deployment/service).
+	// Labels: phase (ReconcilePhaseValidation / ReconcilePhaseDeployment / ReconcilePhaseService).
 	reconcileDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
