@@ -63,6 +63,11 @@ func TestMCPHandshake(t *testing.T) {
 				t.Fatal("Accepted condition is not True")
 			}
 
+			ready := f.GetMCPServerCondition(server, "Ready")
+			if ready == nil || ready.Status != metav1.ConditionTrue {
+				t.Fatal("Ready condition is not True")
+			}
+
 			f.AssertAddressURL(t, server, mcpServerPort)
 			t.Logf("MCPServer status: address=%s, Accepted=True, Ready=True", server.Status.Address.URL)
 

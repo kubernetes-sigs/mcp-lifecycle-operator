@@ -100,8 +100,12 @@ func dumpDiagnostics(ctx context.Context, t *testing.T, cfg *envconf.Config, ns 
 	var deployments appsv1.DeploymentList
 	if err := r.List(ctx, &deployments); err == nil {
 		for _, d := range deployments.Items {
+			desired := int32(1)
+			if d.Spec.Replicas != nil {
+				desired = *d.Spec.Replicas
+			}
 			t.Logf("Deployment %s replicas=%d/%d available=%d",
-				d.Name, d.Status.ReadyReplicas, *d.Spec.Replicas, d.Status.AvailableReplicas)
+				d.Name, d.Status.ReadyReplicas, desired, d.Status.AvailableReplicas)
 		}
 	}
 

@@ -27,6 +27,7 @@ import (
 	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
@@ -75,7 +76,7 @@ func TestMetricsEndpoint(t *testing.T) {
 					Namespace: operatorNamespace,
 				}},
 			}
-			if err := r.Create(ctx, crb); err != nil {
+			if err := r.Create(ctx, crb); err != nil && !apierrors.IsAlreadyExists(err) {
 				t.Fatalf("failed to create ClusterRoleBinding: %v", err)
 			}
 			t.Log("created ClusterRoleBinding for metrics access")
@@ -114,10 +115,10 @@ func TestMetricsEndpoint(t *testing.T) {
 					ServiceAccountName: serviceAccountName,
 					Containers: []corev1.Container{{
 						Name:    "curl",
-						Image:   "curlimages/curl:latest",
+						Image:   "curlimages/curl:8.20.0",
 						Command: []string{"/bin/sh", "-c"},
 						Args: []string{
-							fmt.Sprintf("curl -v -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics",
+							fmt.Sprintf("curl -s -o /dev/null -w '%%{http_code}' -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics",
 								token, metricsServiceName, operatorNamespace),
 						},
 						SecurityContext: &corev1.SecurityContext{
@@ -144,12 +145,12 @@ func TestMetricsEndpoint(t *testing.T) {
 			f.WaitForPodPhase(ctx, t, cfg, curlPod, corev1.PodSucceeded)
 			t.Log("curl-metrics pod succeeded")
 
-			// Read curl pod logs and verify metrics response.
+			// Read curl pod logs and verify HTTP status code.
 			curlLogs := f.PodLogs(ctx, t, cfg, curlPod.Name, operatorNamespace)
-			if !strings.Contains(curlLogs, "HTTP/1.1 200 OK") {
-				t.Fatalf("metrics response does not contain 200 OK:\n%s", curlLogs)
+			if !strings.Contains(curlLogs, "200") {
+				t.Fatalf("expected HTTP status 200, got: %s", curlLogs)
 			}
-			t.Log("metrics endpoint returned 200 OK")
+			t.Log("metrics endpoint returned 200")
 
 			return ctx
 		}).
