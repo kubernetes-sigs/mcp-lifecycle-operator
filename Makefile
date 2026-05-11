@@ -305,3 +305,74 @@ endef
 define gomodver
 $(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
 endef
+
+##@ Helm Deployment
+
+## Helm binary to use for deploying the chart
+HELM ?= helm
+## Namespace to deploy the Helm release
+HELM_NAMESPACE ?= mcp-lifecycle-operator-system
+## Name of the Helm release
+HELM_RELEASE ?= mcp-lifecycle-operator
+## Path to the Helm chart directory
+HELM_CHART_DIR ?= dist/chart
+## Additional arguments to pass to helm commands
+HELM_EXTRA_ARGS ?=
+
+.PHONY: install-helm
+install-helm: ## Install the latest version of Helm.
+	@command -v $(HELM) >/dev/null 2>&1 || { \
+		echo "Installing Helm..." && \
+		curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash; \
+	}
+
+.PHONY: helm-deploy
+helm-deploy: install-helm ## Deploy manager to the K8s cluster via Helm. Specify an image with IMG.
+	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
+		--namespace $(HELM_NAMESPACE) \
+		--create-namespace \
+		--set manager.image.repository=$${IMG%:*} \
+		--set manager.image.tag=$${IMG##*:} \
+		--wait \
+		--timeout 5m \
+		$(HELM_EXTRA_ARGS)
+
+.PHONY: helm-uninstall
+helm-uninstall: ## Uninstall the Helm release from the K8s cluster.
+	$(HELM) uninstall $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+.PHONY: helm-status
+helm-status: ## Show Helm release status.
+	$(HELM) status $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+.PHONY: helm-history
+helm-history: ## Show Helm release history.
+	$(HELM) history $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+.PHONY: helm-rollback
+helm-rollback: ## Rollback to previous Helm release.
+
+##@ Helm Testing
+
+## Helm unittest plugin version
+HELM_UNITTEST_VERSION ?= 0.6.2
+
+.PHONY: install-helm-unittest
+install-helm-unittest: install-helm ## Install helm-unittest plugin if not already installed.
+	@$(HELM) plugin list | grep -q unittest || { \
+		echo "Installing helm-unittest plugin..." && \
+		$(HELM) plugin install https://github.com/helm-unittest/helm-unittest.git --version $(HELM_UNITTEST_VERSION) --verify=false; \
+	}
+
+.PHONY: helm-test
+helm-test: install-helm-unittest ## Run helm-unittest tests for the Helm chart.
+	$(HELM) unittest $(HELM_CHART_DIR)
+
+.PHONY: helm-test-verbose
+helm-test-verbose: install-helm-unittest ## Run helm-unittest tests with verbose output.
+	$(HELM) unittest $(HELM_CHART_DIR) -d
+
+.PHONY: helm-test-debug
+helm-test-debug: install-helm-unittest ## Run helm-unittest tests with debug output and rendered templates.
+	$(HELM) unittest $(HELM_CHART_DIR) -d --debug
+	$(HELM) rollback $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)

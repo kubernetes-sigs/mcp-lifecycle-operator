@@ -6,6 +6,10 @@ cliVersion: 4.11.1
 domain: x-k8s.io
 layout:
 - go.kubebuilder.io/v4
+plugins:
+  helm.kubebuilder.io/v2-alpha:
+    manifests: dist/install.yaml
+    output: dist
 projectName: mcp-lifecycle-operator
 repo: github.com/kubernetes-sigs/mcp-lifecycle-operator
 resources:
