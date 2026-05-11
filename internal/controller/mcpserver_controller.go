@@ -253,6 +253,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		status := acv1alpha1.MCPServerStatus().
 			WithObservedGeneration(mcpServer.Generation).
 			WithServiceName(mcpServer.Name).
+			WithHandshakeRetryCount(0).
 			WithConditions(
 				conditionToAC(acceptedCondition),
 				conditionToAC(readyCondition),
@@ -290,6 +291,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			WithObservedGeneration(mcpServer.Generation).
 			WithDeploymentName(existingDeployment.Name).
 			WithServiceName(mcpServer.Name).
+			WithHandshakeRetryCount(0).
 			WithConditions(
 				conditionToAC(acceptedCondition),
 				conditionToAC(readyCondition),
@@ -328,10 +330,16 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	var serverInfo *mcpv1alpha1.MCPServerInfo
 	readyCondition, serverInfo = r.reconcileHandshake(ctx, mcpServer, mcpURL, readyCondition)
 
+	var handshakeRetryCount int32
+	if readyCondition.Reason == ReasonMCPEndpointUnavailable {
+		handshakeRetryCount = mcpServer.Status.HandshakeRetryCount + 1
+	}
+
 	status := acv1alpha1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
 		WithDeploymentName(existingDeployment.Name).
 		WithServiceName(mcpServer.Name).
+		WithHandshakeRetryCount(handshakeRetryCount).
 		WithAddress(acv1alpha1.MCPServerAddress().
 			WithURL(mcpURL)).
 		WithConditions(
@@ -382,15 +390,16 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// If MCP endpoint is not yet reachable, requeue with exponential backoff up to a max retry count.
 	if readyCondition.Status == metav1.ConditionFalse && readyCondition.Reason == ReasonMCPEndpointUnavailable {
-		retryCount := mcpHandshakeRetryCount(mcpServer.Status.Conditions)
+		retryCount := int(handshakeRetryCount)
 		if retryCount >= maxMCPHandshakeRetries {
 			logger.Info("MCP handshake retries exhausted, not requeuing",
 				"retries", retryCount, "max", maxMCPHandshakeRetries)
 			return ctrl.Result{}, nil
 		}
-		delay := mcpHandshakeBackoff(retryCount)
+		// retryCount is 1-based (already incremented); backoff expects 0-based
+		delay := mcpHandshakeBackoff(retryCount - 1)
 		logger.Info("MCP endpoint not yet reachable, requeuing with backoff",
-			"requeueAfter", delay, "retry", retryCount+1, "maxRetries", maxMCPHandshakeRetries)
+			"requeueAfter", delay, "retry", retryCount, "maxRetries", maxMCPHandshakeRetries)
 		return ctrl.Result{RequeueAfter: delay}, nil
 	}
 
@@ -522,28 +531,6 @@ func mcpHandshakeBackoff(retryCount int) time.Duration {
 		}
 	}
 	return delay
-}
-
-// mcpHandshakeRetryCount estimates how many consecutive MCP handshake failures
-// have occurred by computing elapsed time since the Ready condition last
-// transitioned to MCPEndpointUnavailable.
-func mcpHandshakeRetryCount(conditions []metav1.Condition) int {
-	existing := meta.FindStatusCondition(conditions, ConditionTypeReady)
-	if existing == nil || existing.Reason != ReasonMCPEndpointUnavailable {
-		return 0
-	}
-	elapsed := time.Since(existing.LastTransitionTime.Time)
-	// Walk the backoff schedule to count how many retries fit in the elapsed time.
-	total := time.Duration(0)
-	count := 0
-	for count < maxMCPHandshakeRetries {
-		total += mcpHandshakeBackoff(count)
-		if total > elapsed {
-			break
-		}
-		count++
-	}
-	return count
 }
 
 // isHTTPAuthError checks whether the error from the MCP SDK indicates an HTTP
@@ -1215,6 +1202,7 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 	status := acv1alpha1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
 		WithServiceName(mcpServer.Name).
+		WithHandshakeRetryCount(0).
 		WithConditions(
 			conditionToAC(acceptedCondition),
 			conditionToAC(readyCondition),

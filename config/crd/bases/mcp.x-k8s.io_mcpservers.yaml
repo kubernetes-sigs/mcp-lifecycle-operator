@@ -1656,6 +1656,13 @@ spec:
                 description: DeploymentName is the name of the Deployment created
                   for this MCPServer.
                 type: string
+              handshakeRetryCount:
+                description: |-
+                  HandshakeRetryCount tracks the number of consecutive MCP handshake
+                  failures for the current generation. Reset to 0 on success, spec change,
+                  or when reconciliation does not reach the handshake phase.
+                format: int32
+                type: integer
               observedGeneration:
                 description: |-
                   ObservedGeneration reflects the generation most recently observed by the controller.

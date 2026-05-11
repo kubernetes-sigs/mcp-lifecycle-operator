@@ -455,6 +455,12 @@ type MCPServerStatus struct {
 	// +optional
 	ServerInfo *MCPServerInfo `json:"serverInfo,omitempty"`
 
+	// HandshakeRetryCount tracks the number of consecutive MCP handshake
+	// failures for the current generation. Reset to 0 on success, spec change,
+	// or when reconciliation does not reach the handshake phase.
+	// +optional
+	HandshakeRetryCount int32 `json:"handshakeRetryCount,omitempty"`
+
 	// Conditions represent the latest available observations of the MCPServer's state.
 	//
 	// Standard condition types:
