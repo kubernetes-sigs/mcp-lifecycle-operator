@@ -48,21 +48,32 @@ func Clientset(t *testing.T, cfg *envconf.Config) *kubernetes.Clientset {
 	return cs
 }
 
-// FindPodByLabel returns the first Running pod matching the label selector in the given namespace.
+// FindPodByLabel polls until a Running pod matching the label selector is found in the given namespace.
+// An optional timeout can be provided; defaults to 3 minutes.
 func FindPodByLabel(ctx context.Context, t *testing.T, cfg *envconf.Config,
-	namespace, labelSelector string) *corev1.Pod {
+	namespace, labelSelector string, timeout ...time.Duration) *corev1.Pod {
 	t.Helper()
-	var pods corev1.PodList
+	d := 3 * time.Minute
+	if len(timeout) > 0 {
+		d = timeout[0]
+	}
 	r := cfg.Client().Resources(namespace)
-	if err := r.List(ctx, &pods, resources.WithLabelSelector(labelSelector)); err != nil {
-		t.Fatalf("failed to list pods with selector %q: %v", labelSelector, err)
-	}
-	for i := range pods.Items {
-		if pods.Items[i].Status.Phase == corev1.PodRunning && pods.Items[i].DeletionTimestamp == nil {
-			return &pods.Items[i]
+	var found *corev1.Pod
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		var pods corev1.PodList
+		if err := r.List(ctx, &pods, resources.WithLabelSelector(labelSelector)); err != nil {
+			t.Fatalf("failed to list pods with selector %q: %v", labelSelector, err)
 		}
+		for i := range pods.Items {
+			if pods.Items[i].Status.Phase == corev1.PodRunning && pods.Items[i].DeletionTimestamp == nil {
+				found = &pods.Items[i]
+				return found
+			}
+		}
+		time.Sleep(2 * time.Second)
 	}
-	t.Fatalf("no Running pod found with selector %q in namespace %s", labelSelector, namespace)
+	t.Fatalf("timed out waiting for a Running pod with selector %q in namespace %s", labelSelector, namespace)
 	return nil
 }
 
