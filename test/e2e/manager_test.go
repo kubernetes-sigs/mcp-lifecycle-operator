@@ -28,6 +28,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
@@ -112,13 +113,13 @@ func TestMetricsEndpoint(t *testing.T) {
 								metricsServiceName, operatorNamespace),
 						},
 						SecurityContext: &corev1.SecurityContext{
-							ReadOnlyRootFilesystem:   ptrBool(true),
-							AllowPrivilegeEscalation: ptrBool(false),
+							ReadOnlyRootFilesystem:   ptr.To(true),
+							AllowPrivilegeEscalation: ptr.To(false),
 							Capabilities: &corev1.Capabilities{
 								Drop: []corev1.Capability{"ALL"},
 							},
-							RunAsNonRoot: ptrBool(true),
-							RunAsUser:    ptrInt64(1000),
+							RunAsNonRoot: ptr.To(true),
+							RunAsUser:    ptr.To(int64(1000)),
 							SeccompProfile: &corev1.SeccompProfile{
 								Type: corev1.SeccompProfileTypeRuntimeDefault,
 							},
@@ -166,6 +167,3 @@ func TestMetricsEndpoint(t *testing.T) {
 
 	testenv.Test(t, feature)
 }
-
-func ptrBool(b bool) *bool    { return &b }
-func ptrInt64(i int64) *int64 { return &i }
