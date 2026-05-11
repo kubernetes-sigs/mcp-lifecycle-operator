@@ -23,7 +23,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
+	"net/url"
+	netpath "path"
 	"testing"
 	"time"
 
@@ -132,12 +133,13 @@ func ServiceProxyHTTPClient(t *testing.T, cfg *envconf.Config,
 		t.Fatalf("failed to create HTTP client from REST config: %v", err)
 	}
 
-	host := strings.TrimRight(restCfg.Host, "/")
-	if path != "" && !strings.HasPrefix(path, "/") {
-		path = "/" + path
+	base, err := url.Parse(restCfg.Host)
+	if err != nil {
+		t.Fatalf("failed to parse REST config host %q: %v", restCfg.Host, err)
 	}
-	proxyURL := fmt.Sprintf("%s/api/v1/namespaces/%s/services/http:%s:%d/proxy%s",
-		host, namespace, serviceName, port, path)
-
-	return httpClient, proxyURL
+	base.Path = netpath.Join(base.Path,
+		fmt.Sprintf("api/v1/namespaces/%s/services/http:%s:%d/proxy", namespace, serviceName, port),
+		netpath.Clean("/"+path),
+	)
+	return httpClient, base.String()
 }
