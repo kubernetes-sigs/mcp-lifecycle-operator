@@ -34,7 +34,11 @@ import (
 // AssertAddressURL verifies the MCPServer's status address URL matches the expected port and path.
 func AssertAddressURL(t *testing.T, server *mcpv1alpha1.MCPServer, port int32) {
 	t.Helper()
-	expectedURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d/mcp", server.Name, server.Namespace, port)
+	path := server.Spec.Config.Path
+	if path == "" {
+		path = "/mcp"
+	}
+	expectedURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d%s", server.Name, server.Namespace, port, path)
 	if server.Status.Address == nil || server.Status.Address.URL != expectedURL {
 		actual := ""
 		if server.Status.Address != nil {
