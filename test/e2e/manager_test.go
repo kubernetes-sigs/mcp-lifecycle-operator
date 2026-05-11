@@ -43,6 +43,10 @@ const (
 	metricsRoleBinding = "mcp-lifecycle-operator-metrics-binding"
 )
 
+type contextKey string
+
+const curlPodNameKey contextKey = "curlPodName"
+
 func TestManagerPodRunning(t *testing.T) {
 	feature := features.New("Manager pod is running").
 		WithLabel("type", "manager").
@@ -98,8 +102,8 @@ func TestMetricsEndpoint(t *testing.T) {
 			// The pod uses the auto-mounted SA token instead of embedding it in args.
 			curlPod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "curl-metrics",
-					Namespace: operatorNamespace,
+					GenerateName: "curl-metrics-",
+					Namespace:    operatorNamespace,
 				},
 				Spec: corev1.PodSpec{
 					RestartPolicy:      corev1.RestartPolicyNever,
@@ -130,7 +134,8 @@ func TestMetricsEndpoint(t *testing.T) {
 			if err := cfg.Client().Resources().Create(ctx, curlPod); err != nil {
 				t.Fatalf("failed to create curl-metrics pod: %v", err)
 			}
-			t.Log("created curl-metrics pod")
+			ctx = context.WithValue(ctx, curlPodNameKey, curlPod.Name)
+			t.Logf("created curl-metrics pod %s", curlPod.Name)
 
 			// Wait for the curl pod to complete.
 			f.WaitForPodPhase(ctx, t, cfg, curlPod, corev1.PodSucceeded)
@@ -149,10 +154,12 @@ func TestMetricsEndpoint(t *testing.T) {
 			r := cfg.Client().Resources()
 
 			// Delete curl pod.
-			curlPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{Name: "curl-metrics", Namespace: operatorNamespace},
+			if name, ok := ctx.Value(curlPodNameKey).(string); ok {
+				curlPod := &corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: operatorNamespace},
+				}
+				_ = r.Delete(ctx, curlPod)
 			}
-			_ = r.Delete(ctx, curlPod)
 
 			// Delete ClusterRoleBinding.
 			crb := &rbacv1.ClusterRoleBinding{
