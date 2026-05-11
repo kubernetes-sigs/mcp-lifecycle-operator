@@ -24,7 +24,6 @@ import (
 	"strings"
 	"testing"
 
-	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -94,17 +93,8 @@ func TestMetricsEndpoint(t *testing.T) {
 			}
 			t.Log("controller is serving metrics server")
 
-			// Get SA token.
-			cs := f.Clientset(t, cfg)
-			tokenReq, err := cs.CoreV1().ServiceAccounts(operatorNamespace).CreateToken(
-				ctx, serviceAccountName, &authv1.TokenRequest{}, metav1.CreateOptions{})
-			if err != nil {
-				t.Fatalf("failed to create SA token: %v", err)
-			}
-			token := tokenReq.Status.Token
-			t.Log("obtained SA token")
-
 			// Create a curl pod to access the metrics endpoint from inside the cluster.
+			// The pod uses the auto-mounted SA token instead of embedding it in args.
 			curlPod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "curl-metrics",
@@ -118,8 +108,8 @@ func TestMetricsEndpoint(t *testing.T) {
 						Image:   "curlimages/curl:8.20.0",
 						Command: []string{"/bin/sh", "-c"},
 						Args: []string{
-							fmt.Sprintf("curl -s -o /dev/null -w '%%{http_code}' -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics",
-								token, metricsServiceName, operatorNamespace),
+							fmt.Sprintf("curl -s -o /dev/null -w '%%{http_code}' -k -H \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" https://%s.%s.svc.cluster.local:8443/metrics",
+								metricsServiceName, operatorNamespace),
 						},
 						SecurityContext: &corev1.SecurityContext{
 							ReadOnlyRootFilesystem:   ptrBool(true),
