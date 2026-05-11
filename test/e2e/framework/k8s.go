@@ -59,20 +59,25 @@ func FindPodByLabel(ctx context.Context, t *testing.T, cfg *envconf.Config,
 		d = timeout[0]
 	}
 	r := cfg.Client().Resources(namespace)
-	var found *corev1.Pod
 	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
+		if ctx.Err() != nil {
+			t.Fatalf("context cancelled waiting for pod with selector %q: %v", labelSelector, ctx.Err())
+		}
 		var pods corev1.PodList
 		if err := r.List(ctx, &pods, resources.WithLabelSelector(labelSelector)); err != nil {
 			t.Fatalf("failed to list pods with selector %q: %v", labelSelector, err)
 		}
 		for i := range pods.Items {
 			if pods.Items[i].Status.Phase == corev1.PodRunning && pods.Items[i].DeletionTimestamp == nil {
-				found = &pods.Items[i]
-				return found
+				return &pods.Items[i]
 			}
 		}
-		time.Sleep(2 * time.Second)
+		select {
+		case <-ctx.Done():
+			t.Fatalf("context cancelled waiting for pod with selector %q: %v", labelSelector, ctx.Err())
+		case <-time.After(2 * time.Second):
+		}
 	}
 	t.Fatalf("timed out waiting for a Running pod with selector %q in namespace %s", labelSelector, namespace)
 	return nil
