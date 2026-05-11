@@ -45,15 +45,20 @@ const (
 )
 
 // ServerFromContext extracts the MCPServer stored by SetupMCPServer.
+// Returns nil if the server was never stored in context.
 func ServerFromContext(ctx context.Context) *mcpv1alpha1.MCPServer {
-	return ctx.Value(ServerKey).(*mcpv1alpha1.MCPServer)
+	s, _ := ctx.Value(ServerKey).(*mcpv1alpha1.MCPServer)
+	return s
 }
 
 // SetupMCPServer creates an MCPServer, optionally waits for Ready, and stores it in context.
 // Pass waitForReady=true to block until the server reaches Ready=True before returning.
 func SetupMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config, name string, waitForReady bool, opts ...MCPServerOption) context.Context {
 	t.Helper()
-	ns := ctx.Value(NsKey).(string)
+	ns, ok := ctx.Value(NsKey).(string)
+	if !ok || ns == "" {
+		t.Fatal("namespace not found in context; ensure BeforeEachTest has run")
+	}
 	r := cfg.Client().Resources()
 
 	server := NewMCPServer(name, ns, opts...)
@@ -135,6 +140,10 @@ func WaitForMCPServerReconciledAndReady(ctx context.Context, t *testing.T, r *re
 func TeardownMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 	t.Helper()
 	server := ServerFromContext(ctx)
+	if server == nil {
+		t.Log("no MCPServer found in context, skipping teardown")
+		return ctx
+	}
 	r := cfg.Client().Resources()
 
 	if err := r.Delete(ctx, server); err != nil {

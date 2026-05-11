@@ -63,7 +63,11 @@ func TestMain(m *testing.M) {
 	})
 
 	testenv.AfterEachTest(func(ctx context.Context, cfg *envconf.Config, t *testing.T) (context.Context, error) {
-		ns := ctx.Value(f.NsKey).(string)
+		ns, ok := ctx.Value(f.NsKey).(string)
+		if !ok || ns == "" {
+			t.Log("namespace not found in context, skipping cleanup")
+			return ctx, nil
+		}
 		if t.Failed() {
 			dumpDiagnostics(ctx, t, cfg, ns)
 		}

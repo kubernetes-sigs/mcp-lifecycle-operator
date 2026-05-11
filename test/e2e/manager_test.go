@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -95,12 +96,19 @@ func TestMetricsEndpoint(t *testing.T) {
 			// Find the controller pod.
 			pod := f.FindPodByLabel(ctx, t, cfg, operatorNamespace, "control-plane=controller-manager")
 
-			// Verify the metrics server has started by checking logs.
-			logs := f.PodLogs(ctx, t, cfg, pod.Name, operatorNamespace)
-			if !strings.Contains(logs, "Serving metrics server") {
-				t.Fatal("controller logs do not contain 'Serving metrics server'")
+			// Poll controller logs until the metrics server line appears.
+			deadline := time.Now().Add(1 * time.Minute)
+			for {
+				logs := f.PodLogs(ctx, t, cfg, pod.Name, operatorNamespace)
+				if strings.Contains(logs, "Serving metrics server") {
+					t.Log("controller is serving metrics server")
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("timed out waiting for 'Serving metrics server' in controller logs")
+				}
+				time.Sleep(2 * time.Second)
 			}
-			t.Log("controller is serving metrics server")
 
 			// Create a curl pod to access the metrics endpoint from inside the cluster.
 			// The pod uses the auto-mounted SA token instead of embedding it in args.
