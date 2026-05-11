@@ -80,10 +80,14 @@ func TestMetricsEndpoint(t *testing.T) {
 					Namespace: operatorNamespace,
 				}},
 			}
-			if err := r.Create(ctx, crb); err != nil && !apierrors.IsAlreadyExists(err) {
-				t.Fatalf("failed to create ClusterRoleBinding: %v", err)
+			if err := r.Create(ctx, crb); err != nil {
+				if !apierrors.IsAlreadyExists(err) {
+					t.Fatalf("failed to create ClusterRoleBinding: %v", err)
+				}
+				t.Log("ClusterRoleBinding for metrics access already exists")
+			} else {
+				t.Log("created ClusterRoleBinding for metrics access")
 			}
-			t.Log("created ClusterRoleBinding for metrics access")
 
 			return ctx
 		}).
