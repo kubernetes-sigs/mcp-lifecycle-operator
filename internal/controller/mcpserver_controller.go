@@ -332,7 +332,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	var handshakeRetryCount int32
 	if readyCondition.Reason == ReasonMCPEndpointUnavailable {
-		handshakeRetryCount = mcpServer.Status.HandshakeRetryCount + 1
+		if mcpServer.Status.ObservedGeneration == mcpServer.Generation {
+			handshakeRetryCount = mcpServer.Status.HandshakeRetryCount + 1
+		} else {
+			handshakeRetryCount = 1
+		}
 	}
 
 	status := acv1alpha1.MCPServerStatus().
