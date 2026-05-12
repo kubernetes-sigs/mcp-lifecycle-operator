@@ -25,6 +25,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"sigs.k8s.io/e2e-framework/klient/k8s"
@@ -146,7 +147,7 @@ func TeardownMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config) c
 	}
 	r := cfg.Client().Resources()
 
-	if err := r.Delete(ctx, server); err != nil {
+	if err := r.Delete(ctx, server); err != nil && !apierrors.IsNotFound(err) {
 		t.Fatalf("failed to delete MCPServer: %v", err)
 	}
 	t.Logf("deleted MCPServer %s/%s", server.Namespace, server.Name)
