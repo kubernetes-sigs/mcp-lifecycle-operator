@@ -781,6 +781,35 @@ func Test_deploymentLabelsChanged(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "corrupted JSON in managed labels annotation forces update",
+			args: &extraMetaArgs{
+				deployment: &appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "webserver",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: "not-valid-json",
+						},
+					},
+					Spec: appsv1.DeploymentSpec{
+						Template: corev1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{
+								Labels: map[string]string{
+									LabelKeyApp: "webserver",
+								},
+							},
+							Spec: corev1.PodSpec{},
+						},
+					},
+				},
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+			},
+			want: true,
+		},
 	}
 
 	for _, tc := range tt {
@@ -900,6 +929,35 @@ func Test_deploymentAnnotationsChanged(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "corrupted JSON in managed annotations annotation forces update",
+			args: &extraMetaArgs{
+				deployment: &appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "webserver",
+						},
+						Annotations: map[string]string{
+							managedExtraAnnotations: "not-valid-json",
+						},
+					},
+					Spec: appsv1.DeploymentSpec{
+						Template: corev1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{
+								Labels: map[string]string{
+									LabelKeyApp: "webserver",
+								},
+							},
+							Spec: corev1.PodSpec{},
+						},
+					},
+				},
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+			},
+			want: true,
+		},
 	}
 
 	for _, tc := range tt {
@@ -985,6 +1043,25 @@ func Test_serviceLabelsChanged(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "corrupted JSON in managed labels annotation forces update",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				service: &corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: "not-valid-json",
+						},
+					},
+				},
+			},
+			want: true,
+		},
 	}
 
 	for _, tc := range tt {
@@ -1064,6 +1141,25 @@ func Test_serviceAnnotationsChanged(t *testing.T) {
 						Annotations: map[string]string{
 							managedExtraAnnotations: "{\"department\":\"procurement\",\"env\": \"production\"}",
 							"department":            "procurement",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "corrupted JSON in managed annotations annotation forces update",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				service: &corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+						Annotations: map[string]string{
+							managedExtraAnnotations: "not-valid-json",
 						},
 					},
 				},

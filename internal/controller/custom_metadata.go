@@ -244,7 +244,7 @@ func deploymentLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, deployment *appsv
 	vals, ok := deployment.Annotations[managedExtraLabels]
 	if ok {
 		if err := json.Unmarshal([]byte(vals), &currentLabels); err != nil {
-			return false
+			return true
 		}
 
 		if len(currentLabels) > 0 {
@@ -282,7 +282,7 @@ func deploymentAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, deployment *
 	vals, ok := deployment.Annotations[managedExtraAnnotations]
 	if ok {
 		if err := json.Unmarshal([]byte(vals), &currentAnnotations); err != nil {
-			return false
+			return true
 		}
 
 		if len(currentAnnotations) > 0 {
@@ -322,7 +322,7 @@ func serviceLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, service *corev1.Serv
 	vals, ok := service.Annotations[managedExtraLabels]
 	if ok {
 		if err := json.Unmarshal([]byte(vals), &currentLabels); err != nil {
-			return false
+			return true
 		}
 
 		if len(currentLabels) > 0 {
@@ -357,7 +357,7 @@ func serviceAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, service *corev1
 	vals, ok := service.Annotations[managedExtraAnnotations]
 	if ok {
 		if err := json.Unmarshal([]byte(vals), &currentAnnotations); err != nil {
-			return false
+			return true
 		}
 
 		if len(currentAnnotations) > 0 {
