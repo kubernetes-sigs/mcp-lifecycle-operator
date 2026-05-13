@@ -56,7 +56,7 @@ type ContainerImageSource struct {
 	// +kubebuilder:validation:XValidation:rule="self.find('(@.*:)') != \"\" ? self.find('(@.*:)').matches('(@[A-Za-z][A-Za-z0-9]*([-_+.][A-Za-z][A-Za-z0-9]*)*[:])') : true",message="digest algorithm is not valid. valid algorithms must start with an uppercase or lowercase alpha character followed by alphanumeric characters and may contain the \"-\", \"_\", \"+\", and \".\" characters."
 	// +kubebuilder:validation:XValidation:rule="self.find('(@.*:)') != \"\" ? self.find(':.*$').substring(1).size() >= 32 : true",message="digest is not valid. the encoded string must be at least 32 characters"
 	// +kubebuilder:validation:XValidation:rule="self.find('(@.*:)') != \"\" ? self.find(':.*$').matches(':[0-9A-Fa-f]*$') : true",message="digest is not valid. the encoded string must only contain hex characters (A-F, a-f, 0-9)"
-	Ref string `json:"ref,omitempty"`
+	Ref string `json:"ref"`
 	// NOTE: the validation rules above are taken from
 	// https://github.com/operator-framework/operator-controller/blob/475e1341d0aa045c4fcb6a93a1ffeb2d16484ca7/api/v1/clustercatalog_types.go#L275-L321
 
@@ -73,7 +73,7 @@ type Source struct {
 	// When set to ContainerImage, the MCP server will be sourced directly from an OCI
 	// container image following the configuration specified in containerImage.
 	// +kubebuilder:validation:Required
-	Type SourceType `json:"type,omitempty"`
+	Type SourceType `json:"type"`
 
 	// ContainerImage specifies container image details when Type is ContainerImage.
 	// +optional
@@ -116,7 +116,7 @@ type StorageSource struct {
 	// Allowed values are: ConfigMap, Secret, EmptyDir.
 	// This determines which volume source field (configMap, secret, or emptyDir) should be configured.
 	// +kubebuilder:validation:Required
-	Type StorageType `json:"type,omitempty"`
+	Type StorageType `json:"type"`
 
 	// ConfigMap specifies a ConfigMap volume source (when Type is ConfigMap).
 	// Uses native Kubernetes ConfigMapVolumeSource type for full feature parity.
@@ -147,7 +147,7 @@ type StorageMount struct {
 	// +kubebuilder:validation:MaxLength=4096
 	// +kubebuilder:validation:XValidation:rule="self.startsWith('/')",message="path must be an absolute path (must start with '/')"
 	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="path must not contain ':' character"
-	Path string `json:"path,omitempty"`
+	Path string `json:"path"`
 
 	// Permissions specifies the access permissions for the mount.
 	// Allowed values are ReadOnly, ReadWrite, and RecursiveReadOnly.
@@ -174,7 +174,7 @@ type ServerConfig struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
-	Port int32 `json:"port,omitempty"`
+	Port int32 `json:"port"`
 
 	// Arguments are command line arguments for the MCP server container.
 	// Use this to pass configuration flags to the server.
