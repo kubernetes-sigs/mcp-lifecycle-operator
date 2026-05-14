@@ -1626,7 +1626,7 @@ func Test_serviceLabelsChanged(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := serviceLabelsChanged(tc.args.mcp, tc.args.service)
 			if got != tc.want {
-				t.Errorf("wanted metadata changed to be %t but, got %t\n", got, tc.want)
+				t.Errorf("wanted metadata changed to be %t but, got %t\n", tc.want, got)
 			}
 		})
 	}
@@ -1797,7 +1797,7 @@ func Test_serviceAnnotationsChanged(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := serviceAnnotationsChanged(tc.args.mcp, tc.args.service)
 			if got != tc.want {
-				t.Errorf("wanted metadata changed to be %t but, got %t\n", got, tc.want)
+				t.Errorf("wanted metadata changed to be %t but, got %t\n", tc.want, got)
 			}
 		})
 	}
