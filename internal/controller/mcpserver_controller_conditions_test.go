@@ -599,6 +599,48 @@ var _ = Describe("reconcileReadyCondition", func() {
 		Expect(condition.Message).To(ContainSubstring("quota exceeded"))
 	})
 
+	It("should return DeploymentUnavailable when deployment spec is not yet observed", func() {
+		deployment := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Generation: 3,
+			},
+			Status: appsv1.DeploymentStatus{
+				ObservedGeneration: 2,
+				Conditions: []appsv1.DeploymentCondition{
+					{
+						Type:   appsv1.DeploymentAvailable,
+						Status: corev1.ConditionTrue,
+					},
+				},
+			},
+		}
+		condition := determineReadyCondition(deployment, acceptedCondition, generation, make([]metav1.Condition, 0))
+		Expect(condition.Reason).To(Equal(ReasonDeploymentUnavailable))
+		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(condition.Message).To(ContainSubstring("processing spec update"))
+	})
+
+	It("should return DeploymentUnavailable when not progressing and not available", func() {
+		deployment := &appsv1.Deployment{
+			Status: appsv1.DeploymentStatus{
+				Conditions: []appsv1.DeploymentCondition{
+					{
+						Type:    appsv1.DeploymentProgressing,
+						Status:  corev1.ConditionFalse,
+						Message: "deadline exceeded",
+					},
+					{
+						Type:   appsv1.DeploymentAvailable,
+						Status: corev1.ConditionFalse,
+					},
+				},
+			},
+		}
+		condition := determineReadyCondition(deployment, acceptedCondition, generation, make([]metav1.Condition, 0))
+		Expect(condition.Reason).To(Equal(ReasonDeploymentUnavailable))
+		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+	})
+
 	It("should handle nil replicas gracefully when deployment is available", func() {
 		deployment := &appsv1.Deployment{
 			Spec: appsv1.DeploymentSpec{

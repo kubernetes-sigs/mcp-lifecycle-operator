@@ -17,10 +17,13 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -106,6 +109,127 @@ var _ = Describe("isSameGroupKind", func() {
 			UID:        types.UID("test-uid"),
 		}
 		Expect(isSameGroupKind(ownerRef, "", "Pod")).To(BeTrue())
+	})
+
+	Describe("findMCPServersForResource", func() {
+		It("should return reconcile requests for MCPServers referencing a ConfigMap", func() {
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-server",
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "test:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+						EnvFrom: []corev1.EnvFromSource{
+							{
+								ConfigMapRef: &corev1.ConfigMapEnvSource{
+									LocalObjectReference: corev1.LocalObjectReference{Name: "my-config"},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(k8sClient.Scheme()).
+				WithObjects(mcpServer).
+				WithIndex(&mcpv1alpha1.MCPServer{}, configMapIndexKey, extractConfigMapNames).
+				Build()
+
+			r := &MCPServerReconciler{Client: fakeClient, Scheme: k8sClient.Scheme()}
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "my-config", Namespace: "default"},
+			}
+
+			requests := r.findMCPServersForConfigMap(context.Background(), configMap)
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0].NamespacedName).To(Equal(types.NamespacedName{
+				Name: "test-server", Namespace: "default",
+			}))
+		})
+
+		It("should return reconcile requests for MCPServers referencing a Secret", func() {
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-server",
+					Namespace: "default",
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Source: mcpv1alpha1.Source{
+						Type: mcpv1alpha1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1alpha1.ContainerImageSource{
+							Ref: "test:latest",
+						},
+					},
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+						EnvFrom: []corev1.EnvFromSource{
+							{
+								SecretRef: &corev1.SecretEnvSource{
+									LocalObjectReference: corev1.LocalObjectReference{Name: "my-secret"},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(k8sClient.Scheme()).
+				WithObjects(mcpServer).
+				WithIndex(&mcpv1alpha1.MCPServer{}, secretIndexKey, extractSecretNames).
+				Build()
+
+			r := &MCPServerReconciler{Client: fakeClient, Scheme: k8sClient.Scheme()}
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "my-secret", Namespace: "default"},
+			}
+
+			requests := r.findMCPServersForSecret(context.Background(), secret)
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0].NamespacedName).To(Equal(types.NamespacedName{
+				Name: "test-server", Namespace: "default",
+			}))
+		})
+
+		It("should return empty list when no MCPServers reference the resource", func() {
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(k8sClient.Scheme()).
+				WithIndex(&mcpv1alpha1.MCPServer{}, configMapIndexKey, extractConfigMapNames).
+				Build()
+
+			r := &MCPServerReconciler{Client: fakeClient, Scheme: k8sClient.Scheme()}
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "unused-config", Namespace: "default"},
+			}
+
+			requests := r.findMCPServersForConfigMap(context.Background(), configMap)
+			Expect(requests).To(BeEmpty())
+		})
+
+		It("should return empty list on list error", func() {
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(k8sClient.Scheme()).
+				Build()
+
+			r := &MCPServerReconciler{Client: fakeClient, Scheme: k8sClient.Scheme()}
+
+			requests := r.findMCPServersForResource(
+				context.Background(),
+				"some-resource",
+				"default",
+				"nonexistent-index-key",
+			)
+			Expect(requests).To(BeEmpty())
+		})
 	})
 
 	Describe("ConfigMap/Secret index extractors", func() {
