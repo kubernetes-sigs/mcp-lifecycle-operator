@@ -98,6 +98,13 @@ func WithExtraAnnotations(annotations map[string]string) MCPServerOption {
 	}
 }
 
+// WithReplicas sets the number of pod replicas.
+func WithReplicas(n int32) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.Runtime.Replicas = &n
+	}
+}
+
 // NewMCPServer creates an MCPServer with sensible defaults for e2e tests.
 // Defaults: image=quay.io/matzew/mcp-everything:latest, port=3001.
 func NewMCPServer(name, namespace string, opts ...MCPServerOption) *mcpv1alpha1.MCPServer {
