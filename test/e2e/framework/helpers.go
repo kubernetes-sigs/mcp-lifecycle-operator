@@ -20,6 +20,7 @@ package framework
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,6 +134,65 @@ func WaitForMCPServerReconciledAndReady(ctx context.Context, t *testing.T, r *re
 	if err != nil {
 		t.Fatalf("MCPServer %s/%s: timed out waiting for reconciled Ready: %v",
 			server.Namespace, server.Name, err)
+	}
+}
+
+// WaitForMCPServerConditionReason polls until the named condition reaches the desired status and reason.
+// An optional timeout can be provided; defaults to 3 minutes.
+func WaitForMCPServerConditionReason(ctx context.Context, t *testing.T, r *resources.Resources,
+	server *mcpv1alpha1.MCPServer, condType string, status metav1.ConditionStatus, reason string, timeout ...time.Duration) {
+	t.Helper()
+	d := 3 * time.Minute
+	if len(timeout) > 0 {
+		d = timeout[0]
+	}
+	err := wait.For(
+		conditions.New(r).ResourceMatch(server, func(obj k8s.Object) bool {
+			s := obj.(*mcpv1alpha1.MCPServer)
+			for _, c := range s.Status.Conditions {
+				if c.Type == condType && c.Status == status && c.Reason == reason {
+					return true
+				}
+			}
+			return false
+		}),
+		wait.WithTimeout(d),
+		wait.WithInterval(2*time.Second),
+	)
+	if err != nil {
+		t.Fatalf("MCPServer %s/%s: timed out waiting for %s=%s reason=%s: %v",
+			server.Namespace, server.Name, condType, status, reason, err)
+	}
+}
+
+// WaitForMCPServerConditionMessageContains polls until the named condition reaches the desired
+// status and reason, and its message contains the given substring.
+// An optional timeout can be provided; defaults to 3 minutes.
+func WaitForMCPServerConditionMessageContains(ctx context.Context, t *testing.T, r *resources.Resources,
+	server *mcpv1alpha1.MCPServer, condType string, status metav1.ConditionStatus, reason string,
+	messageSubstring string, timeout ...time.Duration) {
+	t.Helper()
+	d := 3 * time.Minute
+	if len(timeout) > 0 {
+		d = timeout[0]
+	}
+	err := wait.For(
+		conditions.New(r).ResourceMatch(server, func(obj k8s.Object) bool {
+			s := obj.(*mcpv1alpha1.MCPServer)
+			for _, c := range s.Status.Conditions {
+				if c.Type == condType && c.Status == status && c.Reason == reason &&
+					strings.Contains(c.Message, messageSubstring) {
+					return true
+				}
+			}
+			return false
+		}),
+		wait.WithTimeout(d),
+		wait.WithInterval(2*time.Second),
+	)
+	if err != nil {
+		t.Fatalf("MCPServer %s/%s: timed out waiting for %s=%s reason=%s message containing %q: %v",
+			server.Namespace, server.Name, condType, status, reason, messageSubstring, err)
 	}
 }
 

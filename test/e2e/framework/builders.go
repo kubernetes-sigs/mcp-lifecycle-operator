@@ -19,6 +19,7 @@ limitations under the License.
 package framework
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
@@ -38,6 +39,41 @@ func WithPort(port int32) MCPServerOption {
 func WithImage(ref string) MCPServerOption {
 	return func(s *mcpv1alpha1.MCPServer) {
 		s.Spec.Source.ContainerImage.Ref = ref
+	}
+}
+
+// WithArguments sets the MCPServer container arguments.
+func WithArguments(args ...string) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.Config.Arguments = args
+	}
+}
+
+// WithEnvFrom sets the MCPServer envFrom sources.
+func WithEnvFrom(envFrom ...corev1.EnvFromSource) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.Config.EnvFrom = envFrom
+	}
+}
+
+// WithStorage sets the MCPServer storage mounts.
+func WithStorage(storage ...mcpv1alpha1.StorageMount) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.Config.Storage = storage
+	}
+}
+
+// WithPath sets the MCPServer HTTP path.
+func WithPath(path string) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.Config.Path = path
+	}
+}
+
+// WithSecurityContext sets the container security context.
+func WithSecurityContext(sc *corev1.SecurityContext) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.Runtime.Security.SecurityContext = sc
 	}
 }
 
