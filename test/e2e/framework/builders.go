@@ -77,6 +77,27 @@ func WithSecurityContext(sc *corev1.SecurityContext) MCPServerOption {
 	}
 }
 
+// WithPodSecurityContext sets the pod-level security context.
+func WithPodSecurityContext(psc *corev1.PodSecurityContext) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.Runtime.Security.PodSecurityContext = psc
+	}
+}
+
+// WithExtraLabels sets custom labels on the MCPServer.
+func WithExtraLabels(labels map[string]string) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.ExtraLabels = labels
+	}
+}
+
+// WithExtraAnnotations sets custom annotations on the MCPServer.
+func WithExtraAnnotations(annotations map[string]string) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.ExtraAnnotations = annotations
+	}
+}
+
 // NewMCPServer creates an MCPServer with sensible defaults for e2e tests.
 // Defaults: image=quay.io/matzew/mcp-everything:latest, port=3001.
 func NewMCPServer(name, namespace string, opts ...MCPServerOption) *mcpv1alpha1.MCPServer {
