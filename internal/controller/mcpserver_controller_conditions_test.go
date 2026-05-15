@@ -614,7 +614,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				},
 			},
 		}
-		condition := determineReadyCondition(deployment, acceptedCondition, generation, make([]metav1.Condition, 0))
+		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Reason).To(Equal(ReasonDeploymentUnavailable))
 		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(condition.Message).To(ContainSubstring("processing spec update"))
@@ -636,7 +636,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				},
 			},
 		}
-		condition := determineReadyCondition(deployment, acceptedCondition, generation, make([]metav1.Condition, 0))
+		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Reason).To(Equal(ReasonDeploymentUnavailable))
 		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 	})
