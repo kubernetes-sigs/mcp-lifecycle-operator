@@ -77,6 +77,9 @@ func TestImageUpdate(t *testing.T) {
 				t.Fatalf("Deployment not found: %v", err)
 			}
 
+			if len(dep.Spec.Template.Spec.Containers) == 0 {
+				t.Fatal("expected at least one container in Deployment pod template")
+			}
 			actualImage := dep.Spec.Template.Spec.Containers[0].Image
 			if actualImage != digestRef {
 				t.Fatalf("expected image %q, got %q", digestRef, actualImage)
@@ -160,6 +163,9 @@ func TestStorageAddition(t *testing.T) {
 				t.Fatal("expected ConfigMap volume 'add-config' after storage addition")
 			}
 
+			if len(dep.Spec.Template.Spec.Containers) == 0 {
+				t.Fatal("expected at least one container in Deployment pod template")
+			}
 			foundMount := false
 			for _, m := range dep.Spec.Template.Spec.Containers[0].VolumeMounts {
 				if m.MountPath == "/etc/added-config" {
@@ -243,9 +249,11 @@ func TestStorageRemoval(t *testing.T) {
 					t.Fatal("ConfigMap volume 'remove-config' should have been removed")
 				}
 			}
-			for _, m := range dep.Spec.Template.Spec.Containers[0].VolumeMounts {
-				if m.MountPath == "/etc/remove-config" {
-					t.Fatal("volume mount at /etc/remove-config should have been removed")
+			if len(dep.Spec.Template.Spec.Containers) > 0 {
+				for _, m := range dep.Spec.Template.Spec.Containers[0].VolumeMounts {
+					if m.MountPath == "/etc/remove-config" {
+						t.Fatal("volume mount at /etc/remove-config should have been removed")
+					}
 				}
 			}
 
@@ -323,6 +331,9 @@ func TestServicePortDrift(t *testing.T) {
 				t.Fatalf("Service not found: %v", err)
 			}
 
+			if len(svc.Spec.Ports) == 0 {
+				t.Fatal("expected at least one port in Service spec")
+			}
 			svc.Spec.Ports[0].Port = 9999
 			if err := r.Update(ctx, svc); err != nil {
 				t.Fatalf("failed to change Service port: %v", err)
