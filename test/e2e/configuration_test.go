@@ -240,6 +240,72 @@ func TestStorageEmptyDir(t *testing.T) {
 	testenv.Test(t, feature)
 }
 
+func TestStorageRecursiveReadOnly(t *testing.T) {
+	feature := features.New("MCPServer with RecursiveReadOnly storage").
+		WithLabel("type", "configuration").
+		WithLabel("config", "storage-recursive-readonly").
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			ns := ctx.Value(f.NsKey).(string)
+			r := cfg.Client().Resources()
+
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "rro-config", Namespace: ns},
+				Data:       map[string]string{"key": "value"},
+			}
+			if err := r.Create(ctx, cm); err != nil {
+				t.Fatalf("failed to create ConfigMap: %v", err)
+			}
+
+			return f.SetupMCPServer(ctx, t, cfg, "storage-rro", true,
+				f.WithStorage(mcpv1alpha1.StorageMount{
+					Path:        "/etc/rro-config",
+					Permissions: mcpv1alpha1.MountPermissionsRecursiveReadOnly,
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeConfigMap,
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "rro-config"},
+						},
+					},
+				}),
+			)
+		}).
+		Assess("Deployment has RecursiveReadOnly volume mount", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			dep := &appsv1.Deployment{}
+			if err := r.Get(ctx, server.Name, server.Namespace, dep); err != nil {
+				t.Fatalf("Deployment not found: %v", err)
+			}
+
+			foundMount := false
+			for _, m := range dep.Spec.Template.Spec.Containers[0].VolumeMounts {
+				if m.MountPath == "/etc/rro-config" {
+					if !m.ReadOnly {
+						t.Fatal("expected ReadOnly=true for RecursiveReadOnly mount")
+					}
+					if m.RecursiveReadOnly == nil || *m.RecursiveReadOnly != corev1.RecursiveReadOnlyEnabled {
+						t.Fatal("expected RecursiveReadOnly=Enabled")
+					}
+					foundMount = true
+					break
+				}
+			}
+			if !foundMount {
+				t.Fatal("expected volume mount at /etc/rro-config")
+			}
+
+			t.Log("Deployment has correct RecursiveReadOnly volume mount")
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return f.TeardownMCPServer(ctx, t, cfg)
+		}).
+		Feature()
+
+	testenv.Test(t, feature)
+}
+
 func TestStorageMultipleMounts(t *testing.T) {
 	feature := features.New("MCPServer with multiple storage mounts").
 		WithLabel("type", "configuration").
@@ -341,6 +407,76 @@ func TestStorageMultipleMounts(t *testing.T) {
 }
 
 // --- Port Configuration Tests ---
+
+func TestCustomPort(t *testing.T) {
+	feature := features.New("MCPServer with custom non-default port").
+		WithLabel("type", "configuration").
+		WithLabel("config", "port-custom").
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			// Use port 9090 at creation time. The test image only listens on 3001,
+			// so the pod won't pass readiness, but we verify port propagation.
+			return f.SetupMCPServer(ctx, t, cfg, "custom-port", false,
+				f.WithPort(9090),
+			)
+		}).
+		Assess("Accepted condition is True", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			f.WaitForMCPServerCondition(ctx, t, r, server, "Accepted", metav1.ConditionTrue)
+			t.Log("configuration accepted with custom port 9090")
+			return ctx
+		}).
+		Assess("Deployment container port is 9090", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			dep := &appsv1.Deployment{}
+			if err := r.Get(ctx, server.Name, server.Namespace, dep); err != nil {
+				t.Fatalf("Deployment not found: %v", err)
+			}
+
+			containerPort := dep.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort
+			if containerPort != 9090 {
+				t.Fatalf("expected container port 9090, got %d", containerPort)
+			}
+			t.Log("Deployment has container port 9090")
+			return ctx
+		}).
+		Assess("Service port is 9090", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			svc := &corev1.Service{}
+			if err := r.Get(ctx, server.Name, server.Namespace, svc); err != nil {
+				t.Fatalf("Service not found: %v", err)
+			}
+
+			if svc.Spec.Ports[0].Port != 9090 {
+				t.Fatalf("expected Service port 9090, got %d", svc.Spec.Ports[0].Port)
+			}
+			t.Log("Service has port 9090")
+			return ctx
+		}).
+		Assess("status address URL contains port 9090", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
+				t.Fatalf("failed to get MCPServer: %v", err)
+			}
+
+			f.AssertAddressURL(t, server, 9090)
+			t.Logf("status address URL: %s", server.Status.Address.URL)
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return f.TeardownMCPServer(ctx, t, cfg)
+		}).
+		Feature()
+
+	testenv.Test(t, feature)
+}
 
 func TestSamePortDifferentNamespaces(t *testing.T) {
 	feature := features.New("MCPServers with same port in different namespaces").
