@@ -461,6 +461,14 @@ type MCPServerStatus struct {
 	// +optional
 	HandshakeRetryCount int32 `json:"handshakeRetryCount,omitempty"`
 
+	// Replicas is the total number of desired pods targeted by the owned Deployment.
+	// +optional
+	Replicas int32 `json:"replicas,omitempty"`
+
+	// ReadyReplicas is the number of pods targeted by the owned Deployment with a Ready condition.
+	// +optional
+	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
+
 	// Conditions represent the latest available observations of the MCPServer's state.
 	//
 	// Standard condition types:

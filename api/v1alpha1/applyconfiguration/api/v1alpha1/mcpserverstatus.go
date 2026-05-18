@@ -45,6 +45,10 @@ type MCPServerStatusApplyConfiguration struct {
 	// failures for the current generation. Reset to 0 on success, spec change,
 	// or when reconciliation does not reach the handshake phase.
 	HandshakeRetryCount *int32 `json:"handshakeRetryCount,omitempty"`
+	// Replicas is the total number of desired pods targeted by the owned Deployment.
+	Replicas *int32 `json:"replicas,omitempty"`
+	// ReadyReplicas is the number of pods targeted by the owned Deployment with a Ready condition.
+	ReadyReplicas *int32 `json:"readyReplicas,omitempty"`
 	// Conditions represent the latest available observations of the MCPServer's state.
 	//
 	// Standard condition types:
@@ -119,6 +123,22 @@ func (b *MCPServerStatusApplyConfiguration) WithServerInfo(value *MCPServerInfoA
 // If called multiple times, the HandshakeRetryCount field is set to the value of the last call.
 func (b *MCPServerStatusApplyConfiguration) WithHandshakeRetryCount(value int32) *MCPServerStatusApplyConfiguration {
 	b.HandshakeRetryCount = &value
+	return b
+}
+
+// WithReplicas sets the Replicas field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Replicas field is set to the value of the last call.
+func (b *MCPServerStatusApplyConfiguration) WithReplicas(value int32) *MCPServerStatusApplyConfiguration {
+	b.Replicas = &value
+	return b
+}
+
+// WithReadyReplicas sets the ReadyReplicas field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ReadyReplicas field is set to the value of the last call.
+func (b *MCPServerStatusApplyConfiguration) WithReadyReplicas(value int32) *MCPServerStatusApplyConfiguration {
+	b.ReadyReplicas = &value
 	return b
 }
 

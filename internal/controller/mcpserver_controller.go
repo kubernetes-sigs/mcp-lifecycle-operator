@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -248,6 +249,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			WithObservedGeneration(mcpServer.Generation).
 			WithServiceName(mcpServer.Name).
 			WithHandshakeRetryCount(0).
+			WithReplicas(mcpServer.Status.Replicas).
+			WithReadyReplicas(mcpServer.Status.ReadyReplicas).
 			WithConditions(
 				conditionToAC(acceptedCondition),
 				conditionToAC(readyCondition),
@@ -286,6 +289,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			WithDeploymentName(existingDeployment.Name).
 			WithServiceName(mcpServer.Name).
 			WithHandshakeRetryCount(0).
+			WithReplicas(ptr.Deref(existingDeployment.Spec.Replicas, 1)).
+			WithReadyReplicas(existingDeployment.Status.ReadyReplicas).
 			WithConditions(
 				conditionToAC(acceptedCondition),
 				conditionToAC(readyCondition),
@@ -346,6 +351,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		WithDeploymentName(existingDeployment.Name).
 		WithServiceName(mcpServer.Name).
 		WithHandshakeRetryCount(handshakeRetryCount).
+		WithReplicas(ptr.Deref(existingDeployment.Spec.Replicas, 1)).
+		WithReadyReplicas(existingDeployment.Status.ReadyReplicas).
 		WithAddress(acv1alpha1.MCPServerAddress().
 			WithURL(mcpURL)).
 		WithConditions(
@@ -452,6 +459,8 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 		WithObservedGeneration(mcpServer.Generation).
 		WithServiceName(mcpServer.Name).
 		WithHandshakeRetryCount(0).
+		WithReplicas(mcpServer.Status.Replicas).
+		WithReadyReplicas(mcpServer.Status.ReadyReplicas).
 		WithConditions(
 			conditionToAC(acceptedCondition),
 			conditionToAC(readyCondition),

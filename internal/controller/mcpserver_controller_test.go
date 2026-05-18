@@ -751,6 +751,8 @@ var _ = Describe("MCPServer Controller", func() {
 			Expect(readyCondition).NotTo(BeNil())
 			Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
 			Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+			Expect(mcpServer.Status.Replicas).To(Equal(int32(1)))
+			Expect(mcpServer.Status.ReadyReplicas).To(Equal(int32(1)))
 
 			By("Updating replicas to 3")
 			mcpServer.Spec.Runtime.Replicas = new(int32(3))
@@ -781,6 +783,10 @@ var _ = Describe("MCPServer Controller", func() {
 			// so Ready should remain True, not incorrectly flip to False
 			Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
 			Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+
+			By("Verifying Replicas and ReadyReplicas status fields")
+			Expect(mcpServer.Status.Replicas).To(Equal(int32(3)))
+			Expect(mcpServer.Status.ReadyReplicas).To(Equal(int32(1)))
 		})
 	})
 
@@ -849,6 +855,10 @@ var _ = Describe("MCPServer Controller", func() {
 			Expect(readyCondition).NotTo(BeNil())
 			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
+
+			By("Verifying Replicas and ReadyReplicas reflect deployment state")
+			Expect(mcpServer.Status.Replicas).To(Equal(int32(1)))
+			Expect(mcpServer.Status.ReadyReplicas).To(Equal(int32(0)))
 		})
 
 		It("should NOT requeue when Deployment becomes available", func() {
@@ -1150,6 +1160,10 @@ var _ = Describe("MCPServer Controller", func() {
 			Expect(readyCondition).NotTo(BeNil())
 			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCondition.Reason).To(Equal(ReasonConfigurationInvalid))
+
+			By("Verifying Replicas and ReadyReplicas are zero when no Deployment exists")
+			Expect(mcpServer.Status.Replicas).To(Equal(int32(0)))
+			Expect(mcpServer.Status.ReadyReplicas).To(Equal(int32(0)))
 		})
 
 		It("should skip validation when envFrom reference is optional", func() {

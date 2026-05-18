@@ -1670,6 +1670,16 @@ spec:
                   When observedGeneration matches metadata.generation, the status is up-to-date.
                 format: int64
                 type: integer
+              readyReplicas:
+                description: ReadyReplicas is the number of pods targeted by the owned
+                  Deployment with a Ready condition.
+                format: int32
+                type: integer
+              replicas:
+                description: Replicas is the total number of desired pods targeted
+                  by the owned Deployment.
+                format: int32
+                type: integer
               serverInfo:
                 description: |-
                   ServerInfo contains identity and capability information reported by the
