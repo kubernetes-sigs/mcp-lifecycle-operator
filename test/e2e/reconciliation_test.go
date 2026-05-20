@@ -39,6 +39,8 @@ import (
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
 )
 
+const configHashAnnotation = "mcp.x-k8s.io/config-hash"
+
 // --- Spec Update Tests ---
 
 func TestImageUpdate(t *testing.T) {
@@ -275,7 +277,7 @@ func TestReplicaDrift(t *testing.T) {
 		WithLabel("type", "reconciliation").
 		WithLabel("scenario", "drift-replicas").
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			return f.SetupMCPServer(ctx, t, cfg, "drift-repl", true)
+			return f.SetupMCPServer(ctx, t, cfg, "drift-repl", true, f.WithReplicas(1))
 		}).
 		Assess("manually scale Deployment and verify reconciliation", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
@@ -292,19 +294,24 @@ func TestReplicaDrift(t *testing.T) {
 			}
 			t.Log("manually scaled Deployment to 3 replicas")
 
+			expectedReplicas := int32(1)
+			if server.Spec.Runtime.Replicas != nil {
+				expectedReplicas = *server.Spec.Runtime.Replicas
+			}
+
 			err := wait.For(
 				conditions.New(r).ResourceMatch(dep, func(obj k8s.Object) bool {
 					d := obj.(*appsv1.Deployment)
-					return d.Spec.Replicas != nil && *d.Spec.Replicas == 1
+					return d.Spec.Replicas != nil && *d.Spec.Replicas == expectedReplicas
 				}),
 				wait.WithTimeout(2*time.Minute),
 				wait.WithInterval(2*time.Second),
 			)
 			if err != nil {
-				t.Fatalf("controller did not reconcile replicas back to 1: %v", err)
+				t.Fatalf("controller did not reconcile replicas back to %d: %v", expectedReplicas, err)
 			}
 
-			t.Log("controller reconciled replicas back to 1")
+			t.Logf("controller reconciled replicas back to %d", expectedReplicas)
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -340,19 +347,21 @@ func TestServicePortDrift(t *testing.T) {
 			}
 			t.Log("manually changed Service port to 9999")
 
+			expectedPort := server.Spec.Config.Port
+
 			err := wait.For(
 				conditions.New(r).ResourceMatch(svc, func(obj k8s.Object) bool {
 					s := obj.(*corev1.Service)
-					return len(s.Spec.Ports) > 0 && s.Spec.Ports[0].Port == 3001
+					return len(s.Spec.Ports) > 0 && s.Spec.Ports[0].Port == expectedPort
 				}),
 				wait.WithTimeout(2*time.Minute),
 				wait.WithInterval(2*time.Second),
 			)
 			if err != nil {
-				t.Fatalf("controller did not reconcile Service port back to 3001: %v", err)
+				t.Fatalf("controller did not reconcile Service port back to %d: %v", expectedPort, err)
 			}
 
-			t.Log("controller reconciled Service port back to 3001")
+			t.Logf("controller reconciled Service port back to %d", expectedPort)
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -597,7 +606,7 @@ func TestConfigMapDataUpdateTriggersRestart(t *testing.T) {
 				t.Fatalf("Deployment not found: %v", err)
 			}
 
-			hash := dep.Spec.Template.Annotations["mcp.x-k8s.io/config-hash"]
+			hash := dep.Spec.Template.Annotations[configHashAnnotation]
 			if hash == "" {
 				t.Fatal("expected config-hash annotation on pod template")
 			}
@@ -634,7 +643,7 @@ func TestConfigMapDataUpdateTriggersRestart(t *testing.T) {
 			err := wait.For(
 				conditions.New(r).ResourceMatch(dep, func(obj k8s.Object) bool {
 					d := obj.(*appsv1.Deployment)
-					newHash := d.Spec.Template.Annotations["mcp.x-k8s.io/config-hash"]
+					newHash := d.Spec.Template.Annotations[configHashAnnotation]
 					return newHash != "" && newHash != initialHash
 				}),
 				wait.WithTimeout(2*time.Minute),
@@ -647,7 +656,7 @@ func TestConfigMapDataUpdateTriggersRestart(t *testing.T) {
 			if err := r.Get(ctx, server.Name, server.Namespace, dep); err != nil {
 				t.Fatalf("failed to re-fetch Deployment: %v", err)
 			}
-			newHash := dep.Spec.Template.Annotations["mcp.x-k8s.io/config-hash"]
+			newHash := dep.Spec.Template.Annotations[configHashAnnotation]
 			t.Logf("config hash changed from %s to %s", initialHash, newHash)
 
 			f.WaitForMCPServerCondition(ctx, t, r, server, "Ready", metav1.ConditionTrue)
