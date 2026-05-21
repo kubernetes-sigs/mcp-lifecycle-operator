@@ -251,11 +251,12 @@ func TestStorageRemoval(t *testing.T) {
 					t.Fatal("ConfigMap volume 'remove-config' should have been removed")
 				}
 			}
-			if len(dep.Spec.Template.Spec.Containers) > 0 {
-				for _, m := range dep.Spec.Template.Spec.Containers[0].VolumeMounts {
-					if m.MountPath == "/etc/remove-config" {
-						t.Fatal("volume mount at /etc/remove-config should have been removed")
-					}
+			if len(dep.Spec.Template.Spec.Containers) == 0 {
+				t.Fatal("expected at least one container in Deployment pod template")
+			}
+			for _, m := range dep.Spec.Template.Spec.Containers[0].VolumeMounts {
+				if m.MountPath == "/etc/remove-config" {
+					t.Fatal("volume mount at /etc/remove-config should have been removed")
 				}
 			}
 
