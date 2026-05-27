@@ -167,7 +167,11 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build --target production -t ${IMG} .
+
+.PHONY: docker-build-debug
+docker-build-debug: ## Build docker image with Delve for remote debugging.
+	$(CONTAINER_TOOL) build --target debug -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -237,6 +241,11 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" apply -f -
+
+.PHONY: deploy-debug
+deploy-debug: manifests kustomize ## Deploy controller with Delve for remote debugging.
+	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	"$(KUSTOMIZE)" build config/manager-debug | "$(KUBECTL)" apply -f -
 
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
