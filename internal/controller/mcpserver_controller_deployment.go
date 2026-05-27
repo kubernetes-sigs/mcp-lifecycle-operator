@@ -59,6 +59,9 @@ func (r *MCPServerReconciler) reconcileDeployment(
 	err = r.Get(ctx, client.ObjectKey{Name: deployment.Name, Namespace: deployment.Namespace}, existingDeployment)
 	if err != nil && apierrors.IsNotFound(err) {
 		logger.Info("Creating Deployment", "name", deployment.Name)
+		if err := applyCustomDeploymentMetadata(mcpServer, deployment); err != nil {
+			return nil, fmt.Errorf("applying custom metadata failed; %w", err)
+		}
 		if err := r.Create(ctx, deployment); err != nil {
 			logger.Error(err, "Failed to create Deployment")
 			return nil, err

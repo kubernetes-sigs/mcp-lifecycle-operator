@@ -634,3 +634,51 @@ var _ = Describe("MCPServer Controller - Server-Side Apply for Status", func() {
 		Expect(patchCalled).To(BeFalse(), "status should not use SubResourcePatch")
 	})
 })
+
+var _ = Describe("MCPServer Controller - Service ExtraLabels/ExtraAnnotations on creation", func() {
+	ctx := context.Background()
+
+	It("should apply ExtraLabels and ExtraAnnotations on initial Service creation", func() {
+		mcpServer := newTestMCPServer("test-svc-extra-metadata")
+		mcpServer.Spec.ExtraLabels = map[string]string{
+			"team": "platform",
+			"env":  "staging",
+		}
+		mcpServer.Spec.ExtraAnnotations = map[string]string{
+			"example.com/owner": "team-a",
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			err := k8sClient.Get(ctx, client.ObjectKey{Name: "test-svc-extra-metadata", Namespace: "default"}, mcpServer)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, mcpServer)).To(Succeed())
+			}
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		err := reconciler.reconcileService(ctx, mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+
+		createdService := &corev1.Service{}
+		err = k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-svc-extra-metadata",
+			Namespace: "default",
+		}, createdService)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying ExtraLabels on Service metadata")
+		Expect(createdService.Labels).To(HaveKeyWithValue("team", "platform"))
+		Expect(createdService.Labels).To(HaveKeyWithValue("env", "staging"))
+
+		By("Verifying ExtraAnnotations on Service metadata")
+		Expect(createdService.Annotations).To(HaveKeyWithValue("example.com/owner", "team-a"))
+
+		By("Verifying tracking annotations are set")
+		Expect(createdService.Annotations).To(HaveKey(managedExtraLabels))
+		Expect(createdService.Annotations).To(HaveKey(managedExtraAnnotations))
+	})
+})

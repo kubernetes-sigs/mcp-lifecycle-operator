@@ -49,6 +49,9 @@ func (r *MCPServerReconciler) reconcileService(
 	err := r.Get(ctx, client.ObjectKey{Name: service.Name, Namespace: service.Namespace}, existingService)
 	if err != nil && apierrors.IsNotFound(err) {
 		logger.Info("Creating Service", "name", service.Name)
+		if err := applyCustomServiceMetadata(mcpServer, service); err != nil {
+			return fmt.Errorf("applying custom metadata failed; %w", err)
+		}
 		if err := r.Create(ctx, service); err != nil {
 			logger.Error(err, "Failed to create Service")
 			return err

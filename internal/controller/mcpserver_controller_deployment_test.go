@@ -1141,4 +1141,56 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.InitialDelaySeconds).To(Equal(int32(15)))
 		Expect(deployment.Spec.Template.Spec.Containers[0].ReadinessProbe.PeriodSeconds).To(Equal(int32(20)))
 	})
+
+	It("should apply ExtraLabels and ExtraAnnotations on initial Deployment creation", func() {
+		mcpServer := newTestMCPServer("test-extra-metadata-create")
+		mcpServer.Spec.ExtraLabels = map[string]string{
+			"team": "platform",
+			"env":  "staging",
+		}
+		mcpServer.Spec.ExtraAnnotations = map[string]string{
+			"example.com/owner": "team-a",
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			err := k8sClient.Get(ctx, client.ObjectKey{Name: "test-extra-metadata-create", Namespace: "default"}, mcpServer)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, mcpServer)).To(Succeed())
+			}
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+
+		deployment, err := reconciler.reconcileDeployment(ctx, mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(deployment).NotTo(BeNil())
+
+		createdDeployment := &appsv1.Deployment{}
+		err = k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-extra-metadata-create",
+			Namespace: "default",
+		}, createdDeployment)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying ExtraLabels on Deployment metadata")
+		Expect(createdDeployment.Labels).To(HaveKeyWithValue("team", "platform"))
+		Expect(createdDeployment.Labels).To(HaveKeyWithValue("env", "staging"))
+
+		By("Verifying ExtraLabels on PodTemplate metadata")
+		Expect(createdDeployment.Spec.Template.Labels).To(HaveKeyWithValue("team", "platform"))
+		Expect(createdDeployment.Spec.Template.Labels).To(HaveKeyWithValue("env", "staging"))
+
+		By("Verifying ExtraAnnotations on Deployment metadata")
+		Expect(createdDeployment.Annotations).To(HaveKeyWithValue("example.com/owner", "team-a"))
+
+		By("Verifying ExtraAnnotations on PodTemplate metadata")
+		Expect(createdDeployment.Spec.Template.Annotations).To(HaveKeyWithValue("example.com/owner", "team-a"))
+
+		By("Verifying tracking annotations are set")
+		Expect(createdDeployment.Annotations).To(HaveKey(managedExtraLabels))
+		Expect(createdDeployment.Annotations).To(HaveKey(managedExtraAnnotations))
+	})
 })
