@@ -168,6 +168,73 @@ func Test_mergeMaps(t *testing.T) {
 	}
 }
 
+func Test_filterReservedAnnotationKeys(t *testing.T) {
+	tt := []struct {
+		name string
+		in   map[string]string
+		want map[string]string
+	}{
+		{
+			name: "nil map",
+			in:   nil,
+			want: nil,
+		},
+		{
+			name: "empty map",
+			in:   map[string]string{},
+			want: map[string]string{},
+		},
+		{
+			name: "no reserved keys",
+			in:   map[string]string{"department": "finance", "env": "prod"},
+			want: map[string]string{"department": "finance", "env": "prod"},
+		},
+		{
+			name: "filter config-hash annotation",
+			in: map[string]string{
+				"department":          "finance",
+				"mcp.x-k8s.io/config-hash": "abc123",
+			},
+			want: map[string]string{"department": "finance"},
+		},
+		{
+			name: "filter managed-extra-labels annotation",
+			in: map[string]string{
+				"mcp.x-k8s.io/managed-extra-labels": "{\"team\":\"platform\"}",
+			},
+			want: map[string]string{},
+		},
+		{
+			name: "filter managed-extra-annotations annotation",
+			in: map[string]string{
+				"mcp.x-k8s.io/managed-extra-annotations": "{\"x\":\"y\"}",
+				"cost-center": "engineering",
+			},
+			want: map[string]string{"cost-center": "engineering"},
+		},
+		{
+			name: "filter all mcp.x-k8s.io/ prefixed keys",
+			in: map[string]string{
+				"mcp.x-k8s.io/config-hash":               "abc",
+				"mcp.x-k8s.io/managed-extra-labels":       "{}",
+				"mcp.x-k8s.io/managed-extra-annotations":  "{}",
+				"mcp.x-k8s.io/some-future-annotation":     "val",
+				"safe-annotation": "ok",
+			},
+			want: map[string]string{"safe-annotation": "ok"},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			got := filterReservedAnnotationKeys(tc.in)
+			if !maps.Equal(got, tc.want) {
+				t.Errorf("wanted %v but got %v", tc.want, got)
+			}
+		})
+	}
+}
+
 func Test_applyCustomDeploymentMetadata(t *testing.T) {
 	deployment := func() *appsv1.Deployment {
 		return &appsv1.Deployment{
@@ -527,6 +594,51 @@ func Test_applyCustomDeploymentMetadata(t *testing.T) {
 							},
 							Annotations: map[string]string{
 								"cost-center": "engineering",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "reserved annotation keys in ExtraAnnotations are filtered out",
+			args: extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraAnnotations: map[string]string{
+							"department":                              "finance",
+							"mcp.x-k8s.io/config-hash":               "malicious-hash",
+							"mcp.x-k8s.io/managed-extra-labels":      "malicious",
+							"mcp.x-k8s.io/managed-extra-annotations": "malicious",
+						},
+					},
+				},
+				deployment: deployment(),
+			},
+			want: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "web",
+					Labels: map[string]string{
+						LabelKeyApp: "web",
+					},
+					Annotations: map[string]string{
+						"department":                             "finance",
+						"mcp.x-k8s.io/managed-extra-annotations": "{\"department\":\"finance\"}",
+					},
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							LabelKeyApp: "web",
+						},
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								LabelKeyApp: "web",
+							},
+							Annotations: map[string]string{
+								"department": "finance",
 							},
 						},
 					},
@@ -938,6 +1050,39 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 					Annotations: map[string]string{
 						"department":                             "finance",
 						"mcp.x-k8s.io/managed-extra-annotations": "{\"department\":\"finance\"}",
+					},
+				},
+			},
+		},
+		{
+			name: "reserved annotation keys in ExtraAnnotations are filtered out",
+			args: extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraAnnotations: map[string]string{
+							"cost-center":                             "engineering",
+							"mcp.x-k8s.io/config-hash":               "malicious-hash",
+							"mcp.x-k8s.io/managed-extra-labels":      "malicious",
+							"mcp.x-k8s.io/managed-extra-annotations": "malicious",
+						},
+					},
+				},
+				service: &corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "webserver",
+						},
+					},
+				},
+			},
+			want: &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						LabelKeyApp: "webserver",
+					},
+					Annotations: map[string]string{
+						"cost-center":                            "engineering",
+						"mcp.x-k8s.io/managed-extra-annotations": "{\"cost-center\":\"engineering\"}",
 					},
 				},
 			},
