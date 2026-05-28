@@ -1127,8 +1127,40 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		Expect(probe).NotTo(BeNil())
 		Expect(probe.TCPSocket).NotTo(BeNil())
 		Expect(probe.TCPSocket.Port.IntVal).To(Equal(int32(8080)))
-		Expect(probe.InitialDelaySeconds).To(BeZero(), "should use Kubernetes default")
-		Expect(probe.PeriodSeconds).To(BeZero(), "should use Kubernetes default")
+		Expect(probe.InitialDelaySeconds).To(BeZero())
+		Expect(probe.PeriodSeconds).NotTo(BeZero())
+		Expect(probe.TimeoutSeconds).NotTo(BeZero())
+		Expect(probe.SuccessThreshold).NotTo(BeZero())
+		Expect(probe.FailureThreshold).NotTo(BeZero())
+	})
+
+	It("should fill zero-valued timing fields on user-provided probes", func() {
+		probe := withProbeDefaults(&corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt(8080)},
+			},
+		})
+		Expect(probe.FailureThreshold).NotTo(BeZero())
+		Expect(probe.PeriodSeconds).NotTo(BeZero())
+		Expect(probe.SuccessThreshold).NotTo(BeZero())
+		Expect(probe.TimeoutSeconds).NotTo(BeZero())
+		Expect(probe.HTTPGet.Path).To(Equal("/healthz"))
+	})
+
+	It("should preserve user-set timing fields on probes", func() {
+		probe := withProbeDefaults(&corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt(8080)},
+			},
+			PeriodSeconds:       30,
+			FailureThreshold:    5,
+			InitialDelaySeconds: 10,
+		})
+		Expect(probe.PeriodSeconds).To(Equal(int32(30)))
+		Expect(probe.FailureThreshold).To(Equal(int32(5)))
+		Expect(probe.InitialDelaySeconds).To(Equal(int32(10)))
+		Expect(probe.SuccessThreshold).NotTo(BeZero())
+		Expect(probe.TimeoutSeconds).NotTo(BeZero())
 	})
 
 	It("should use provided port in default readiness probe", func() {
@@ -1232,6 +1264,27 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		By("Verifying tracking annotations are set")
 		Expect(createdDeployment.Annotations).To(HaveKey(managedExtraLabels))
 		Expect(createdDeployment.Annotations).To(HaveKey(managedExtraAnnotations))
+	})
+
+	It("should default PodSecurityContext to empty when not specified", func() {
+		mcpServer := newTestMCPServer("test-pod-sc-default")
+		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+		deployment, err := reconciler.createDeployment(mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(deployment.Spec.Template.Spec.SecurityContext).NotTo(BeNil())
+		Expect(*deployment.Spec.Template.Spec.SecurityContext).To(Equal(corev1.PodSecurityContext{}))
+	})
+
+	It("should use provided PodSecurityContext when specified", func() {
+		mcpServer := newTestMCPServer("test-pod-sc-custom")
+		mcpServer.Spec.Runtime.Security.PodSecurityContext = &corev1.PodSecurityContext{
+			RunAsNonRoot: new(true),
+		}
+		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+		deployment, err := reconciler.createDeployment(mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(deployment.Spec.Template.Spec.SecurityContext).NotTo(BeNil())
+		Expect(*deployment.Spec.Template.Spec.SecurityContext.RunAsNonRoot).To(BeTrue())
 	})
 })
 
