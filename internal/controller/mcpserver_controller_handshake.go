@@ -41,10 +41,6 @@ func (r *MCPServerReconciler) reconcileHandshake(
 ) (metav1.Condition, *mcpv1alpha1.MCPServerInfo) {
 	logger := log.FromContext(ctx)
 
-	if readyCondition.Status != metav1.ConditionTrue || readyCondition.Reason != ReasonAvailable {
-		return readyCondition, nil
-	}
-
 	existingReady := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeReady)
 	alreadyVerified := existingReady != nil &&
 		existingReady.Status == metav1.ConditionTrue &&
@@ -52,8 +48,15 @@ func (r *MCPServerReconciler) reconcileHandshake(
 		mcpServer.Status.ObservedGeneration == mcpServer.Generation &&
 		mcpServer.Status.ServerInfo != nil
 
+	// If the handshake was already verified for this generation, preserve
+	// Ready=True even if the Deployment has a transient status fluctuation
+	// (e.g. during rollout cleanup).
 	if alreadyVerified {
-		return readyCondition, mcpServer.Status.ServerInfo
+		return *existingReady, mcpServer.Status.ServerInfo
+	}
+
+	if readyCondition.Status != metav1.ConditionTrue || readyCondition.Reason != ReasonAvailable {
+		return readyCondition, nil
 	}
 
 	dialer := r.MCPDialer
