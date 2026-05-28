@@ -131,8 +131,9 @@ govulncheck: ## Run govulncheck (https://go.dev/doc/security/vuln/) against the 
 
 .PHONY: verify
 verify: manifests generate fmt ## Verify generated code and formatting are up-to-date.
-	@if [ -n "$$(git diff --name-only)" ]; then \
+	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "ERROR: generated files are out of date. Run 'make manifests generate fmt' and commit the result."; \
+		git status --porcelain; \
 		git diff; \
 		exit 1; \
 	else \
