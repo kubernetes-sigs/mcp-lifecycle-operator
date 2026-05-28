@@ -55,7 +55,7 @@ func Test_mergeMaps(t *testing.T) {
 			},
 		},
 		{
-			name: "overwriting known app labels should fail",
+			name: "overwriting existing keys in dst",
 			args: struct {
 				dst map[string]string
 				src map[string]string
@@ -70,7 +70,7 @@ func Test_mergeMaps(t *testing.T) {
 			},
 			want: want{
 				m: map[string]string{
-					LabelKeyApp: "web",
+					LabelKeyApp: "proxy",
 					"env":       "production",
 				},
 				wantErr: false,
@@ -132,7 +132,8 @@ func Test_mergeMaps(t *testing.T) {
 			},
 			want: want{
 				m: map[string]string{
-					"env": "production",
+					LabelKeyApp: "web",
+					"env":       "production",
 				},
 				wantErr: false,
 			},
@@ -192,7 +193,7 @@ func Test_filterReservedAnnotationKeys(t *testing.T) {
 		{
 			name: "filter config-hash annotation",
 			in: map[string]string{
-				"department":          "finance",
+				"department":               "finance",
 				"mcp.x-k8s.io/config-hash": "abc123",
 			},
 			want: map[string]string{"department": "finance"},
@@ -208,7 +209,7 @@ func Test_filterReservedAnnotationKeys(t *testing.T) {
 			name: "filter managed-extra-annotations annotation",
 			in: map[string]string{
 				"mcp.x-k8s.io/managed-extra-annotations": "{\"x\":\"y\"}",
-				"cost-center": "engineering",
+				"cost-center":                            "engineering",
 			},
 			want: map[string]string{"cost-center": "engineering"},
 		},
@@ -216,10 +217,10 @@ func Test_filterReservedAnnotationKeys(t *testing.T) {
 			name: "filter all mcp.x-k8s.io/ prefixed keys",
 			in: map[string]string{
 				"mcp.x-k8s.io/config-hash":               "abc",
-				"mcp.x-k8s.io/managed-extra-labels":       "{}",
-				"mcp.x-k8s.io/managed-extra-annotations":  "{}",
-				"mcp.x-k8s.io/some-future-annotation":     "val",
-				"safe-annotation": "ok",
+				"mcp.x-k8s.io/managed-extra-labels":      "{}",
+				"mcp.x-k8s.io/managed-extra-annotations": "{}",
+				"mcp.x-k8s.io/some-future-annotation":    "val",
+				"safe-annotation":                        "ok",
 			},
 			want: map[string]string{"safe-annotation": "ok"},
 		},
@@ -606,7 +607,7 @@ func Test_applyCustomDeploymentMetadata(t *testing.T) {
 				mcp: &mcpv1alpha1.MCPServer{
 					Spec: mcpv1alpha1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
-							"department":                              "finance",
+							"department":                             "finance",
 							"mcp.x-k8s.io/config-hash":               "malicious-hash",
 							"mcp.x-k8s.io/managed-extra-labels":      "malicious",
 							"mcp.x-k8s.io/managed-extra-annotations": "malicious",
@@ -1060,7 +1061,7 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 				mcp: &mcpv1alpha1.MCPServer{
 					Spec: mcpv1alpha1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
-							"cost-center":                             "engineering",
+							"cost-center":                            "engineering",
 							"mcp.x-k8s.io/config-hash":               "malicious-hash",
 							"mcp.x-k8s.io/managed-extra-labels":      "malicious",
 							"mcp.x-k8s.io/managed-extra-annotations": "malicious",

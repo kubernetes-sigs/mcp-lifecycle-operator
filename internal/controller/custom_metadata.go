@@ -51,24 +51,13 @@ func filterReservedAnnotationKeys(m map[string]string) map[string]string {
 	return filtered
 }
 
-// mergeMaps is a custom function aimed at merging maps
-// It will merge maps with exception of attempts to override
-// application defined map keys
+// mergeMaps merges all entries from src into dst.
+// Callers are responsible for filtering reserved keys before calling.
 func mergeMaps(dst, src map[string]string) error {
 	if dst == nil {
 		return ErrNilMap
 	}
-	if len(src) == 0 {
-		return nil
-	}
-
-	for k, v := range src {
-		if reservedLabelKeys[k] {
-			continue
-		}
-
-		dst[k] = v
-	}
+	maps.Copy(dst, src)
 	return nil
 }
 
@@ -120,7 +109,7 @@ func applyCustomDeploymentMetadata(mcpServer *mcpv1alpha1.MCPServer, deployment 
 		}
 		if err := mergeMaps(
 			deployment.Labels,
-			mcpServer.Spec.ExtraLabels,
+			effectiveLabels,
 		); err != nil {
 			return fmt.Errorf("appending deployment labels failed; %w", err)
 		}
@@ -129,7 +118,7 @@ func applyCustomDeploymentMetadata(mcpServer *mcpv1alpha1.MCPServer, deployment 
 		}
 		if err := mergeMaps(
 			deployment.Spec.Template.Labels,
-			mcpServer.Spec.ExtraLabels,
+			effectiveLabels,
 		); err != nil {
 			return fmt.Errorf("appending pod template labels failed; %w", err)
 		}
@@ -228,7 +217,7 @@ func applyCustomServiceMetadata(mcpServer *mcpv1alpha1.MCPServer, service *corev
 	}
 
 	if len(effectiveLabels) > 0 {
-		if err := mergeMaps(service.Labels, mcpServer.Spec.ExtraLabels); err != nil {
+		if err := mergeMaps(service.Labels, effectiveLabels); err != nil {
 			return fmt.Errorf("appending service labels failed; %w", err)
 		}
 	}
