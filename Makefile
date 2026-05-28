@@ -129,6 +129,16 @@ GOVULNCHECK_VERSION ?= v1.3.0
 govulncheck: ## Run govulncheck (https://go.dev/doc/security/vuln/) against the module.
 	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
+.PHONY: verify
+verify: manifests generate fmt ## Verify generated code and formatting are up-to-date.
+	@if [ -n "$$(git diff --name-only)" ]; then \
+		echo "ERROR: generated files are out of date. Run 'make manifests generate fmt' and commit the result."; \
+		git diff; \
+		exit 1; \
+	else \
+		echo "Generated code and formatting are up-to-date."; \
+	fi
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	"$(GOLANGCI_LINT)" run
