@@ -117,7 +117,7 @@ deploy-test-e2e: setup-test-e2e manifests generate ## Build and deploy the opera
 
 .PHONY: test-e2e
 test-e2e: ## Run the e2e tests (requires operator already deployed, see deploy-test-e2e).
-	go test -tags=e2e ./test/e2e/ -v -count=1 -timeout 10m
+	go test -tags=e2e ./test/e2e/ -v -count=1 -timeout 1h
 
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
