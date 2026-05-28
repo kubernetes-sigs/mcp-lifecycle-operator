@@ -95,7 +95,6 @@ func (r *MCPServerReconciler) reconcileHandshake(
 // MCP servers do not handle gracefully).
 func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
 	connCtx, connCancel := context.WithCancel(ctx)
-	defer connCancel()
 
 	mcpClient := mcp.NewClient(
 		&mcp.Implementation{
@@ -114,9 +113,14 @@ func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string)
 
 	session, err := mcpClient.Connect(connCtx, transport, nil)
 	if err != nil {
+		connCancel()
 		return nil, err
 	}
+	// Cancel the connection context before closing the session. session.Close
+	// blocks until the reader goroutine exits; cancelling the context causes
+	// the reader to return immediately instead of waiting on the HTTP stream.
 	defer func() {
+		connCancel()
 		_ = session.Close()
 	}()
 
