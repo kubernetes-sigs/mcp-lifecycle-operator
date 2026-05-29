@@ -156,6 +156,8 @@ func deploymentNeedsUpdate(mcpServer *mcpv1alpha1.MCPServer, existing, desired *
 		!equality.Semantic.DeepEqual(oldPodSpec.Volumes, newPodSpec.Volumes) ||
 		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].VolumeMounts, newPodSpec.Containers[0].VolumeMounts) ||
 		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].Resources, newPodSpec.Containers[0].Resources) ||
+		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].Ports, newPodSpec.Containers[0].Ports) ||
+		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].SecurityContext, newPodSpec.Containers[0].SecurityContext) ||
 		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].LivenessProbe, newPodSpec.Containers[0].LivenessProbe) ||
 		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].ReadinessProbe, newPodSpec.Containers[0].ReadinessProbe) ||
 		oldPodSpec.ServiceAccountName != newPodSpec.ServiceAccountName ||
