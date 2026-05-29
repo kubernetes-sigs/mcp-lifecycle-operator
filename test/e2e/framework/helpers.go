@@ -20,12 +20,14 @@ package framework
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -236,4 +238,37 @@ func TeardownMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config) c
 
 	t.Log("Deployment and Service were garbage collected")
 	return ctx
+}
+
+// WaitForEndpointsReady waits until the named Service has at least one ready
+// endpoint in its EndpointSlice. The API server proxy returns 503 until
+// endpoints are propagated, so callers that use the proxy should wait first.
+func WaitForEndpointsReady(ctx context.Context, t *testing.T, cfg *envconf.Config, namespace, name string) {
+	t.Helper()
+	r := cfg.Client().Resources(namespace)
+
+	err := wait.For(func(ctx context.Context) (done bool, err error) {
+		var slices discoveryv1.EndpointSliceList
+		if err := r.List(ctx, &slices,
+			resources.WithLabelSelector(fmt.Sprintf("kubernetes.io/service-name=%s", name)),
+		); err != nil {
+			return false, err
+		}
+		for _, slice := range slices.Items {
+			for _, ep := range slice.Endpoints {
+				if ep.Conditions.Ready != nil && *ep.Conditions.Ready {
+					return true, nil
+				}
+			}
+		}
+		return false, nil
+	},
+		wait.WithTimeout(1*time.Minute),
+		wait.WithInterval(2*time.Second),
+		wait.WithContext(ctx),
+	)
+	if err != nil {
+		t.Fatalf("endpoints for Service %s/%s never became ready: %v", namespace, name, err)
+	}
+	t.Logf("Service %s/%s has ready endpoints", namespace, name)
 }

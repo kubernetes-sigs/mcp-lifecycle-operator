@@ -76,6 +76,8 @@ func TestMCPHandshake(t *testing.T) {
 		Assess("MCP handshake and tool listing via API server proxy", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 
+			f.WaitForEndpointsReady(ctx, t, cfg, server.Namespace, server.Name)
+
 			httpClient, proxyURL := f.ServiceProxyHTTPClient(t, cfg,
 				server.Namespace, server.Name, int(mcpServerPort), "/mcp")
 
