@@ -1,8 +1,31 @@
 # Generated from kubebuilder template:
 # https://github.com/kubernetes-sigs/kubebuilder/blob/v4.11.1/pkg/plugins/golang/v4/scaffolds/internal/templates/makefile.go
 
+# VERSION defines the project version for the bundle.
+VERSION ?= 0.0.1
+
+# CHANNELS define the bundle channels used in the bundle.
+CHANNELS ?= alpha
+BUNDLE_CHANNELS := --channels=$(CHANNELS)
+
+# DEFAULT_CHANNEL defines the default channel used in the bundle.
+DEFAULT_CHANNEL ?= alpha
+BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
+
+BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
+
+# IMAGE_TAG_BASE defines the namespace and part of the image name for remote images.
+IMAGE_TAG_BASE ?= controller
+
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= $(IMAGE_TAG_BASE):latest
+
+# BUNDLE_IMG defines the image:tag used for the bundle.
+BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(VERSION)
+
+# BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
+BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -242,6 +265,24 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
+##@ OLM
+
+.PHONY: bundle
+bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
+	"$(OPERATOR_SDK)" generate kustomize manifests -q
+	cd config/manager && "$(KUSTOMIZE)" edit set image controller=$(IMG)
+	"$(KUSTOMIZE)" build config/manifests | "$(OPERATOR_SDK)" generate bundle $(BUNDLE_GEN_FLAGS)
+	"$(OPERATOR_SDK)" bundle validate ./bundle
+
+.PHONY: bundle-build
+bundle-build: ## Build the bundle image.
+	$(CONTAINER_TOOL) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+
+.PHONY: bundle-push
+bundle-push: ## Push the bundle image.
+	$(CONTAINER_TOOL) push $(BUNDLE_IMG)
+
+
 ##@ Dependencies
 
 ## Location to install dependencies to
@@ -256,10 +297,12 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.20.0
+OPERATOR_SDK_VERSION ?= v1.41.1
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
@@ -299,6 +342,17 @@ $(ENVTEST): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+.PHONY: operator-sdk
+operator-sdk: $(OPERATOR_SDK) ## Download operator-sdk locally if necessary.
+$(OPERATOR_SDK): $(LOCALBIN)
+	@{ \
+	set -e ;\
+	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
+	curl -sSLo $(OPERATOR_SDK) https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$${OS}_$${ARCH} ;\
+	chmod +x $(OPERATOR_SDK) ;\
+	}
+
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
