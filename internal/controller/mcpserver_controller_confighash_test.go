@@ -875,6 +875,101 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 	})
 
+	Context("When referenced ConfigMap exists but has empty data", func() {
+		const resourceName = "test-confighash-empty-cm"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "hash-empty-cm",
+					Namespace: "default",
+				},
+			}
+			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
+				{
+					ConfigMapRef: &corev1.ConfigMapEnvSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: "hash-empty-cm",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			configMap := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "hash-empty-cm", Namespace: "default"}, configMap)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, configMap)).To(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+			}
+		})
+
+		It("should set config-hash and update it when data is added", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client:    k8sClient,
+				Scheme:    k8sClient.Scheme(),
+				APIReader: k8sClient,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(deployment.Spec.Template.Annotations).To(HaveKey(configHashAnnotation))
+			emptyHash := deployment.Spec.Template.Annotations[configHashAnnotation]
+			Expect(emptyHash).NotTo(BeEmpty())
+
+			// Add data to the previously-empty ConfigMap
+			configMap := &corev1.ConfigMap{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "hash-empty-cm", Namespace: "default"}, configMap)
+			Expect(err).NotTo(HaveOccurred())
+			configMap.Data = map[string]string{"key1": "value1"}
+			Expect(k8sClient.Update(ctx, configMap)).To(Succeed())
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			populatedHash := deployment.Spec.Template.Annotations[configHashAnnotation]
+			Expect(populatedHash).NotTo(BeEmpty())
+			Expect(populatedHash).NotTo(Equal(emptyHash))
+		})
+	})
+
 	Context("When existing pod template annotations are present", func() {
 		const resourceName = "test-confighash-existing-annotations"
 
