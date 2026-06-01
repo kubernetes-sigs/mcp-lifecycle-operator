@@ -92,11 +92,16 @@ var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
 			return false
 		}, 10*time.Second).Should(BeTrue())
 
-		// Perform a status-only update
+		// Perform a status-only update.
+		// Re-fetch inside Eventually to avoid conflicts with the running controller.
 		serverKey := types.NamespacedName{Name: mcpServer.Name, Namespace: mcpServer.Namespace}
-		Expect(k8sClient.Get(ctx, serverKey, mcpServer)).To(Succeed())
-		mcpServer.Status.HandshakeRetryCount = 99
-		Expect(k8sClient.Status().Update(ctx, mcpServer)).To(Succeed())
+		Eventually(func() error {
+			if err := k8sClient.Get(ctx, serverKey, mcpServer); err != nil {
+				return err
+			}
+			mcpServer.Status.HandshakeRetryCount = 99
+			return k8sClient.Status().Update(ctx, mcpServer)
+		}, 10*time.Second).Should(Succeed())
 
 		// Verify no reconciliation: Deployment resourceVersion must not change
 		Consistently(func() string {
@@ -119,11 +124,16 @@ var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
 			return k8sClient.Get(ctx, depKey, dep)
 		}, 10*time.Second).Should(Succeed())
 
-		// Update the MCPServer spec (change image)
+		// Update the MCPServer spec (change image).
+		// Re-fetch inside Eventually to avoid conflicts with the running controller.
 		serverKey := types.NamespacedName{Name: mcpServer.Name, Namespace: mcpServer.Namespace}
-		Expect(k8sClient.Get(ctx, serverKey, mcpServer)).To(Succeed())
-		mcpServer.Spec.Source.ContainerImage.Ref = "docker.io/library/updated-image:latest"
-		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+		Eventually(func() error {
+			if err := k8sClient.Get(ctx, serverKey, mcpServer); err != nil {
+				return err
+			}
+			mcpServer.Spec.Source.ContainerImage.Ref = "docker.io/library/updated-image:latest"
+			return k8sClient.Update(ctx, mcpServer)
+		}, 10*time.Second).Should(Succeed())
 
 		// Verify reconciliation happened: Deployment should reflect the new image
 		Eventually(func() string {
