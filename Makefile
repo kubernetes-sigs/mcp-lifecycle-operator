@@ -14,8 +14,12 @@ BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
 
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
+# REGISTRY defines the container registry for image targets.
+REGISTRY_PORT ?= 5001
+REGISTRY ?= localhost:$(REGISTRY_PORT)
+
 # IMAGE_TAG_BASE defines the namespace and part of the image name for remote images.
-IMAGE_TAG_BASE ?= controller
+IMAGE_TAG_BASE ?= $(REGISTRY)/mcp-lifecycle-operator
 
 # Image URL to use all building/pushing image targets
 IMG ?= $(IMAGE_TAG_BASE):latest
@@ -117,30 +121,29 @@ cover-clean: ## Remove cover.out and out/coverage.{txt,html} from test-cover.
 KIND_CLUSTER ?= mcp-lifecycle-operator-test-e2e
 
 .PHONY: setup-test-e2e
-setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
-	@command -v $(KIND) >/dev/null 2>&1 || { \
-		echo "Kind is not installed. Please install Kind manually."; \
-		exit 1; \
-	}
-	@case "$$($(KIND) get clusters)" in \
-		*"$(KIND_CLUSTER)"*) \
-			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation."; \
-			$(KIND) export kubeconfig --name $(KIND_CLUSTER) ;; \
-		*) \
-			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
-	esac
+setup-test-e2e: ## Set up a Kind cluster with local registry for e2e tests
+	./hack/create-kind-cluster.sh --name $(KIND_CLUSTER) --container-tool $(CONTAINER_TOOL) --registry-port $(REGISTRY_PORT)
 
 .PHONY: deploy-test-e2e
 deploy-test-e2e: setup-test-e2e manifests generate ## Build and deploy the operator to the Kind cluster for e2e tests.
-	$(MAKE) docker-build IMG=example.com/mcp-lifecycle-operator:e2e
-	$(KIND) load docker-image example.com/mcp-lifecycle-operator:e2e --name $(KIND_CLUSTER)
-	$(MAKE) install deploy IMG=example.com/mcp-lifecycle-operator:e2e
+	$(MAKE) docker-build docker-push
+	$(MAKE) install deploy
 	$(KUBECTL) rollout status deployment/mcp-lifecycle-operator-controller-manager -n mcp-lifecycle-operator-system --timeout=120s
 
 .PHONY: test-e2e
 test-e2e: ## Run the e2e tests (requires operator already deployed, see deploy-test-e2e).
 	go test -tags=e2e ./test/e2e/ -v -count=1 -timeout 1h
+
+.PHONY: deploy-test-e2e-bundle
+deploy-test-e2e-bundle: setup-test-e2e manifests generate operator-sdk ## Build images, install OLM, and push bundle to local registry for OLM e2e tests.
+	$(MAKE) docker-build docker-push
+	$(MAKE) bundle bundle-build bundle-push
+	@"$(OPERATOR_SDK)" olm status > /dev/null 2>&1 || "$(OPERATOR_SDK)" olm install
+
+.PHONY: test-e2e-bundle
+test-e2e-bundle: ## Run OLM bundle e2e tests (requires deploy-test-e2e-bundle first).
+	OPERATOR_SDK="$(OPERATOR_SDK)" BUNDLE_IMG=$(BUNDLE_IMG) \
+		go test -tags=e2e ./test/olm/ -v -count=1 -timeout 30m
 
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
