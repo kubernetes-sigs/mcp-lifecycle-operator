@@ -38,15 +38,6 @@ COPY . .
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -gcflags="all=-N -l" -o manager ./cmd
 
-# Use distroless as minimal base image to package the manager binary
-# Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/static:nonroot AS production
-WORKDIR /
-COPY --from=builder /workspace/manager .
-USER 65532:65532
-
-ENTRYPOINT ["/manager"]
-
 # Debug image with Delve
 FROM golang:1.26.3 AS debug
 RUN go install github.com/go-delve/delve/cmd/dlv@latest
@@ -55,3 +46,12 @@ COPY --from=debug-builder /workspace/manager .
 USER 65532:65532
 
 ENTRYPOINT ["dlv", "exec", "/manager", "--headless", "--listen=:40000", "--api-version=2", "--accept-multiclient", "--"]
+
+# Use distroless as minimal base image to package the manager binary
+# Refer to https://github.com/GoogleContainerTools/distroless for more details
+FROM gcr.io/distroless/static:nonroot AS production
+WORKDIR /
+COPY --from=builder /workspace/manager .
+USER 65532:65532
+
+ENTRYPOINT ["/manager"]
