@@ -228,7 +228,7 @@ func getWatchNamespaces() []string {
 		return nil
 	}
 	var namespaces []string
-	for _, n := range strings.Split(ns, ",") {
+	for n := range strings.SplitSeq(ns, ",") {
 		if trimmed := strings.TrimSpace(n); trimmed != "" {
 			namespaces = append(namespaces, trimmed)
 		}
