@@ -1,0 +1,33 @@
+name: OLM Bundle E2E Tests
+
+on:
+  pull_request:
+    branches: ['main']
+
+permissions:
+  contents: read
+
+jobs:
+  test-e2e-bundle:
+    name: Run on Ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install the latest version of kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Deploy operator bundle to Kind cluster
+        run: make deploy-test-e2e-bundle
+
+      - name: Run OLM bundle e2e tests
+        run: make test-e2e-bundle
