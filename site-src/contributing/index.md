@@ -23,6 +23,26 @@ From the repository root:
 - **Test coverage:** `make test` writes `cover.out`. Run `make test-cover` to refresh tests and emit `out/coverage.html` and `out/coverage.txt` (`go tool cover`). With `cover.out` present, `make cover-func` prints a per-function summary and `make cover-html` opens the interactive HTML report in a browser (local). Remove generated artifacts with `make cover-clean`.
 - **Generate manifests:** `make manifests generate`
 
+### E2E tests
+
+- **Set up Kind cluster:** `make setup-test-e2e` (creates a Kind cluster with a local container registry via `hack/create-kind-cluster.sh`)
+- **Deploy operator:** `make deploy-test-e2e` (builds, pushes to local registry, deploys to Kind)
+- **Run e2e tests:** `make test-e2e`
+- **Tear down:** `make cleanup-test-e2e`
+
+### OLM bundle
+
+The operator supports installation via [OLM (Operator Lifecycle Manager)](https://olm.operatorframework.io/). The bundle is auto-generated from existing kustomize manifests — only the CSV skeleton in `config/manifests/bases/` is maintained manually.
+
+- **Generate bundle:** `make bundle`
+- **Build bundle image:** `make bundle-build`
+- **Push bundle image:** `make bundle-push`
+
+To run OLM bundle e2e tests (tests all four install modes: OwnNamespace, SingleNamespace, MultiNamespace, AllNamespaces):
+
+- **Deploy:** `make deploy-test-e2e-bundle` (creates Kind cluster with registry, builds/pushes images, installs OLM)
+- **Run tests:** `make test-e2e-bundle`
+
 After making changes, open a pull request on GitHub. Ensure CI passes and address any review feedback.
 
 ## Mentorship
