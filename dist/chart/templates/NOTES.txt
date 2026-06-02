@@ -1,5 +1,10 @@
 {{ .Chart.Name }} {{ .Chart.AppVersion }} has been deployed successfully!
 
+NOTE: This chart requires the mcp-lifecycle-operator-crds chart to be installed first.
+If you haven't already, install it with:
+
+  helm install mcp-lifecycle-operator-crds dist/chart-crds/
+
 1. Verify the operator is running:
 
   kubectl get deployment -n {{ .Release.Namespace }} {{ include "mcp-lifecycle-operator.fullname" . }}-controller-manager
