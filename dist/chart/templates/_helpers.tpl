@@ -64,5 +64,9 @@ Create the name of the service account to use.
 Controller manager image
 */}}
 {{- define "mcp-lifecycle-operator.image" -}}
+{{- if contains "@" .Values.image.repository }}
+{{- .Values.image.repository }}
+{{- else }}
 {{- printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) }}
+{{- end }}
 {{- end }}
