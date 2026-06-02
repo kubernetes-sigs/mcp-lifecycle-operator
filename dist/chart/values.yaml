@@ -55,6 +55,8 @@ metrics:
 healthProbe:
   # -- Health probe bind address
   bindAddress: ":8081"
+  # -- Health probe port
+  port: 8081
 
 # -- Node selector for controller manager pods
 nodeSelector: {}
