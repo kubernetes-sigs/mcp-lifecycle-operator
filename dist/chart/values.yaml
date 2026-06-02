@@ -9,7 +9,7 @@ replicas: 1
 # -- Controller manager image configuration
 image:
   # -- Image repository
-  repository: mcp-lifecycle-operator
+  repository: registry.k8s.io/mcp-lifecycle-operator/mcp-lifecycle-operator
   # -- Image tag (defaults to appVersion if not set)
   tag: ""
   # -- Image pull policy
