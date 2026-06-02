@@ -23,6 +23,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -32,6 +33,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -155,6 +157,15 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
+	var cacheOpts cache.Options
+	if watchNamespaces := getWatchNamespaces(); len(watchNamespaces) > 0 {
+		setupLog.Info("watching specific namespaces", "namespaces", watchNamespaces)
+		cacheOpts.DefaultNamespaces = make(map[string]cache.Config, len(watchNamespaces))
+		for _, ns := range watchNamespaces {
+			cacheOpts.DefaultNamespaces[ns] = cache.Config{}
+		}
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
@@ -162,6 +173,7 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "bed7462b.x-k8s.io",
+		Cache:                  cacheOpts,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -204,4 +216,22 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+// getWatchNamespaces returns the namespaces the operator should watch.
+// When WATCH_NAMESPACE is set (comma-separated), the operator restricts its
+// cache to those namespaces. OLM populates this via the olm.targetNamespaces
+// annotation. An empty value means watch all namespaces.
+func getWatchNamespaces() []string {
+	ns, found := os.LookupEnv("WATCH_NAMESPACE")
+	if !found || ns == "" {
+		return nil
+	}
+	var namespaces []string
+	for _, n := range strings.Split(ns, ",") {
+		if trimmed := strings.TrimSpace(n); trimmed != "" {
+			namespaces = append(namespaces, trimmed)
+		}
+	}
+	return namespaces
 }

@@ -63,6 +63,11 @@ spec:
           # - --zap-devel
         image: controller:latest
         name: manager
+        env:
+        - name: WATCH_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['olm.targetNamespaces']
         ports: []
         securityContext:
           allowPrivilegeEscalation: false
