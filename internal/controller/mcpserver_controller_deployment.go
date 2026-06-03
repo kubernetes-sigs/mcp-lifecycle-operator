@@ -110,6 +110,7 @@ func (r *MCPServerReconciler) reconcileDeployment(
 	if needsUpdate {
 		logger.Info("Updating Deployment", "name", existingDeployment.Name)
 		existingDeployment.Spec.Replicas = deployment.Spec.Replicas
+		existingDeployment.Spec.Template.Labels = deployment.Spec.Template.Labels
 		existingDeployment.Spec.Template.Annotations = deployment.Spec.Template.Annotations
 		existingDeployment.Spec.Template.Spec = deployment.Spec.Template.Spec
 		if err := applyCustomDeploymentMetadata(mcpServer, existingDeployment); err != nil {
@@ -162,6 +163,7 @@ func deploymentNeedsUpdate(mcpServer *mcpv1alpha1.MCPServer, existing, desired *
 		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].ReadinessProbe, newPodSpec.Containers[0].ReadinessProbe) ||
 		oldPodSpec.ServiceAccountName != newPodSpec.ServiceAccountName ||
 		!equality.Semantic.DeepEqual(existing.Spec.Replicas, desired.Spec.Replicas) ||
+		!equality.Semantic.DeepEqual(existing.Spec.Template.Labels, desired.Spec.Template.Labels) ||
 		!equality.Semantic.DeepEqual(existing.Spec.Template.Annotations, desired.Spec.Template.Annotations) ||
 		deploymentAnnotationsChanged(mcpServer, existing) ||
 		deploymentLabelsChanged(mcpServer, existing) ||

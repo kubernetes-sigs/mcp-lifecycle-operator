@@ -135,6 +135,80 @@ var _ = Describe("MCPServer Controller - reconcileDeployment", func() {
 		Expect(deploymentNeedsUpdate(mcpServer, existingDeployment, desiredDeployment, false)).To(BeFalse())
 	})
 
+	It("should detect drift when base managed labels are removed from template", func() {
+		mcpServer := newTestMCPServer("test-label-drift")
+		labels := managedWorkloadLabels("test-label-drift")
+
+		existing := &appsv1.Deployment{
+			Spec: appsv1.DeploymentSpec{
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{"leftover": "true"},
+					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{Name: ManagedWorkloadName, Image: "docker.io/library/test-image:latest"},
+						},
+					},
+				},
+			},
+		}
+
+		desired := &appsv1.Deployment{
+			Spec: appsv1.DeploymentSpec{
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: labels,
+					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{Name: ManagedWorkloadName, Image: "docker.io/library/test-image:latest"},
+						},
+					},
+				},
+			},
+		}
+
+		Expect(deploymentNeedsUpdate(mcpServer, existing, desired, false)).To(BeTrue())
+	})
+
+	It("should not detect drift when base managed labels match", func() {
+		mcpServer := newTestMCPServer("test-label-match")
+		labels := managedWorkloadLabels("test-label-match")
+
+		existing := &appsv1.Deployment{
+			Spec: appsv1.DeploymentSpec{
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: labels,
+					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{Name: ManagedWorkloadName, Image: "docker.io/library/test-image:latest"},
+						},
+					},
+				},
+			},
+		}
+
+		desired := &appsv1.Deployment{
+			Spec: appsv1.DeploymentSpec{
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: labels,
+					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{Name: ManagedWorkloadName, Image: "docker.io/library/test-image:latest"},
+						},
+					},
+				},
+			},
+		}
+
+		Expect(deploymentNeedsUpdate(mcpServer, existing, desired, false)).To(BeFalse())
+	})
+
 	It("should recover when existing deployment has empty containers list", func() {
 		By("Setting up a fake client with a deployment that has no containers")
 		mcpServer := newTestMCPServer("test-empty-containers")
