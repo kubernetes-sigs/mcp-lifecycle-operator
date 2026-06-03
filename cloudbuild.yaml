@@ -1,16 +1,12 @@
 timeout: 2700s
 steps:
-  # This step runs the python script to build and push the Docker image.
-  # We use the gcloud builder because it comes with python and the docker client.
   - name: "gcr.io/k8s-staging-test-infra/gcb-docker-gcloud"
-    entrypoint: "python3"
+    entrypoint: "make"
     args:
-      - "./dev/tools/push-images"
-      # Assuming the script accepts project and tag arguments.
-      # Using standard Cloud Build substitutions.
-      - "--image-prefix=${_IMAGE_PREFIX}/"
-      - "--extra-image-tag=${_GIT_TAG}-${_CONFIG}"
-      - "--extra-image-tag=latest-${_CONFIG}"
+      - "docker-buildx"
+      - "IMAGE_TAG_BASE=${_IMAGE_PREFIX}/mcp-lifecycle-operator"
+      - "IMAGE_TAG=$$(GIT_IMAGE_TAG)"
+      - "EXTRA_TAGS=${_GIT_TAG}-${_CONFIG} latest-${_CONFIG}"
 
 options:
   enableStructuredLogging: true
