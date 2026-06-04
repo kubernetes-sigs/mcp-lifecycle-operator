@@ -164,8 +164,9 @@ type MCPServerReconciler struct {
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;create
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
@@ -194,6 +195,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	pendingAcceptedEvent := !acceptedConditionIsTrue(mcpServer.Status.Conditions)
 	pendingServerReadyEvent := !readyConditionIsAvailable(mcpServer.Status.Conditions)
+
+	// Before validation, create prerequisites if annotation is set
+	if err := r.ensurePrerequisites(ctx, mcpServer); err != nil {
+		logger.Error(err, "Failed to create prerequisites")
+		// Don't return error — fall through to validation which will report the specific missing resource
+	}
 
 	// Validate configuration
 	validationStart := time.Now()
