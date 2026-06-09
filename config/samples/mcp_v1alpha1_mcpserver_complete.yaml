@@ -1,5 +1,5 @@
 # Complete MCPServer example showing all available fields.
-# Most fields are optional — see the API reference for details:
+# Most fields are optional - see the API reference for details:
 # https://mcp-lifecycle-operator.sigs.k8s.io/reference/
 apiVersion: mcp.x-k8s.io/v1alpha1
 kind: MCPServer
@@ -7,6 +7,16 @@ metadata:
   name: complete-example
   namespace: default
 spec:
+  # Extra labels applied to the Deployment, PodTemplate, and Service metadata.
+  # The operator-managed keys "app" and "mcp-server" cannot be overridden.
+  extraLabels:
+    team: platform
+    environment: production
+
+  # Extra annotations applied to the Deployment, PodTemplate, and Service metadata.
+  extraAnnotations:
+    prometheus.io/scrape: "true"
+
   # Source defines where the MCP server container image is located.
   source:
     type: ContainerImage
@@ -121,3 +131,10 @@ spec:
         periodSeconds: 10
         timeoutSeconds: 3
         failureThreshold: 2
+
+  # MCP protocol-specific configuration.
+  mcp:
+    # Whether the MCP server is stateless (no session state).
+    # When true, the Service uses SessionAffinity "None" for free load balancing.
+    # When false (default), the Service uses SessionAffinity "ClientIP".
+    stateless: false

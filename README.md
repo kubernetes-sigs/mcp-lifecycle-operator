@@ -165,7 +165,7 @@ For more examples, see the [examples/](./examples/) directory:
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 
 ### Building
 
