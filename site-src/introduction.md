@@ -122,7 +122,7 @@ spec:
     stateless: true
 ```
 
-The `stateless` field indicates whether the MCP server maintains session state. When `true`, the generated Service allows requests to be freely load-balanced across replicas. When `false` or unset (the default), the Service uses `SessionAffinity: ClientIP` so a given client's requests are routed to the same pod.
+The `stateless` field indicates whether the MCP server maintains session state. When `true`, the generated Service uses `SessionAffinity: None`, allowing requests to be freely load-balanced across replicas. When `false` or unset (the default), the Service uses `SessionAffinity: ClientIP` so a given client's requests are routed to the same pod.
 
 ## Status and Discovery
 
