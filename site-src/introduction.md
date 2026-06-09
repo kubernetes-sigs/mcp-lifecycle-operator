@@ -22,6 +22,21 @@ spec:
       ref: registry.io/mcp-server:v1.0.0
 ```
 
+#### Custom Labels and Annotations
+
+Add custom labels and annotations to the managed Deployment, PodTemplate, and Service:
+
+```yaml
+spec:
+  extraLabels:
+    team: platform
+    environment: production
+  extraAnnotations:
+    prometheus.io/scrape: "true"
+```
+
+The operator-managed keys `app` and `mcp-server` cannot be overridden by `extraLabels`.
+
 #### Server Configuration
 
 Configure the server's networking, arguments, environment variables, and storage mounts:
@@ -85,10 +100,29 @@ spec:
           port: 8080
     security:
       serviceAccountName: mcp-viewer
-      securityContext:
+      podSecurityContext:
         runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      securityContext:
+        allowPrivilegeEscalation: false
         readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
 ```
+
+#### MCP Protocol Configuration
+
+Configure MCP protocol-specific behavior:
+
+```yaml
+spec:
+  mcp:
+    stateless: true
+```
+
+The `stateless` field indicates whether the MCP server maintains session state. When `true`, the generated Service allows requests to be freely load-balanced across replicas. When `false` or unset (the default), the Service uses `SessionAffinity: ClientIP` so a given client's requests are routed to the same pod.
 
 ## Status and Discovery
 

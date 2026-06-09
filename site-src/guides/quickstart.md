@@ -6,7 +6,7 @@ This guide will walk you through deploying your first MCP server using the MCP L
 
 - Kubernetes cluster (v1.28+)
 - kubectl configured to access your cluster
-- Go 1.25+ (only needed for building from source)
+- Go 1.26+ (only needed for building from source)
 
 ## Installation
 
