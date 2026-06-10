@@ -70,7 +70,7 @@ func (r *MCPServerReconciler) ensureServiceAccount(ctx context.Context, server *
 	}
 
 	sa := &corev1.ServiceAccount{}
-	err := r.Get(ctx, client.ObjectKey{Name: saName, Namespace: server.Namespace}, sa)
+	err := r.APIReader.Get(ctx, client.ObjectKey{Name: saName, Namespace: server.Namespace}, sa)
 	if err == nil {
 		// Already exists, nothing to do.
 		return nil
