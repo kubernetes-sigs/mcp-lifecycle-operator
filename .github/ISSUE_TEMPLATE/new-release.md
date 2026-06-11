@@ -40,7 +40,8 @@ assignees: aliok, ArangoGutierrez, matzew, mikebrow, mrunalp, soltysh
   ```bash
   git push upstream v0.MINOR.0
   ```
-  This triggers Cloud Build to build and publish the staging image.
+  Note: the staging image is built by the postsubmit job when the pinning
+  PR merges to the release branch. The tag must point at that commit.
 - [ ] Submit PR to
   [kubernetes/k8s.io](https://github.com/kubernetes/k8s.io) updating
   `registry.k8s.io/images/k8s-staging-mcp-lifecycle-operator/images.yaml`
