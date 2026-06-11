@@ -35,7 +35,7 @@ spec:
     prometheus.io/scrape: "true"
 ```
 
-The operator-managed keys `app` and `mcp-server` cannot be overridden by `extraLabels`.
+The operator-managed keys `app` and `mcp-server` cannot be overridden by `extraLabels`. Annotations prefixed with `mcp.x-k8s.io/` cannot be overridden by `extraAnnotations`.
 
 #### Server Configuration
 
