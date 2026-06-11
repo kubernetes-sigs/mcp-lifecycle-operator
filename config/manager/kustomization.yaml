@@ -8,4 +8,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: mcp-lifecycle-operator
-  newTag: latest
+  newTag: v0.2.0
