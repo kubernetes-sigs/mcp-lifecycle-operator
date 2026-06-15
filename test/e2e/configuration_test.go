@@ -861,14 +861,9 @@ func TestCustomMetadataUpdate(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
-				t.Fatalf("failed to get MCPServer: %v", err)
-			}
-
-			server.Spec.ExtraLabels = map[string]string{"team": "beta", "tier": "backend"}
-			if err := r.Update(ctx, server); err != nil {
-				t.Fatalf("failed to update MCPServer labels: %v", err)
-			}
+			f.UpdateWithRetry(ctx, t, r, server, func() {
+				server.Spec.ExtraLabels = map[string]string{"team": "beta", "tier": "backend"}
+			})
 			t.Log("updated MCPServer labels to {team:beta, tier:backend}")
 
 			return ctx

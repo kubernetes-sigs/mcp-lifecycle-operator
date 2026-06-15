@@ -30,6 +30,7 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 
 	"sigs.k8s.io/e2e-framework/klient/k8s"
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
@@ -271,4 +272,23 @@ func WaitForEndpointsReady(ctx context.Context, t *testing.T, cfg *envconf.Confi
 		t.Fatalf("endpoints for Service %s/%s never became ready: %v", namespace, name, err)
 	}
 	t.Logf("Service %s/%s has ready endpoints", namespace, name)
+}
+
+// UpdateWithRetry performs a read-modify-write loop with automatic retry on
+// conflict. The mutate callback is called after each fresh Get so the caller
+// always modifies the latest resourceVersion.
+func UpdateWithRetry(ctx context.Context, t *testing.T, r *resources.Resources,
+	obj k8s.Object, mutate func()) {
+	t.Helper()
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := r.Get(ctx, obj.GetName(), obj.GetNamespace(), obj); err != nil {
+			return err
+		}
+		mutate()
+		return r.Update(ctx, obj)
+	})
+	if err != nil {
+		t.Fatalf("failed to update %s/%s after retries: %v",
+			obj.GetNamespace(), obj.GetName(), err)
+	}
 }

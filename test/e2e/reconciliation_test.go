@@ -56,14 +56,9 @@ func TestImageUpdate(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
-				t.Fatalf("failed to get MCPServer: %v", err)
-			}
-
-			server.Spec.Source.ContainerImage.Ref = digestRef
-			if err := r.Update(ctx, server); err != nil {
-				t.Fatalf("failed to update MCPServer image: %v", err)
-			}
+			f.UpdateWithRetry(ctx, t, r, server, func() {
+				server.Spec.Source.ContainerImage.Ref = digestRef
+			})
 			t.Log("updated image to digest ref")
 
 			return ctx
@@ -120,25 +115,20 @@ func TestStorageAddition(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
-				t.Fatalf("failed to get MCPServer: %v", err)
-			}
-
-			server.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
-				{
-					Path:        "/etc/added-config",
-					Permissions: mcpv1alpha1.MountPermissionsReadOnly,
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeConfigMap,
-						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{Name: "add-config"},
+			f.UpdateWithRetry(ctx, t, r, server, func() {
+				server.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+					{
+						Path:        "/etc/added-config",
+						Permissions: mcpv1alpha1.MountPermissionsReadOnly,
+						Source: mcpv1alpha1.StorageSource{
+							Type: mcpv1alpha1.StorageTypeConfigMap,
+							ConfigMap: &corev1.ConfigMapVolumeSource{
+								LocalObjectReference: corev1.LocalObjectReference{Name: "add-config"},
+							},
 						},
 					},
-				},
-			}
-			if err := r.Update(ctx, server); err != nil {
-				t.Fatalf("failed to update MCPServer storage: %v", err)
-			}
+				}
+			})
 			t.Log("added ConfigMap storage mount")
 
 			return ctx
@@ -223,14 +213,9 @@ func TestStorageRemoval(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
-				t.Fatalf("failed to get MCPServer: %v", err)
-			}
-
-			server.Spec.Config.Storage = nil
-			if err := r.Update(ctx, server); err != nil {
-				t.Fatalf("failed to update MCPServer storage: %v", err)
-			}
+			f.UpdateWithRetry(ctx, t, r, server, func() {
+				server.Spec.Config.Storage = nil
+			})
 			t.Log("removed storage mount")
 
 			return ctx
@@ -284,15 +269,10 @@ func TestReplicaDrift(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			dep := &appsv1.Deployment{}
-			if err := r.Get(ctx, server.Name, server.Namespace, dep); err != nil {
-				t.Fatalf("Deployment not found: %v", err)
-			}
-
-			dep.Spec.Replicas = ptr.To(int32(3))
-			if err := r.Update(ctx, dep); err != nil {
-				t.Fatalf("failed to scale Deployment: %v", err)
-			}
+			dep := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace}}
+			f.UpdateWithRetry(ctx, t, r, dep, func() {
+				dep.Spec.Replicas = ptr.To(int32(3))
+			})
 			t.Log("manually scaled Deployment to 3 replicas")
 
 			expectedReplicas := int32(1)
@@ -334,18 +314,13 @@ func TestServicePortDrift(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			svc := &corev1.Service{}
-			if err := r.Get(ctx, server.Name, server.Namespace, svc); err != nil {
-				t.Fatalf("Service not found: %v", err)
-			}
-
-			if len(svc.Spec.Ports) == 0 {
-				t.Fatal("expected at least one port in Service spec")
-			}
-			svc.Spec.Ports[0].Port = 9999
-			if err := r.Update(ctx, svc); err != nil {
-				t.Fatalf("failed to change Service port: %v", err)
-			}
+			svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace}}
+			f.UpdateWithRetry(ctx, t, r, svc, func() {
+				if len(svc.Spec.Ports) == 0 {
+					t.Fatal("expected at least one port in Service spec")
+				}
+				svc.Spec.Ports[0].Port = 9999
+			})
 			t.Log("manually changed Service port to 9999")
 
 			expectedPort := server.Spec.Config.Port
@@ -620,15 +595,10 @@ func TestConfigMapDataUpdateTriggersRestart(t *testing.T) {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
 
-			cm := &corev1.ConfigMap{}
-			if err := r.Get(ctx, "hash-config", ns, cm); err != nil {
-				t.Fatalf("failed to get ConfigMap: %v", err)
-			}
-
-			cm.Data["setting"] = "updated"
-			if err := r.Update(ctx, cm); err != nil {
-				t.Fatalf("failed to update ConfigMap: %v", err)
-			}
+			cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "hash-config", Namespace: ns}}
+			f.UpdateWithRetry(ctx, t, r, cm, func() {
+				cm.Data["setting"] = "updated"
+			})
 			t.Log("updated ConfigMap data")
 
 			return ctx

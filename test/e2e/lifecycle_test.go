@@ -118,14 +118,9 @@ func TestMCPServerUpdatePort(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
-				t.Fatalf("failed to get MCPServer: %v", err)
-			}
-
-			server.Spec.Config.Port = 3002
-			if err := r.Update(ctx, server); err != nil {
-				t.Fatalf("failed to update MCPServer port: %v", err)
-			}
+			f.UpdateWithRetry(ctx, t, r, server, func() {
+				server.Spec.Config.Port = 3002
+			})
 			t.Log("updated MCPServer port to 3002")
 
 			return ctx

@@ -424,14 +424,9 @@ func TestRecoveryFromImagePullFailure(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
-				t.Fatalf("failed to get MCPServer: %v", err)
-			}
-
-			server.Spec.Source.ContainerImage.Ref = "quay.io/matzew/mcp-everything:latest"
-			if err := r.Update(ctx, server); err != nil {
-				t.Fatalf("failed to update MCPServer image: %v", err)
-			}
+			f.UpdateWithRetry(ctx, t, r, server, func() {
+				server.Spec.Source.ContainerImage.Ref = "quay.io/matzew/mcp-everything:latest"
+			})
 			t.Log("updated image to quay.io/matzew/mcp-everything:latest")
 
 			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server, 5*time.Minute)
