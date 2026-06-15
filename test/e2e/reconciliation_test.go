@@ -56,8 +56,8 @@ func TestImageUpdate(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.UpdateWithRetry(ctx, t, r, server, func() {
-				server.Spec.Source.ContainerImage.Ref = digestRef
+			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
+				s.Spec.Source.ContainerImage.Ref = digestRef
 			})
 			t.Log("updated image to digest ref")
 
@@ -115,8 +115,8 @@ func TestStorageAddition(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.UpdateWithRetry(ctx, t, r, server, func() {
-				server.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
+				s.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
 					{
 						Path:        "/etc/added-config",
 						Permissions: mcpv1alpha1.MountPermissionsReadOnly,
@@ -213,8 +213,8 @@ func TestStorageRemoval(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.UpdateWithRetry(ctx, t, r, server, func() {
-				server.Spec.Config.Storage = nil
+			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
+				s.Spec.Config.Storage = nil
 			})
 			t.Log("removed storage mount")
 
@@ -270,8 +270,8 @@ func TestReplicaDrift(t *testing.T) {
 			r := cfg.Client().Resources()
 
 			dep := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace}}
-			f.UpdateWithRetry(ctx, t, r, dep, func() {
-				dep.Spec.Replicas = ptr.To(int32(3))
+			f.UpdateWithRetry(ctx, t, r, dep, func(d *appsv1.Deployment) {
+				d.Spec.Replicas = ptr.To(int32(3))
 			})
 			t.Log("manually scaled Deployment to 3 replicas")
 
@@ -315,11 +315,11 @@ func TestServicePortDrift(t *testing.T) {
 			r := cfg.Client().Resources()
 
 			svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace}}
-			f.UpdateWithRetry(ctx, t, r, svc, func() {
-				if len(svc.Spec.Ports) == 0 {
+			f.UpdateWithRetry(ctx, t, r, svc, func(s *corev1.Service) {
+				if len(s.Spec.Ports) == 0 {
 					t.Fatal("expected at least one port in Service spec")
 				}
-				svc.Spec.Ports[0].Port = 9999
+				s.Spec.Ports[0].Port = 9999
 			})
 			t.Log("manually changed Service port to 9999")
 
@@ -596,8 +596,8 @@ func TestConfigMapDataUpdateTriggersRestart(t *testing.T) {
 			r := cfg.Client().Resources()
 
 			cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "hash-config", Namespace: ns}}
-			f.UpdateWithRetry(ctx, t, r, cm, func() {
-				cm.Data["setting"] = "updated"
+			f.UpdateWithRetry(ctx, t, r, cm, func(c *corev1.ConfigMap) {
+				c.Data["setting"] = "updated"
 			})
 			t.Log("updated ConfigMap data")
 

@@ -424,8 +424,8 @@ func TestRecoveryFromImagePullFailure(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.UpdateWithRetry(ctx, t, r, server, func() {
-				server.Spec.Source.ContainerImage.Ref = "quay.io/matzew/mcp-everything:latest"
+			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
+				s.Spec.Source.ContainerImage.Ref = "quay.io/matzew/mcp-everything:latest"
 			})
 			t.Log("updated image to quay.io/matzew/mcp-everything:latest")
 

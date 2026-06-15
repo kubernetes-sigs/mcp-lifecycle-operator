@@ -275,16 +275,16 @@ func WaitForEndpointsReady(ctx context.Context, t *testing.T, cfg *envconf.Confi
 }
 
 // UpdateWithRetry performs a read-modify-write loop with automatic retry on
-// conflict. The mutate callback is called after each fresh Get so the caller
-// always modifies the latest resourceVersion.
-func UpdateWithRetry(ctx context.Context, t *testing.T, r *resources.Resources,
-	obj k8s.Object, mutate func()) {
+// conflict. The mutate callback receives the freshly-fetched object so the
+// caller always modifies the latest resourceVersion.
+func UpdateWithRetry[T k8s.Object](ctx context.Context, t *testing.T, r *resources.Resources,
+	obj T, mutate func(T)) {
 	t.Helper()
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := r.Get(ctx, obj.GetName(), obj.GetNamespace(), obj); err != nil {
 			return err
 		}
-		mutate()
+		mutate(obj)
 		return r.Update(ctx, obj)
 	})
 	if err != nil {

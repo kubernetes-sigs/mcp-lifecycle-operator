@@ -861,8 +861,8 @@ func TestCustomMetadataUpdate(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.UpdateWithRetry(ctx, t, r, server, func() {
-				server.Spec.ExtraLabels = map[string]string{"team": "beta", "tier": "backend"}
+			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
+				s.Spec.ExtraLabels = map[string]string{"team": "beta", "tier": "backend"}
 			})
 			t.Log("updated MCPServer labels to {team:beta, tier:backend}")
 
