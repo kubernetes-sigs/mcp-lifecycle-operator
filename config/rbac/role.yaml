@@ -26,10 +26,8 @@ rules:
   - services
   verbs:
   - create
-  - delete
   - get
   - list
-  - patch
   - update
   - watch
 - apiGroups:
@@ -46,10 +44,8 @@ rules:
   - deployments
   verbs:
   - create
-  - delete
   - get
   - list
-  - patch
   - update
   - watch
 - apiGroups:
@@ -57,19 +53,9 @@ rules:
   resources:
   - mcpservers
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
-- apiGroups:
-  - mcp.x-k8s.io
-  resources:
-  - mcpservers/finalizers
-  verbs:
-  - update
 - apiGroups:
   - mcp.x-k8s.io
   resources:
@@ -77,4 +63,3 @@ rules:
   verbs:
   - get
   - patch
-  - update
