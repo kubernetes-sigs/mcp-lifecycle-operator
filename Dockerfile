@@ -25,7 +25,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager ./cmd
 
 # Build the manager binary with debug symbols
-FROM golang:1.26.3 AS debug-builder
+FROM golang:1.26.4 AS debug-builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -39,8 +39,8 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -gcflags="all=-N -l" -o manager ./cmd
 
 # Debug image with Delve
-FROM golang:1.26.3 AS debug
-RUN go install github.com/go-delve/delve/cmd/dlv@latest
+FROM golang:1.26.4 AS debug
+RUN go install github.com/go-delve/delve/cmd/dlv@v1.26.3
 WORKDIR /
 COPY --from=debug-builder /workspace/manager .
 USER 65532:65532
