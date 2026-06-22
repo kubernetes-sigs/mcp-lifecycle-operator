@@ -64,6 +64,9 @@ spec:
         image: controller:latest
         name: manager
         ports: []
+        env:
+        - name: GOMEMLIMIT
+          value: "460MiB"
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
