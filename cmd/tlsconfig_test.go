@@ -7,7 +7,7 @@ import (
 
 type noopLogger struct{}
 
-func (noopLogger) Info(_ string, _ ...interface{}) {}
+func (noopLogger) Info(_ string, _ ...any) {}
 
 func TestParseTLSVersion(t *testing.T) {
 	tests := []struct {

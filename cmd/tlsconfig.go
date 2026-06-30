@@ -19,7 +19,14 @@ func tlsConfigFromEnv() func(*tls.Config) {
 	}
 
 	minVersion := parseTLSVersion(minVersionStr)
+	if minVersionStr != "" && minVersion == 0 {
+		log.Info("Ignoring unknown TLS_MIN_VERSION, falling back to Go defaults", "value", minVersionStr)
+	}
 	cipherSuites := parseCipherSuites(cipherSuitesStr, log)
+
+	if minVersion >= tls.VersionTLS13 && len(cipherSuites) > 0 {
+		log.Info("TLS 1.3 manages cipher suites automatically, configured suites will not be applied")
+	}
 
 	log.Info("Applying TLS profile from environment",
 		"minVersion", minVersionStr,
@@ -51,7 +58,7 @@ func parseTLSVersion(s string) uint16 {
 	}
 }
 
-func parseCipherSuites(s string, log interface{ Info(string, ...interface{}) }) []uint16 {
+func parseCipherSuites(s string, log interface{ Info(string, ...any) }) []uint16 {
 	if s == "" {
 		return nil
 	}
