@@ -22,12 +22,14 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
@@ -241,29 +243,60 @@ func TeardownMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config) c
 	}
 	t.Logf("deleted MCPServer %s/%s", server.Namespace, server.Name)
 
-	dep := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace},
-	}
-	if err := wait.For(
-		conditions.New(r).ResourceDeleted(dep),
-		wait.WithTimeout(1*time.Minute),
-		wait.WithInterval(2*time.Second),
-	); err != nil {
-		t.Fatalf("Deployment was not garbage collected: %v", err)
+	var wg sync.WaitGroup
+	gcErrors := make(chan string, 3)
+
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		dep := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace},
+		}
+		if err := wait.For(
+			conditions.New(r).ResourceDeleted(dep),
+			wait.WithTimeout(1*time.Minute),
+			wait.WithInterval(2*time.Second),
+			wait.WithContext(ctx),
+		); err != nil {
+			gcErrors <- fmt.Sprintf("Deployment was not garbage collected: %v", err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace},
+		}
+		if err := wait.For(
+			conditions.New(r).ResourceDeleted(svc),
+			wait.WithTimeout(1*time.Minute),
+			wait.WithInterval(2*time.Second),
+			wait.WithContext(ctx),
+		); err != nil {
+			gcErrors <- fmt.Sprintf("Service was not garbage collected: %v", err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		netpol := &networkingv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace},
+		}
+		if err := wait.For(
+			conditions.New(r).ResourceDeleted(netpol),
+			wait.WithTimeout(1*time.Minute),
+			wait.WithInterval(2*time.Second),
+			wait.WithContext(ctx),
+		); err != nil {
+			gcErrors <- fmt.Sprintf("NetworkPolicy was not garbage collected: %v", err)
+		}
+	}()
+	wg.Wait()
+	close(gcErrors)
+
+	for msg := range gcErrors {
+		t.Fatal(msg)
 	}
 
-	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace},
-	}
-	if err := wait.For(
-		conditions.New(r).ResourceDeleted(svc),
-		wait.WithTimeout(1*time.Minute),
-		wait.WithInterval(2*time.Second),
-	); err != nil {
-		t.Fatalf("Service was not garbage collected: %v", err)
-	}
-
-	t.Log("Deployment and Service were garbage collected")
+	t.Log("Deployment, Service, and NetworkPolicy were garbage collected")
 	return ctx
 }
 

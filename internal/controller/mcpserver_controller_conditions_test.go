@@ -715,4 +715,18 @@ var _ = Describe("status condition helpers", func() {
 			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonServiceUnavailable, Message: msg},
 		}, msg)).To(BeTrue())
 	})
+
+	It("duplicateNetworkPolicyUnavailable returns true only for matching Ready=False NetworkPolicyUnavailable message", func() {
+		msg := "Failed to reconcile NetworkPolicy: simulated failure"
+		Expect(duplicateNetworkPolicyUnavailable(nil, msg)).To(BeFalse())
+		Expect(duplicateNetworkPolicyUnavailable([]metav1.Condition{
+			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonServiceUnavailable, Message: msg},
+		}, msg)).To(BeFalse())
+		Expect(duplicateNetworkPolicyUnavailable([]metav1.Condition{
+			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonNetworkPolicyUnavailable, Message: "other"},
+		}, msg)).To(BeFalse())
+		Expect(duplicateNetworkPolicyUnavailable([]metav1.Condition{
+			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonNetworkPolicyUnavailable, Message: msg},
+		}, msg)).To(BeTrue())
+	})
 })

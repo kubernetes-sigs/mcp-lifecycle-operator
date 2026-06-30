@@ -623,7 +623,7 @@ var _ = Describe("MCPServer Controller - Service Reconcile Events", func() {
 		})
 		reconciler.Client = interceptedClient
 
-		By("First service reconcile failure — Warning event emitted once")
+		By("First service reconcile failure - Warning event emitted once")
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 		Expect(err).To(HaveOccurred())
 
@@ -641,12 +641,12 @@ var _ = Describe("MCPServer Controller - Service Reconcile Events", func() {
 			g.Expect(serviceFailedEvent).To(ContainSubstring(failMsg))
 		}).Should(Succeed())
 
-		By("Second reconcile with same error — no duplicate service failed event")
+		By("Second reconcile with same error - no duplicate service failed event")
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 		Expect(err).To(HaveOccurred())
 		Consistently(fr.Events, 300*time.Millisecond, 20*time.Millisecond).ShouldNot(Receive())
 
-		By("Change error message — second Warning event emitted")
+		By("Change error message - second Warning event emitted")
 		failMsg = "simulated service ownership failure"
 		interceptedClient = interceptor.NewClient(wrappedClient, interceptor.Funcs{
 			Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {

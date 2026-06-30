@@ -10,6 +10,7 @@ import (
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 )
 
 var ErrNilMap = errors.New("destination map not initialized")
@@ -392,6 +393,157 @@ func serviceAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, service *corev1
 			}
 		}
 
+	}
+
+	if len(currentAnnotations) == 0 &&
+		len(effectiveAnnotations) != 0 {
+		return true
+	}
+
+	return false
+}
+
+func applyCustomNetworkPolicyMetadata(mcpServer *mcpv1alpha1.MCPServer, netpol *networkingv1.NetworkPolicy) error {
+	currentLabels := make(map[string]string)
+	if managedLabels, ok := netpol.Annotations[managedExtraLabels]; ok {
+		if err := json.Unmarshal([]byte(managedLabels), &currentLabels); err != nil {
+			return fmt.Errorf("retrieving current custom labels failed; %w", err)
+		}
+	}
+
+	effectiveLabels := filterReservedKeys(mcpServer.Spec.ExtraLabels)
+
+	if !maps.Equal(effectiveLabels, currentLabels) {
+		for key := range currentLabels {
+			delete(netpol.Labels, key)
+		}
+		delete(netpol.Annotations, managedExtraLabels)
+	}
+
+	effectiveAnnotations := filterReservedAnnotationKeys(mcpServer.Spec.ExtraAnnotations)
+
+	currentAnnotations := make(map[string]string)
+	if managedAnnotations, ok := netpol.Annotations[managedExtraAnnotations]; ok {
+		if err := json.Unmarshal([]byte(managedAnnotations), &currentAnnotations); err != nil {
+			return fmt.Errorf("retrieving current custom annotations failed; %w", err)
+		}
+	}
+
+	if !maps.Equal(effectiveAnnotations, currentAnnotations) {
+		for key := range currentAnnotations {
+			delete(netpol.Annotations, key)
+		}
+		delete(netpol.Annotations, managedExtraAnnotations)
+	}
+
+	if len(effectiveLabels) == 0 &&
+		len(effectiveAnnotations) == 0 &&
+		len(currentLabels) == 0 &&
+		len(currentAnnotations) == 0 {
+		return nil
+	}
+
+	if netpol.Labels == nil {
+		netpol.Labels = make(map[string]string)
+	}
+
+	if netpol.Annotations == nil {
+		netpol.Annotations = make(map[string]string)
+	}
+
+	if len(effectiveLabels) > 0 {
+		if err := mergeMaps(netpol.Labels, effectiveLabels); err != nil {
+			return fmt.Errorf("appending networkpolicy labels failed; %w", err)
+		}
+	}
+
+	if len(effectiveAnnotations) > 0 {
+		if err := mergeMaps(netpol.Annotations, effectiveAnnotations); err != nil {
+			return fmt.Errorf("appending networkpolicy annotations failed; %w", err)
+		}
+	}
+
+	extraLabelsByte, err := json.Marshal(effectiveLabels)
+	if err != nil {
+		return fmt.Errorf("marshaling .spec.extraLabels failed; %w", err)
+	}
+	if len(extraLabelsByte) != 0 && string(extraLabelsByte) != jsonNull {
+		netpol.Annotations[managedExtraLabels] = string(extraLabelsByte)
+	}
+
+	extraAnnotationsByte, err := json.Marshal(effectiveAnnotations)
+	if err != nil {
+		return fmt.Errorf("marshaling .spec.extraAnnotations failed; %w", err)
+	}
+	if len(extraAnnotationsByte) != 0 && string(extraAnnotationsByte) != jsonNull {
+		netpol.Annotations[managedExtraAnnotations] = string(extraAnnotationsByte)
+	}
+
+	return nil
+}
+
+func networkPolicyLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, netpol *networkingv1.NetworkPolicy) bool {
+	effectiveLabels := filterReservedKeys(mcpServer.Spec.ExtraLabels)
+
+	var currentLabels map[string]string
+	vals, ok := netpol.Annotations[managedExtraLabels]
+	if ok {
+		if err := json.Unmarshal([]byte(vals), &currentLabels); err != nil {
+			return true
+		}
+
+		if len(currentLabels) > 0 {
+			if len(effectiveLabels) != 0 &&
+				!maps.Equal(currentLabels, effectiveLabels) {
+				return true
+			}
+
+			if len(effectiveLabels) == 0 {
+				return true
+			}
+
+			for k := range currentLabels {
+				if _, ok := netpol.Labels[k]; !ok {
+					return true
+				}
+			}
+		}
+	}
+
+	if len(currentLabels) == 0 &&
+		len(effectiveLabels) != 0 {
+		return true
+	}
+
+	return false
+}
+
+func networkPolicyAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, netpol *networkingv1.NetworkPolicy) bool {
+	effectiveAnnotations := filterReservedAnnotationKeys(mcpServer.Spec.ExtraAnnotations)
+
+	var currentAnnotations map[string]string
+	vals, ok := netpol.Annotations[managedExtraAnnotations]
+	if ok {
+		if err := json.Unmarshal([]byte(vals), &currentAnnotations); err != nil {
+			return true
+		}
+
+		if len(currentAnnotations) > 0 {
+			if len(effectiveAnnotations) != 0 &&
+				!maps.Equal(currentAnnotations, effectiveAnnotations) {
+				return true
+			}
+
+			if len(effectiveAnnotations) == 0 {
+				return true
+			}
+
+			for k := range currentAnnotations {
+				if _, ok := netpol.Annotations[k]; !ok {
+					return true
+				}
+			}
+		}
 	}
 
 	if len(currentAnnotations) == 0 &&

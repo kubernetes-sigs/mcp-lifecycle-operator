@@ -28,9 +28,10 @@ const ManagedWorkloadName = "mcp-server"
 
 // ReconcilePhase is the value for the "phase" label on mcpserver_reconcile_phase_duration_seconds.
 const (
-	ReconcilePhaseValidation = "validation"
-	ReconcilePhaseDeployment = "deployment"
-	ReconcilePhaseService    = "service"
+	ReconcilePhaseValidation    = "validation"
+	ReconcilePhaseDeployment    = "deployment"
+	ReconcilePhaseService       = "service"
+	ReconcilePhaseNetworkPolicy = "networkpolicy"
 )
 
 // MetricReasonReconcileError is the `reason` label on deployment/service failure counters

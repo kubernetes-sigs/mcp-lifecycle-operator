@@ -302,3 +302,9 @@ func duplicateServiceUnavailable(conditions []metav1.Condition, message string) 
 	return prevReady != nil && prevReady.Status == metav1.ConditionFalse &&
 		prevReady.Reason == ReasonServiceUnavailable && prevReady.Message == message
 }
+
+func duplicateNetworkPolicyUnavailable(conditions []metav1.Condition, message string) bool {
+	prevReady := meta.FindStatusCondition(conditions, ConditionTypeReady)
+	return prevReady != nil && prevReady.Status == metav1.ConditionFalse &&
+		prevReady.Reason == ReasonNetworkPolicyUnavailable && prevReady.Message == message
+}

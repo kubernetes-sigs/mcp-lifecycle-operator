@@ -68,6 +68,17 @@ var (
 		[]string{"name", "namespace", "reason"},
 	)
 
+	// networkPolicyFailuresTotal counts network policy reconciliation failures.
+	// Labels: name, namespace, reason.
+	networkPolicyFailuresTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Name:      "networkpolicy_failures_total",
+			Help:      "Total number of network policy reconciliation failures.",
+		},
+		[]string{"name", "namespace", "reason"},
+	)
+
 	// reconcileDuration tracks the duration of reconciliation phases.
 	// Labels: phase (ReconcilePhaseValidation / ReconcilePhaseDeployment / ReconcilePhaseService).
 	reconcileDuration = prometheus.NewHistogramVec(
@@ -87,6 +98,7 @@ func init() {
 		validationFailuresTotal,
 		deploymentFailuresTotal,
 		serviceFailuresTotal,
+		networkPolicyFailuresTotal,
 		reconcileDuration,
 	)
 }
@@ -119,4 +131,5 @@ func cleanupMetrics(name, namespace string) {
 	validationFailuresTotal.DeletePartialMatch(labels)
 	deploymentFailuresTotal.DeletePartialMatch(labels)
 	serviceFailuresTotal.DeletePartialMatch(labels)
+	networkPolicyFailuresTotal.DeletePartialMatch(labels)
 }

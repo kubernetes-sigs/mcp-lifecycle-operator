@@ -8,6 +8,7 @@ import (
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -17,9 +18,10 @@ type want struct {
 }
 
 type extraMetaArgs struct {
-	mcp        *mcpv1alpha1.MCPServer
-	deployment *appsv1.Deployment
-	service    *corev1.Service
+	mcp           *mcpv1alpha1.MCPServer
+	deployment    *appsv1.Deployment
+	service       *corev1.Service
+	networkPolicy *networkingv1.NetworkPolicy
 }
 
 func Test_mergeMaps(t *testing.T) {
@@ -1942,6 +1944,346 @@ func Test_serviceAnnotationsChanged(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			got := serviceAnnotationsChanged(tc.args.mcp, tc.args.service)
+			if got != tc.want {
+				t.Errorf("wanted metadata changed to be %t but, got %t\n", tc.want, got)
+			}
+		})
+	}
+}
+
+func Test_networkPolicyLabelsChanged(t *testing.T) {
+	tt := []struct {
+		name string
+		args *extraMetaArgs
+		want bool
+	}{
+		{
+			name: "no custom metadata provided",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{},
+					},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "custom metadata matches .spec.extraLabels",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{
+							"department": "procurement",
+						},
+					},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp:  "mariadb-mcp",
+							"department": "procurement",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: "{\"department\":\"procurement\"}",
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "networkpolicy missing custom labels defined in .spec.extraLabels",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{
+							"department": "procurement",
+							"env":        "production",
+						},
+					},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp:  "mariadb-mcp",
+							"department": "procurement",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: "{\"department\":\"procurement\",\"env\": \"production\"}",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "corrupted JSON in managed labels annotation forces update",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: "not-valid-json",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "label tracked but missing from networkpolicy.Labels",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{
+							"department": "procurement",
+						},
+					},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: "{\"department\":\"procurement\"}",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "spec labels changed from tracked labels",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{
+							"department": "engineering",
+						},
+					},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp:  "mariadb-mcp",
+							"department": "procurement",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: "{\"department\":\"procurement\"}",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "all spec labels removed but tracked labels exist",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp:  "mariadb-mcp",
+							"department": "procurement",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: "{\"department\":\"procurement\"}",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			got := networkPolicyLabelsChanged(tc.args.mcp, tc.args.networkPolicy)
+			if got != tc.want {
+				t.Errorf("wanted metadata changed to be %t but, got %t\n", tc.want, got)
+			}
+		})
+	}
+}
+
+func Test_networkPolicyAnnotationsChanged(t *testing.T) {
+	tt := []struct {
+		name string
+		args *extraMetaArgs
+		want bool
+	}{
+		{
+			name: "no custom metadata provided",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "custom metadata matches .spec.extraAnnotations",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraAnnotations: map[string]string{
+							"department": "procurement",
+						},
+					},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+						Annotations: map[string]string{
+							managedExtraAnnotations: "{\"department\":\"procurement\"}",
+							"department":            "procurement",
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "networkpolicy missing custom annotations defined in .spec.extraAnnotations",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraAnnotations: map[string]string{
+							"department": "procurement",
+							"env":        "production",
+						},
+					},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+						Annotations: map[string]string{
+							managedExtraAnnotations: "{\"department\":\"procurement\",\"env\": \"production\"}",
+							"department":            "procurement",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "corrupted JSON in managed annotations annotation forces update",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+						Annotations: map[string]string{
+							managedExtraAnnotations: "not-valid-json",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "annotation tracked but missing from networkpolicy.Annotations",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraAnnotations: map[string]string{
+							"department": "procurement",
+						},
+					},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+						Annotations: map[string]string{
+							managedExtraAnnotations: "{\"department\":\"procurement\"}",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "spec annotations changed from tracked annotations",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraAnnotations: map[string]string{
+							"department": "engineering",
+						},
+					},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+						Annotations: map[string]string{
+							managedExtraAnnotations: "{\"department\":\"procurement\"}",
+							"department":            "procurement",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "all spec annotations removed but tracked annotations exist",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				networkPolicy: &networkingv1.NetworkPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mariadb-mcp",
+						},
+						Annotations: map[string]string{
+							managedExtraAnnotations: "{\"department\":\"procurement\"}",
+							"department":            "procurement",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			got := networkPolicyAnnotationsChanged(tc.args.mcp, tc.args.networkPolicy)
 			if got != tc.want {
 				t.Errorf("wanted metadata changed to be %t but, got %t\n", tc.want, got)
 			}
