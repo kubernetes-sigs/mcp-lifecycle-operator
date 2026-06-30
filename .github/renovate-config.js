@@ -46,16 +46,26 @@ module.exports = {
       "groupName": "sigs.k8s.io dependencies",
       "matchPackageNames": ["sigs.k8s.io/{/,}**"],
     },
-    // Keep Dockerfile golang image versions in sync with go.mod
+    // Keep the preferred Go toolchain and Dockerfile image in sync
     {
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["golang"],
       "groupName": "go version",
     },
-    // Group gomod go version updates with Dockerfile golang updates
+    // Keep go.mod's toolchain directive grouped with Dockerfile golang updates
     {
       "matchManagers": ["gomod"],
       "matchDepNames": ["go"],
+      "matchDepTypes": ["toolchain"],
+      "groupName": "go version",
+    },
+    // Only bump the minimum supported Go version when adopting a new minor
+    {
+      "matchManagers": ["gomod"],
+      "matchDepNames": ["go"],
+      "matchDepTypes": ["golang"],
+      "matchUpdateTypes": ["minor"],
+      "rangeStrategy": "bump",
       "groupName": "go version",
     },
     // Group GitHub Actions updates together
