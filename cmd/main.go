@@ -103,6 +103,10 @@ func main() {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
+	if tlsProfile := tlsConfigFromEnv(); tlsProfile != nil {
+		tlsOpts = append(tlsOpts, tlsProfile)
+	}
+
 	// Initial webhook TLS options
 	webhookTLSOpts := tlsOpts
 	webhookServerOptions := webhook.Options{
