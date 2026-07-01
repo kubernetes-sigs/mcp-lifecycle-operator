@@ -126,16 +126,16 @@ func TestMCPServerUpdatePort(t *testing.T) {
 
 			return ctx
 		}).
-		Assess("MCPServer becomes Ready with updated generation", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("controller reconciles the port change", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
-			t.Log("MCPServer is Ready after port update")
+			f.WaitForMCPServerReconciled(ctx, t, r, server)
+			t.Log("MCPServer reconciled after port update")
 
 			return ctx
 		}).
-		Assess("status and resources reflect updated port", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("resources reflect updated port", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
@@ -157,9 +157,27 @@ func TestMCPServerUpdatePort(t *testing.T) {
 				t.Fatalf("expected Service port 3002, got %d", actual)
 			}
 
-			f.AssertConditionStable(ctx, t, r, server, "Ready", metav1.ConditionTrue)
+			dep := &appsv1.Deployment{}
+			if err := r.Get(ctx, server.Name, server.Namespace, dep); err != nil {
+				t.Fatalf("Deployment not found: %v", err)
+			}
+			foundPort := false
+			for _, container := range dep.Spec.Template.Spec.Containers {
+				for _, port := range container.Ports {
+					if port.ContainerPort == 3002 {
+						foundPort = true
+						break
+					}
+				}
+				if foundPort {
+					break
+				}
+			}
+			if !foundPort {
+				t.Fatal("expected a container port 3002 in the Deployment")
+			}
 
-			t.Logf("port update verified: address=%s, servicePort=%d",
+			t.Logf("port update verified: address=%s, servicePort=%d, containerPort=3002",
 				server.Status.Address.URL, svc.Spec.Ports[0].Port)
 
 			return ctx

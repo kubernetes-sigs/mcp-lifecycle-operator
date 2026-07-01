@@ -128,8 +128,9 @@ func WaitForPodPhase(ctx context.Context, t *testing.T, cfg *envconf.Config,
 // a ClusterIP service via the Kubernetes API server proxy.
 // The returned client is authenticated for the API server; the URL routes through
 // /api/v1/namespaces/{ns}/services/{scheme}:{name}:{port}/proxy/{path}.
+// The scheme defaults to "http" if not provided.
 func ServiceProxyHTTPClient(t *testing.T, cfg *envconf.Config,
-	namespace, serviceName string, port int, path string) (*http.Client, string) {
+	namespace, serviceName string, port int, path string, scheme ...string) (*http.Client, string) {
 	t.Helper()
 	restCfg := cfg.Client().Resources().GetConfig()
 
@@ -138,12 +139,17 @@ func ServiceProxyHTTPClient(t *testing.T, cfg *envconf.Config,
 		t.Fatalf("failed to create HTTP client from REST config: %v", err)
 	}
 
+	svcScheme := "http"
+	if len(scheme) > 0 {
+		svcScheme = scheme[0]
+	}
+
 	base, err := url.Parse(restCfg.Host)
 	if err != nil {
 		t.Fatalf("failed to parse REST config host %q: %v", restCfg.Host, err)
 	}
 	base.Path = netpath.Join(base.Path,
-		fmt.Sprintf("api/v1/namespaces/%s/services/http:%s:%d/proxy", namespace, serviceName, port),
+		fmt.Sprintf("api/v1/namespaces/%s/services/%s:%s:%d/proxy", namespace, svcScheme, serviceName, port),
 		netpath.Clean("/"+path),
 	)
 	return httpClient, base.String()

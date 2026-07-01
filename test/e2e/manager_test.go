@@ -20,16 +20,20 @@ package e2e
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
+	authv1 "k8s.io/api/authentication/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
+	"k8s.io/client-go/tools/portforward"
+	"k8s.io/client-go/transport/spdy"
 
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
@@ -43,10 +47,6 @@ const (
 	metricsServiceName = "mcp-lifecycle-operator-controller-manager-metrics-service"
 	metricsRoleBinding = "mcp-lifecycle-operator-metrics-binding"
 )
-
-type contextKey string
-
-const curlPodNameKey contextKey = "curlPodName"
 
 func TestManagerPodRunning(t *testing.T) {
 	feature := features.New("Manager pod is running").
@@ -67,7 +67,6 @@ func TestMetricsEndpoint(t *testing.T) {
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			r := cfg.Client().Resources()
 
-			// Create ClusterRoleBinding for metrics access.
 			crb := &rbacv1.ClusterRoleBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: metricsRoleBinding},
 				RoleRef: rbacv1.RoleRef{
@@ -93,10 +92,8 @@ func TestMetricsEndpoint(t *testing.T) {
 			return ctx
 		}).
 		Assess("controller pod is ready and serving metrics", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			// Find the controller pod.
 			pod := f.FindPodByLabel(ctx, t, cfg, operatorNamespace, "control-plane=controller-manager")
 
-			// Poll controller logs until the metrics server line appears.
 			deadline := time.Now().Add(1 * time.Minute)
 			for {
 				logs := f.PodLogs(ctx, t, cfg, pod.Name, operatorNamespace)
@@ -110,79 +107,101 @@ func TestMetricsEndpoint(t *testing.T) {
 				time.Sleep(2 * time.Second)
 			}
 
-			// Create a curl pod to access the metrics endpoint from inside the cluster.
-			// The pod uses the auto-mounted SA token instead of embedding it in args.
-			curlPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "curl-metrics-",
-					Namespace:    operatorNamespace,
-				},
-				Spec: corev1.PodSpec{
-					RestartPolicy:      corev1.RestartPolicyNever,
-					ServiceAccountName: serviceAccountName,
-					Containers: []corev1.Container{{
-						Name:    "curl",
-						Image:   "curlimages/curl:8.20.0",
-						Command: []string{"/bin/sh", "-c"},
-						Args: []string{
-							fmt.Sprintf("curl -s -o /dev/null -w '%%{http_code}' -k -H \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" https://%s.%s.svc.cluster.local:8443/metrics",
-								metricsServiceName, operatorNamespace),
-						},
-						SecurityContext: &corev1.SecurityContext{
-							ReadOnlyRootFilesystem:   ptr.To(true),
-							AllowPrivilegeEscalation: ptr.To(false),
-							Capabilities: &corev1.Capabilities{
-								Drop: []corev1.Capability{"ALL"},
-							},
-							RunAsNonRoot: ptr.To(true),
-							RunAsUser:    ptr.To(int64(1000)),
-							SeccompProfile: &corev1.SeccompProfile{
-								Type: corev1.SeccompProfileTypeRuntimeDefault,
-							},
-						},
-					}},
-				},
-			}
-			if err := cfg.Client().Resources().Create(ctx, curlPod); err != nil {
-				t.Fatalf("failed to create curl-metrics pod: %v", err)
-			}
-			ctx = context.WithValue(ctx, curlPodNameKey, curlPod.Name)
-			t.Logf("created curl-metrics pod %s", curlPod.Name)
+			f.WaitForEndpointsReady(ctx, t, cfg, operatorNamespace, metricsServiceName)
 
-			// Wait for the curl pod to complete.
-			f.WaitForPodPhase(ctx, t, cfg, curlPod, corev1.PodSucceeded)
-			t.Log("curl-metrics pod succeeded")
-
-			// Read curl pod logs and verify HTTP status code.
-			curlLogs := f.PodLogs(ctx, t, cfg, curlPod.Name, operatorNamespace)
-			if !strings.Contains(curlLogs, "200") {
-				t.Fatalf("expected HTTP status 200, got: %s", curlLogs)
+			// Create a short-lived token for the controller-manager SA.
+			cs := f.Clientset(t, cfg)
+			tr, err := cs.CoreV1().ServiceAccounts(operatorNamespace).
+				CreateToken(ctx, serviceAccountName, &authv1.TokenRequest{
+					Spec: authv1.TokenRequestSpec{
+						ExpirationSeconds: func() *int64 { v := int64(600); return &v }(),
+					},
+				}, metav1.CreateOptions{})
+			if err != nil {
+				t.Fatalf("failed to create token for SA %s: %v", serviceAccountName, err)
 			}
-			t.Log("metrics endpoint returned 200")
+
+			// Port-forward to the controller-manager pod so we can send the
+			// bearer token directly (the API server proxy strips auth headers).
+			restCfg := cfg.Client().Resources().GetConfig()
+			transport, upgrader, err := spdy.RoundTripperFor(restCfg)
+			if err != nil {
+				t.Fatalf("failed to create SPDY round tripper: %v", err)
+			}
+			pfURL := fmt.Sprintf("%s/api/v1/namespaces/%s/pods/%s/portforward",
+				restCfg.Host, operatorNamespace, pod.Name)
+			dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, http.MethodPost, mustParseURL(t, pfURL))
+
+			stopCh := make(chan struct{})
+			readyCh := make(chan struct{})
+			defer close(stopCh)
+
+			pf, err := portforward.New(dialer, []string{"0:8443"}, stopCh, readyCh, nil, nil)
+			if err != nil {
+				t.Fatalf("failed to create port-forward: %v", err)
+			}
+
+			errCh := make(chan error, 1)
+			go func() { errCh <- pf.ForwardPorts() }()
+
+			select {
+			case <-readyCh:
+			case err := <-errCh:
+				t.Fatalf("port-forward failed: %v", err)
+			case <-time.After(30 * time.Second):
+				t.Fatal("timed out waiting for port-forward to be ready")
+			}
+
+			ports, err := pf.GetPorts()
+			if err != nil || len(ports) == 0 {
+				t.Fatalf("failed to get forwarded ports: %v", err)
+			}
+			localPort := ports[0].Local
+
+			httpClient := &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+				},
+			}
+			metricsURL := fmt.Sprintf("https://localhost:%d/metrics", localPort)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, metricsURL, nil)
+			if err != nil {
+				t.Fatalf("failed to create request: %v", err)
+			}
+			req.Header.Set("Authorization", "Bearer "+tr.Status.Token)
+
+			resp, err := httpClient.Do(req)
+			if err != nil {
+				t.Fatalf("failed to GET metrics via port-forward: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != 200 {
+				t.Fatalf("expected HTTP status 200, got %d", resp.StatusCode)
+			}
+			t.Logf("metrics endpoint returned %d via port-forward", resp.StatusCode)
 
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			r := cfg.Client().Resources()
-
-			// Delete curl pod.
-			if name, ok := ctx.Value(curlPodNameKey).(string); ok {
-				curlPod := &corev1.Pod{
-					ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: operatorNamespace},
-				}
-				_ = r.Delete(ctx, curlPod)
-			}
-
-			// Delete ClusterRoleBinding.
 			crb := &rbacv1.ClusterRoleBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: metricsRoleBinding},
 			}
 			_ = r.Delete(ctx, crb)
-
 			t.Log("cleaned up metrics test resources")
 			return ctx
 		}).
 		Feature()
 
 	testenv.Test(t, feature)
+}
+
+func mustParseURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("failed to parse URL %q: %v", raw, err)
+	}
+	return u
 }

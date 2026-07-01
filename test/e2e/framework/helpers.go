@@ -140,6 +140,32 @@ func WaitForMCPServerReconciledAndReady(ctx context.Context, t *testing.T, r *re
 	}
 }
 
+// WaitForMCPServerReconciled polls until the controller has reconciled the
+// current generation (observedGeneration >= generation) without requiring a
+// specific Ready status. Use this after spec mutations where the pod may not
+// become Ready (e.g. port changes when the container image uses a fixed port).
+func WaitForMCPServerReconciled(ctx context.Context, t *testing.T, r *resources.Resources,
+	server *mcpv1alpha1.MCPServer, timeout ...time.Duration) {
+	t.Helper()
+	d := 3 * time.Minute
+	if len(timeout) > 0 {
+		d = timeout[0]
+	}
+	err := wait.For(
+		conditions.New(r).ResourceMatch(server, func(obj k8s.Object) bool {
+			s := obj.(*mcpv1alpha1.MCPServer)
+			return s.Status.ObservedGeneration >= s.Generation
+		}),
+		wait.WithTimeout(d),
+		wait.WithInterval(2*time.Second),
+		wait.WithContext(ctx),
+	)
+	if err != nil {
+		t.Fatalf("MCPServer %s/%s: timed out waiting for reconciliation (observedGeneration >= generation): %v",
+			server.Namespace, server.Name, err)
+	}
+}
+
 // WaitForMCPServerConditionReason polls until the named condition reaches the desired status and reason.
 // An optional timeout can be provided; defaults to 3 minutes.
 func WaitForMCPServerConditionReason(ctx context.Context, t *testing.T, r *resources.Resources,
