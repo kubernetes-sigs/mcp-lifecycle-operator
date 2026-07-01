@@ -268,8 +268,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				conditionToAC(readyCondition),
 			)
 
-		if err := r.applyStatus(ctx, mcpServer, status); err != nil {
-			logger.Error(err, "Failed to update MCPServer status")
+		if statusErr := r.applyStatus(ctx, mcpServer, status); statusErr != nil {
+			logger.Error(statusErr, "Failed to update MCPServer status")
+			return ctrl.Result{}, statusErr
+		}
+		if IsOwnershipConflict(err) {
+			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
@@ -312,8 +316,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				conditionToAC(readyCondition),
 			)
 
-		if err := r.applyStatus(ctx, mcpServer, status); err != nil {
-			logger.Error(err, "Failed to update MCPServer status")
+		if statusErr := r.applyStatus(ctx, mcpServer, status); statusErr != nil {
+			logger.Error(statusErr, "Failed to update MCPServer status")
+			return ctrl.Result{}, statusErr
+		}
+		if IsOwnershipConflict(err) {
+			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}

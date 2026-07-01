@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"errors"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,6 +26,19 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 )
+
+type OwnershipConflictError struct {
+	Message string
+}
+
+func (e *OwnershipConflictError) Error() string {
+	return e.Message
+}
+
+func IsOwnershipConflict(err error) bool {
+	var target *OwnershipConflictError
+	return errors.As(err, &target)
+}
 
 // validateOwnership checks if a resource is owned by a different controller.
 // Returns an error if the resource has a controller owner that is not the given MCPServer,
@@ -38,9 +52,9 @@ func (r *MCPServerReconciler) validateOwnership(
 	if controllerOwner == nil {
 		// No controller owner - reject to prevent silent adoption
 		// User must delete the existing resource or choose a different name for their MCPServer
-		return fmt.Errorf("resource %s/%s exists but has no controller owner; "+
+		return &OwnershipConflictError{Message: fmt.Sprintf("resource %s/%s exists but has no controller owner; "+
 			"delete the resource first or choose a different name for the MCPServer",
-			obj.GetNamespace(), obj.GetName())
+			obj.GetNamespace(), obj.GetName())}
 	}
 
 	// Check if the controller owner is this MCPServer by UID
@@ -63,10 +77,10 @@ func (r *MCPServerReconciler) validateOwnership(
 	}
 
 	// Resource is owned by a different controller
-	return fmt.Errorf("resource %s/%s is owned by %s/%s (UID: %s), cannot be managed by MCPServer %s/%s (UID: %s)",
+	return &OwnershipConflictError{Message: fmt.Sprintf("resource %s/%s is owned by %s/%s (UID: %s), cannot be managed by MCPServer %s/%s (UID: %s)",
 		obj.GetNamespace(), obj.GetName(),
 		controllerOwner.Kind, controllerOwner.Name, controllerOwner.UID,
-		mcpServer.Namespace, mcpServer.Name, mcpServer.UID)
+		mcpServer.Namespace, mcpServer.Name, mcpServer.UID)}
 }
 
 // isSameGroupKind checks if an owner reference matches the expected API group and kind,

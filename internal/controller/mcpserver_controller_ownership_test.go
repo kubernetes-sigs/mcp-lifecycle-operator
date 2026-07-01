@@ -18,15 +18,18 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -239,9 +242,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("is owned by"))
-			Expect(err.Error()).To(ContainSubstring("cannot be managed by MCPServer"))
+			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying the deployment spec was NOT overwritten")
 			deployment := &appsv1.Deployment{}
@@ -321,9 +322,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("is owned by"))
-			Expect(err.Error()).To(ContainSubstring("cannot be managed by MCPServer"))
+			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying the service port was NOT updated")
 			service := &corev1.Service{}
@@ -400,9 +399,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("has no controller owner"))
-			Expect(err.Error()).To(ContainSubstring("delete the resource first or choose a different name"))
+			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying the deployment was NOT updated")
 			deployment := &appsv1.Deployment{}
@@ -480,8 +477,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("has no controller owner"))
+			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying the service was NOT updated")
 			service := &corev1.Service{}
@@ -579,8 +575,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("has no controller owner"))
+			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying the deployment was NOT updated")
 			deployment := &appsv1.Deployment{}
@@ -677,8 +672,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("has no controller owner"))
+			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying the service was NOT updated")
 			service := &corev1.Service{}
@@ -1101,6 +1095,158 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 
 			By("Cleanup")
 			Expect(k8sClient.Delete(ctx, newMCPServer)).To(Succeed())
+		})
+	})
+
+	Context("When status update fails during an ownership conflict", func() {
+		const resourceName = "test-status-fail-deploy"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			By("Pre-creating a Deployment with no owner")
+			unownedDeployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: managedWorkloadSelector(resourceName),
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: managedWorkloadLabels(resourceName),
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "manual", Image: "manual-image:latest"},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, unownedDeployment)).To(Succeed())
+
+			By("Creating the MCPServer CR")
+			resource := newTestMCPServer(resourceName)
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+			}
+		})
+
+		It("should propagate the status update error for retry", func() {
+			wrappedClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+			Expect(err).NotTo(HaveOccurred())
+
+			interceptedClient := interceptor.NewClient(wrappedClient, interceptor.Funcs{
+				SubResourceApply: func(ctx context.Context, c client.Client, subResourceName string, obj runtime.ApplyConfiguration, opts ...client.SubResourceApplyOption) error {
+					if subResourceName == "status" {
+						return fmt.Errorf("simulated status update failure")
+					}
+					return c.SubResource(subResourceName).Apply(ctx, obj, opts...)
+				},
+			})
+
+			controllerReconciler := &MCPServerReconciler{
+				Client:    interceptedClient,
+				Scheme:    k8sClient.Scheme(),
+				APIReader: wrappedClient,
+			}
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("simulated status update failure"))
+		})
+	})
+
+	Context("When status update fails during a service ownership conflict", func() {
+		const resourceName = "test-status-fail-svc"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			By("Pre-creating a Service with no owner")
+			unownedService := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: corev1.ServiceSpec{
+					Selector: managedWorkloadSelector(resourceName),
+					Ports: []corev1.ServicePort{
+						{Name: "http", Port: 8080, TargetPort: intstr.FromInt32(8080)},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, unownedService)).To(Succeed())
+
+			By("Creating the MCPServer CR")
+			resource := newTestMCPServer(resourceName)
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			service := &corev1.Service{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, service)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, service)).To(Succeed())
+			}
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
+			}
+		})
+
+		It("should propagate the status update error for retry", func() {
+			wrappedClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+			Expect(err).NotTo(HaveOccurred())
+
+			interceptedClient := interceptor.NewClient(wrappedClient, interceptor.Funcs{
+				SubResourceApply: func(ctx context.Context, c client.Client, subResourceName string, obj runtime.ApplyConfiguration, opts ...client.SubResourceApplyOption) error {
+					if subResourceName == "status" {
+						return fmt.Errorf("simulated status update failure")
+					}
+					return c.SubResource(subResourceName).Apply(ctx, obj, opts...)
+				},
+			})
+
+			controllerReconciler := &MCPServerReconciler{
+				Client:    interceptedClient,
+				Scheme:    k8sClient.Scheme(),
+				APIReader: wrappedClient,
+			}
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("simulated status update failure"))
 		})
 	})
 })
