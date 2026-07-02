@@ -85,12 +85,17 @@ func (r *MCPServerReconciler) reconcileHandshake(
 		return cond, nil
 	}
 
-	logger.Info("MCP endpoint verified successfully", "url", mcpURL)
+	protocolVersion := ""
+	if info != nil {
+		protocolVersion = info.ProtocolVersion
+	}
+	logger.Info("MCP endpoint verified successfully", "url", mcpURL, "protocolVersion", protocolVersion)
 	return readyCondition, info
 }
 
-// verifyMCPEndpoint performs an MCP initialize handshake against the given URL
-// to verify the endpoint actually speaks the MCP protocol.
+// verifyMCPEndpoint performs an MCP protocol handshake (initialize or
+// server/discover) against the given URL to verify the endpoint actually
+// speaks the MCP protocol.
 // On success it returns the server's self-reported identity and capabilities
 // extracted from the InitializeResult.
 // It uses a dedicated context for the connection so that cancelling it tears

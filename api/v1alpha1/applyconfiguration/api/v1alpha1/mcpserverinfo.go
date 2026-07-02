@@ -22,13 +22,15 @@ package v1alpha1
 // with apply.
 //
 // MCPServerInfo contains identity and capability information reported by the
-// MCP server during the protocol initialize handshake.
+// MCP server during the protocol handshake (initialize or server/discover).
 type MCPServerInfoApplyConfiguration struct {
 	// Name is the server's self-reported name.
 	Name *string `json:"name,omitempty"`
 	// Version is the server's self-reported version.
 	Version *string `json:"version,omitempty"`
-	// ProtocolVersion is the MCP protocol version negotiated during the handshake.
+	// ProtocolVersion is the MCP protocol version negotiated during the protocol
+	// handshake. The value reflects whichever version was agreed upon by both
+	// client and server.
 	ProtocolVersion *string `json:"protocolVersion,omitempty"`
 	// Instructions describes how to use the server and its features.
 	// This can be used by clients to improve the LLM's understanding of
