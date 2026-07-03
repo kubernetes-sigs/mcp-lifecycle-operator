@@ -93,6 +93,9 @@ kubectl get deployment test-server
 # Verify the Service was created
 kubectl get service test-server
 
+# Verify the NetworkPolicy was created
+kubectl get networkpolicy test-server
+
 # Check the pod is running
 kubectl get pods -l mcp-server=test-server
 ```

@@ -24,7 +24,7 @@ spec:
 
 #### Custom Labels and Annotations
 
-Add custom labels and annotations to the managed Deployment, PodTemplate, and Service:
+Add custom labels and annotations to the managed Deployment, PodTemplate, Service, and NetworkPolicy:
 
 ```yaml
 spec:
@@ -153,8 +153,10 @@ graph TB
     MCPServer -->|Reconciles| Operator[MCP Lifecycle Operator]
     Operator -->|Creates/Updates| Deployment[Deployment]
     Operator -->|Creates/Updates| Service[Service]
+    Operator -->|Creates/Updates| NetworkPolicy[NetworkPolicy]
     Deployment -->|Manages| Pods[MCP Server Pods]
     Service -->|Routes to| Pods
+    NetworkPolicy -->|Secures| Pods
     Operator -->|Updates| Status[Status with Address]
 ```
 
@@ -162,9 +164,10 @@ The operator watches for `MCPServer` resources and automatically:
 
 1. Creates a Deployment to run the MCP server containers
 2. Creates a Service for network access
-3. Manages updates and rollouts
-4. Reports status and connection information
-5. Cleans up resources on deletion
+3. Creates a NetworkPolicy to restrict ingress to the configured server port
+4. Manages updates and rollouts
+5. Reports status and connection information
+6. Cleans up resources on deletion
 
 ## Next Steps
 

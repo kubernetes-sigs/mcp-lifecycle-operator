@@ -39,7 +39,8 @@ Custom metrics use the Prometheus namespace **`mcpserver`** (exported names star
 | `mcpserver_validation_failures_total` | counter | Total permanent configuration validation failures (`ValidationError`). |
 | `mcpserver_deployment_failures_total` | counter | Total failures when reconciling the workload Deployment (`reason` is currently `ReconcileError`). |
 | `mcpserver_service_failures_total` | counter | Total failures when reconciling the Service (`reason` is currently `ReconcileError`). |
-| `mcpserver_reconcile_phase_duration_seconds` | histogram | Duration of reconciliation phases **validation**, **deployment**, and **service** (seconds; default Prometheus histogram buckets). |
+| `mcpserver_networkpolicy_failures_total` | counter | Total failures when reconciling the NetworkPolicy (`reason` is currently `ReconcileError`). |
+| `mcpserver_reconcile_phase_duration_seconds` | histogram | Duration of reconciliation phases **validation**, **deployment**, **service**, and **networkpolicy** (seconds; default Prometheus histogram buckets). |
 
 ### Labels for `mcpserver_condition_info`
 
@@ -58,7 +59,7 @@ Only one active series exists per `(name, namespace, type)`. On delete, both gau
 | `type` | Typical `reason` values | `status` notes |
 | --- | --- | --- |
 | `Accepted` | `Valid`, `Invalid` | Usually `True` or `False` |
-| `Ready` | `Available`, `ConfigurationInvalid`, `DeploymentUnavailable`, `ServiceUnavailable`, `ScaledToZero`, `Initializing`, `MCPEndpointUnavailable` | May be `Unknown` (for example `Initializing` while the Deployment has not reported conditions yet) |
+| `Ready` | `Available`, `ConfigurationInvalid`, `DeploymentUnavailable`, `ServiceUnavailable`, `NetworkPolicyUnavailable`, `ScaledToZero`, `Initializing`, `MCPEndpointUnavailable` | May be `Unknown` (for example `Initializing` while the Deployment has not reported conditions yet) |
 
 ### Gauge versus API status
 
@@ -90,7 +91,7 @@ histogram_quantile(
 
 ### Labels for failure counters (`mcpserver_*_failures_total`)
 
-`mcpserver_validation_failures_total`, `mcpserver_deployment_failures_total`, and `mcpserver_service_failures_total` share the **same label set**:
+`mcpserver_validation_failures_total`, `mcpserver_deployment_failures_total`, `mcpserver_service_failures_total`, and `mcpserver_networkpolicy_failures_total` share the **same label set**:
 
 | Label | Description |
 | --- | --- |
@@ -101,13 +102,13 @@ histogram_quantile(
 **`reason` values**
 
 - **`mcpserver_validation_failures_total`** — permanent validation errors currently use `Invalid`.
-- **`mcpserver_deployment_failures_total`** and **`mcpserver_service_failures_total`** — currently `ReconcileError` when the corresponding reconcile step returns an error.
+- **`mcpserver_deployment_failures_total`**, **`mcpserver_service_failures_total`**, and **`mcpserver_networkpolicy_failures_total`** — currently `ReconcileError` when the corresponding reconcile step returns an error.
 
 ### Labels for `mcpserver_reconcile_phase_duration_seconds`
 
 | Label | Description |
 | --- | --- |
-| `phase` | Reconciliation phase: `validation`, `deployment`, or `service` |
+| `phase` | Reconciliation phase: `validation`, `deployment`, `service`, or `networkpolicy` |
 
 Histogram time series use the usual `_bucket`, `_sum`, and `_count` suffixes for quantiles and averages.
 

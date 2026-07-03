@@ -7,7 +7,7 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 
 ## Core Capabilities
 
-**Declarative Deployment** - Define MCP servers using Kubernetes Custom Resources with automatic deployment, service creation, and lifecycle management.
+**Declarative Deployment** - Define MCP servers using Kubernetes Custom Resources with automatic deployment, service creation, network policy enforcement, and lifecycle management.
 
 **Production Ready** - Built-in health checks, security configurations, and robust status reporting for production environments.
 

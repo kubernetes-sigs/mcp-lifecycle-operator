@@ -507,7 +507,7 @@ type MCPServerStatus struct {
 
 // MCPServer runs a Model Context Protocol (MCP) server in Kubernetes.
 //
-// MCPServer creates and manages a Deployment and Service to run an MCP server from a
+// MCPServer creates and manages a Deployment, Service, and NetworkPolicy to run an MCP server from a
 // container image. The MCP server exposes tools, resources, and prompts that AI applications
 // can use via the Model Context Protocol.
 //
@@ -525,7 +525,7 @@ type MCPServerStatus struct {
 //	  config:
 //	    port: 8080
 //
-// The controller manages Deployment and Service resources with the same name as the MCPServer,
+// The controller manages Deployment, Service, and NetworkPolicy resources with the same name as the MCPServer,
 // using ownerReferences to establish ownership. The controller will reject updates to resources
 // owned by other controllers or resources with no controller owner (to prevent silent overwrites
 // of manually-created resources), but will adopt orphaned resources from a deleted MCPServer
