@@ -287,7 +287,13 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	serviceStart := time.Now()
 	if err := r.reconcileService(ctx, mcpServer); err != nil {
 		reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
-		return r.handleServiceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err)
+		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
+			counter:     serviceFailuresTotal,
+			reason:      ReasonServiceUnavailable,
+			resource:    "Service",
+			isDuplicate: duplicateServiceUnavailable,
+			emitEvent:   r.emitServiceReconcileFailed,
+		})
 	}
 
 	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
@@ -296,7 +302,13 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	networkPolicyStart := time.Now()
 	if err := r.reconcileNetworkPolicy(ctx, mcpServer); err != nil {
 		reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseNetworkPolicy}).Observe(time.Since(networkPolicyStart).Seconds())
-		return r.handleNetworkPolicyFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err)
+		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
+			counter:     networkPolicyFailuresTotal,
+			reason:      ReasonNetworkPolicyUnavailable,
+			resource:    "NetworkPolicy",
+			isDuplicate: duplicateNetworkPolicyUnavailable,
+			emitEvent:   r.emitNetworkPolicyReconcileFailed,
+		})
 	}
 	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseNetworkPolicy}).Observe(time.Since(networkPolicyStart).Seconds())
 
@@ -511,69 +523,25 @@ func (r *MCPServerReconciler) emitServiceReconcileFailed(mcpServer *mcpv1alpha1.
 		"MCPServer %s: %s", mcpServer.Name, message)
 }
 
-func (r *MCPServerReconciler) handleServiceFailure(
-	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
-	existingDeployment *appsv1.Deployment,
-	acceptedCondition metav1.Condition,
-	reconcileErr error,
-) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	serviceFailuresTotal.With(prometheus.Labels{
-		"name":      mcpServer.Name,
-		"namespace": mcpServer.Namespace,
-		"reason":    MetricReasonReconcileError,
-	}).Inc()
-
-	readyCondition := newCondition(
-		ConditionTypeReady,
-		metav1.ConditionFalse,
-		ReasonServiceUnavailable,
-		fmt.Sprintf("Failed to reconcile Service: %v", reconcileErr),
-		mcpServer.Generation,
-	)
-	preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
-
-	recordCondition(mcpServer.Name, mcpServer.Namespace,
-		readyCondition.Type, string(readyCondition.Status), readyCondition.Reason)
-
-	if !duplicateServiceUnavailable(mcpServer.Status.Conditions, readyCondition.Message) {
-		r.emitServiceReconcileFailed(mcpServer, readyCondition.Message)
-	}
-
-	status := acv1alpha1.MCPServerStatus().
-		WithObservedGeneration(mcpServer.Generation).
-		WithDeploymentName(existingDeployment.Name).
-		WithServiceName(mcpServer.Name).
-		WithHandshakeRetryCount(0).
-		WithReplicas(ptr.Deref(existingDeployment.Spec.Replicas, 1)).
-		WithReadyReplicas(existingDeployment.Status.ReadyReplicas).
-		WithConditions(
-			conditionToAC(acceptedCondition),
-			conditionToAC(readyCondition),
-		)
-
-	if statusErr := r.applyStatus(ctx, mcpServer, status); statusErr != nil {
-		logger.Error(statusErr, "Failed to update MCPServer status")
-		return ctrl.Result{}, statusErr
-	}
-	if IsOwnershipConflict(reconcileErr) {
-		return ctrl.Result{}, nil
-	}
-	return ctrl.Result{}, reconcileErr
+type resourceFailureParams struct {
+	counter     *prometheus.CounterVec
+	reason      string
+	resource    string
+	isDuplicate func([]metav1.Condition, string) bool
+	emitEvent   func(*mcpv1alpha1.MCPServer, string)
 }
 
-func (r *MCPServerReconciler) handleNetworkPolicyFailure(
+func (r *MCPServerReconciler) handleResourceFailure(
 	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
 	existingDeployment *appsv1.Deployment,
 	acceptedCondition metav1.Condition,
 	reconcileErr error,
+	params resourceFailureParams,
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	networkPolicyFailuresTotal.With(prometheus.Labels{
+	params.counter.With(prometheus.Labels{
 		"name":      mcpServer.Name,
 		"namespace": mcpServer.Namespace,
 		"reason":    MetricReasonReconcileError,
@@ -582,8 +550,8 @@ func (r *MCPServerReconciler) handleNetworkPolicyFailure(
 	readyCondition := newCondition(
 		ConditionTypeReady,
 		metav1.ConditionFalse,
-		ReasonNetworkPolicyUnavailable,
-		fmt.Sprintf("Failed to reconcile NetworkPolicy: %v", reconcileErr),
+		params.reason,
+		fmt.Sprintf("Failed to reconcile %s: %v", params.resource, reconcileErr),
 		mcpServer.Generation,
 	)
 	preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
@@ -591,8 +559,8 @@ func (r *MCPServerReconciler) handleNetworkPolicyFailure(
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		readyCondition.Type, string(readyCondition.Status), readyCondition.Reason)
 
-	if !duplicateNetworkPolicyUnavailable(mcpServer.Status.Conditions, readyCondition.Message) {
-		r.emitNetworkPolicyReconcileFailed(mcpServer, readyCondition.Message)
+	if !params.isDuplicate(mcpServer.Status.Conditions, readyCondition.Message) {
+		params.emitEvent(mcpServer, readyCondition.Message)
 	}
 
 	status := acv1alpha1.MCPServerStatus().
