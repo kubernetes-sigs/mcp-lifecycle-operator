@@ -293,7 +293,10 @@ func TeardownMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config) c
 	close(gcErrors)
 
 	for msg := range gcErrors {
-		t.Fatal(msg)
+		t.Error(msg)
+	}
+	if t.Failed() {
+		return ctx
 	}
 
 	t.Log("Deployment, Service, and NetworkPolicy were garbage collected")

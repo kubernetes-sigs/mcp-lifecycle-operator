@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -88,7 +89,10 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 		ownershipChanged
 	if needsUpdate {
 		logger.Info("Updating NetworkPolicy", "name", existingNetpol.Name)
-		existingNetpol.Labels = netpol.Labels
+		if existingNetpol.Labels == nil {
+			existingNetpol.Labels = make(map[string]string)
+		}
+		maps.Copy(existingNetpol.Labels, netpol.Labels)
 		if err := applyCustomNetworkPolicyMetadata(mcpServer, existingNetpol); err != nil {
 			return fmt.Errorf("applying custom networkpolicy metadata; %w", err)
 		}
