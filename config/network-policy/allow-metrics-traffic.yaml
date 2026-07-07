@@ -17,6 +17,10 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # Allow kubelet health probes (liveness/readiness) on port 8081
+    - ports:
+        - port: 8081
+          protocol: TCP
     # This allows ingress traffic from any namespace with the label metrics: enabled
     - from:
       - namespaceSelector:
