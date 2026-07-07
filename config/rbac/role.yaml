@@ -55,7 +55,15 @@ rules:
   verbs:
   - get
   - list
+  - patch
+  - update
   - watch
+- apiGroups:
+  - mcp.x-k8s.io
+  resources:
+  - mcpservers/finalizers
+  verbs:
+  - update
 - apiGroups:
   - mcp.x-k8s.io
   resources:
@@ -63,6 +71,7 @@ rules:
   verbs:
   - get
   - patch
+  - update
 - apiGroups:
   - networking.k8s.io
   resources:
