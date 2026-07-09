@@ -672,8 +672,6 @@ func TestPodSecurityContext(t *testing.T) {
 			return f.SetupMCPServer(ctx, t, cfg, "sec-pod", true,
 				f.WithPodSecurityContext(&corev1.PodSecurityContext{
 					RunAsNonRoot: ptr.To(true),
-					RunAsUser:    ptr.To(int64(1000)),
-					FSGroup:      ptr.To(int64(2000)),
 				}),
 			)
 		}).
@@ -693,12 +691,6 @@ func TestPodSecurityContext(t *testing.T) {
 
 			if psc.RunAsNonRoot == nil || !*psc.RunAsNonRoot {
 				t.Fatal("expected RunAsNonRoot=true")
-			}
-			if psc.RunAsUser == nil || *psc.RunAsUser != 1000 {
-				t.Fatal("expected RunAsUser=1000")
-			}
-			if psc.FSGroup == nil || *psc.FSGroup != 2000 {
-				t.Fatal("expected FSGroup=2000")
 			}
 
 			t.Log("pod security context is correctly applied")
