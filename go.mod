@@ -7,7 +7,7 @@ toolchain go1.26.5
 require (
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/onsi/ginkgo/v2 v2.31.0
-	github.com/onsi/gomega v1.42.0
+	github.com/onsi/gomega v1.42.1
 	github.com/prometheus/client_golang v1.23.2
 	k8s.io/api v0.36.2
 	k8s.io/apimachinery v0.36.2
