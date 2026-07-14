@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -61,9 +62,10 @@ var _ = Describe("MCPServer Controller - HTTPRoute", func() {
 
 	reconcileMCPServer := func() {
 		controllerReconciler := &MCPServerReconciler{
-			Client:    k8sClient,
-			Scheme:    k8sClient.Scheme(),
-			APIReader: k8sClient,
+			Client:              k8sClient,
+			Scheme:              k8sClient.Scheme(),
+			APIReader:           k8sClient,
+			GatewayAPIAvailable: true,
 		}
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 			NamespacedName: typeNamespacedName,
@@ -362,15 +364,24 @@ var _ = Describe("MCPServer Controller - HTTPRoute", func() {
 		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 		controllerReconciler := &MCPServerReconciler{
-			Client:    k8sClient,
-			Scheme:    k8sClient.Scheme(),
-			APIReader: k8sClient,
+			Client:              k8sClient,
+			Scheme:              k8sClient.Scheme(),
+			APIReader:           k8sClient,
+			GatewayAPIAvailable: true,
 		}
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 			NamespacedName: typeNamespacedName,
 		})
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("is owned by"))
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying the MCPServer status shows ownership conflict")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+		Expect(readyCondition).NotTo(BeNil())
+		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(readyCondition.Reason).To(Equal(ReasonGatewayRouteUnavailable))
+		Expect(readyCondition.Message).To(ContainSubstring("is owned by"))
 
 		By("Verifying the original foreign owner reference is still present")
 		route := &gatewayv1.HTTPRoute{}
@@ -430,15 +441,24 @@ var _ = Describe("MCPServer Controller - HTTPRoute", func() {
 		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
 		controllerReconciler := &MCPServerReconciler{
-			Client:    k8sClient,
-			Scheme:    k8sClient.Scheme(),
-			APIReader: k8sClient,
+			Client:              k8sClient,
+			Scheme:              k8sClient.Scheme(),
+			APIReader:           k8sClient,
+			GatewayAPIAvailable: true,
 		}
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 			NamespacedName: typeNamespacedName,
 		})
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("has no controller owner"))
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying the MCPServer status shows ownership conflict")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+		Expect(readyCondition).NotTo(BeNil())
+		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(readyCondition.Reason).To(Equal(ReasonGatewayRouteUnavailable))
+		Expect(readyCondition.Message).To(ContainSubstring("has no controller owner"))
 	})
 })
 

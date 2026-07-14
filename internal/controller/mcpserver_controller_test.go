@@ -51,11 +51,12 @@ func testMCPDialerNoop(context.Context, string) (*mcpv1alpha1.MCPServerInfo, err
 func newReconcilerForTestWithFakeEvents(cli client.Client, sch *runtime.Scheme) (*MCPServerReconciler, *events.FakeRecorder) {
 	fr := events.NewFakeRecorder(testRecorderBuffer)
 	return &MCPServerReconciler{
-		Client:    cli,
-		Scheme:    sch,
-		Recorder:  fr,
-		MCPDialer: testMCPDialerNoop,
-		APIReader: cli,
+		Client:              cli,
+		Scheme:              sch,
+		Recorder:            fr,
+		MCPDialer:           testMCPDialerNoop,
+		APIReader:           cli,
+		GatewayAPIAvailable: true,
 	}, fr
 }
 

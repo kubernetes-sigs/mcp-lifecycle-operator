@@ -21,9 +21,10 @@ package controller
 
 import (
 	"context"
-	"go/build"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,10 +75,13 @@ var _ = BeforeSuite(func() {
 	// +kubebuilder:scaffold:scheme
 
 	By("bootstrapping test environment")
+	gatewayAPIDir, err := resolveModuleDir("sigs.k8s.io/gateway-api")
+	Expect(err).NotTo(HaveOccurred(), "failed to resolve gateway-api module directory")
+
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
-			filepath.Join(build.Default.GOPATH, "pkg", "mod", "sigs.k8s.io", "gateway-api@v1.5.1", "config", "crd", "standard"),
+			filepath.Join(gatewayAPIDir, "config", "crd", "standard"),
 		},
 		ErrorIfCRDPathMissing: true,
 	}
@@ -113,6 +117,15 @@ var _ = AfterSuite(func() {
 // This function streamlines the process by finding the required binaries, similar to
 // setting the 'KUBEBUILDER_ASSETS' environment variable. To ensure the binaries are
 // properly set up, run 'make setup-envtest' beforehand.
+func resolveModuleDir(module string) (string, error) {
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", module)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func getFirstFoundEnvTestBinaryDir() string {
 	basePath := filepath.Join("..", "..", "bin", "k8s")
 	entries, err := os.ReadDir(basePath)

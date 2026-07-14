@@ -31,6 +31,20 @@ import (
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 )
 
+// reconcileGateway gates HTTPRoute reconciliation on Gateway API availability.
+func (r *MCPServerReconciler) reconcileGateway(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+) error {
+	if r.GatewayAPIAvailable {
+		return r.reconcileHTTPRoute(ctx, mcpServer)
+	}
+	if mcpServer.Spec.Gateway != nil {
+		return fmt.Errorf("spec.gateway is set but Gateway API CRDs are not installed on this cluster")
+	}
+	return nil
+}
+
 // reconcileHTTPRoute creates, updates, or deletes the HTTPRoute for the MCPServer.
 // When spec.gateway is set, an HTTPRoute is created/updated pointing to the
 // MCPServer's Service. When spec.gateway is nil, any existing HTTPRoute owned
@@ -109,7 +123,6 @@ func (r *MCPServerReconciler) reconcileHTTPRoute(
 	needsUpdate := !equality.Semantic.DeepEqual(route.Spec.ParentRefs, existing.Spec.ParentRefs) ||
 		!equality.Semantic.DeepEqual(route.Spec.Hostnames, existing.Spec.Hostnames) ||
 		!equality.Semantic.DeepEqual(route.Spec.Rules, existing.Spec.Rules) ||
-		!equality.Semantic.DeepEqual(route.Labels, existing.Labels) ||
 		httpRouteLabelsChanged(mcpServer, existing) ||
 		httpRouteAnnotationsChanged(mcpServer, existing) ||
 		ownershipChanged
@@ -121,7 +134,6 @@ func (r *MCPServerReconciler) reconcileHTTPRoute(
 		existing.Spec.ParentRefs = route.Spec.ParentRefs
 		existing.Spec.Hostnames = route.Spec.Hostnames
 		existing.Spec.Rules = route.Spec.Rules
-		existing.Labels = route.Labels
 		if err := r.Update(ctx, existing); err != nil {
 			logger.Error(err, "Failed to update HTTPRoute")
 			return err

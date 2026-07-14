@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -168,6 +169,9 @@ type MCPServerReconciler struct {
 	// TLSEnvVars holds TLS-related environment variables to propagate to every
 	// MCP server container. Populated at startup when PROPAGATE_TLS_ENV_VARS is set.
 	TLSEnvVars []corev1.EnvVar
+	// GatewayAPIAvailable is set at startup when Gateway API CRDs are detected
+	// on the cluster. When false, spec.gateway is rejected with a clear error.
+	GatewayAPIAvailable bool
 }
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch;update;patch
@@ -322,7 +326,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseNetworkPolicy}).Observe(time.Since(networkPolicyStart).Seconds())
 
 	// Reconcile HTTPRoute (gateway integration)
-	if err := r.reconcileHTTPRoute(ctx, mcpServer); err != nil {
+	if err := r.reconcileGateway(ctx, mcpServer); err != nil {
 		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
 			counter:     gatewayRouteFailuresTotal,
 			reason:      ReasonGatewayRouteUnavailable,
@@ -680,7 +684,18 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to setup Secret index: %w", err)
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	// Detect Gateway API CRDs via REST mapper
+	_, err := mgr.GetRESTMapper().RESTMapping(
+		schema.GroupKind{Group: gatewayv1.GroupName, Kind: "HTTPRoute"},
+	)
+	r.GatewayAPIAvailable = err == nil
+	if r.GatewayAPIAvailable {
+		log.FromContext(ctx).Info("Gateway API CRDs detected, enabling HTTPRoute reconciliation")
+	} else {
+		log.FromContext(ctx).Info("Gateway API CRDs not found, HTTPRoute reconciliation disabled")
+	}
+
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.MCPServer{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
 			predicate.AnnotationChangedPredicate{},
@@ -688,8 +703,13 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		))).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
-		Owns(&networkingv1.NetworkPolicy{}).
-		Owns(&gatewayv1.HTTPRoute{}).
+		Owns(&networkingv1.NetworkPolicy{})
+
+	if r.GatewayAPIAvailable {
+		b = b.Owns(&gatewayv1.HTTPRoute{})
+	}
+
+	return b.
 		Watches(
 			&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForConfigMap),
