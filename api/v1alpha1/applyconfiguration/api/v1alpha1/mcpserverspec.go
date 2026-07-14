@@ -43,6 +43,10 @@ type MCPServerSpecApplyConfiguration struct {
 	// This section describes the MCP server's protocol-level behavior,
 	// as opposed to how it is sourced, configured, or managed at runtime.
 	MCP *MCPConfigApplyConfiguration `json:"mcp,omitempty"`
+	// Gateway configures gateway integration. When set, the operator
+	// creates an HTTPRoute attaching the MCPServer's Service to the
+	// specified Gateway.
+	Gateway *GatewayConfigApplyConfiguration `json:"gateway,omitempty"`
 }
 
 // MCPServerSpecApplyConfiguration constructs a declarative configuration of the MCPServerSpec type for use with
@@ -108,5 +112,13 @@ func (b *MCPServerSpecApplyConfiguration) WithRuntime(value *RuntimeConfigApplyC
 // If called multiple times, the MCP field is set to the value of the last call.
 func (b *MCPServerSpecApplyConfiguration) WithMCP(value *MCPConfigApplyConfiguration) *MCPServerSpecApplyConfiguration {
 	b.MCP = value
+	return b
+}
+
+// WithGateway sets the Gateway field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Gateway field is set to the value of the last call.
+func (b *MCPServerSpecApplyConfiguration) WithGateway(value *GatewayConfigApplyConfiguration) *MCPServerSpecApplyConfiguration {
+	b.Gateway = value
 	return b
 }

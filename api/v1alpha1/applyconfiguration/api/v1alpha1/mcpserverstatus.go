@@ -35,6 +35,8 @@ type MCPServerStatusApplyConfiguration struct {
 	DeploymentName *string `json:"deploymentName,omitempty"`
 	// ServiceName is the name of the Service created for this MCPServer.
 	ServiceName *string `json:"serviceName,omitempty"`
+	// GatewayRouteName is the name of the HTTPRoute created for gateway integration.
+	GatewayRouteName *string `json:"gatewayRouteName,omitempty"`
 	// Address contains the address of the MCP server service.
 	Address *MCPServerAddressApplyConfiguration `json:"address,omitempty"`
 	// ServerInfo contains identity and capability information reported by the
@@ -99,6 +101,14 @@ func (b *MCPServerStatusApplyConfiguration) WithDeploymentName(value string) *MC
 // If called multiple times, the ServiceName field is set to the value of the last call.
 func (b *MCPServerStatusApplyConfiguration) WithServiceName(value string) *MCPServerStatusApplyConfiguration {
 	b.ServiceName = &value
+	return b
+}
+
+// WithGatewayRouteName sets the GatewayRouteName field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the GatewayRouteName field is set to the value of the last call.
+func (b *MCPServerStatusApplyConfiguration) WithGatewayRouteName(value string) *MCPServerStatusApplyConfiguration {
+	b.GatewayRouteName = &value
 	return b
 }
 

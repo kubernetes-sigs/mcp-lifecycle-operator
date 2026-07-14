@@ -44,6 +44,7 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	acv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1/applyconfiguration/api/v1alpha1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 const (
@@ -85,6 +86,7 @@ const (
 	ReasonScaledToZero             = "ScaledToZero"
 	ReasonInitializing             = "Initializing"
 	ReasonMCPEndpointUnavailable   = "MCPEndpointUnavailable"
+	ReasonGatewayRouteUnavailable  = "GatewayRouteUnavailable"
 )
 
 // Container waiting reasons from Kubernetes pod status.
@@ -121,6 +123,8 @@ const (
 	eventActionServiceReconcileFailed = "ServiceReconcileFailed"
 	// eventActionNetworkPolicyReconcileFailed is the reporting action when NetworkPolicy reconciliation fails.
 	eventActionNetworkPolicyReconcileFailed = "NetworkPolicyReconcileFailed"
+	// eventActionHTTPRouteReconcileFailed is the reporting action when HTTPRoute reconciliation fails.
+	eventActionHTTPRouteReconcileFailed = "HTTPRouteReconcileFailed"
 
 	// requeueDelayMCPHandshake is the initial delay before requeuing when an MCP handshake fails.
 	requeueDelayMCPHandshake = 10 * time.Second
@@ -177,6 +181,7 @@ type MCPServerReconciler struct {
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -316,6 +321,17 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseNetworkPolicy}).Observe(time.Since(networkPolicyStart).Seconds())
 
+	// Reconcile HTTPRoute (gateway integration)
+	if err := r.reconcileHTTPRoute(ctx, mcpServer); err != nil {
+		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
+			counter:     gatewayRouteFailuresTotal,
+			reason:      ReasonGatewayRouteUnavailable,
+			resource:    "HTTPRoute",
+			isDuplicate: duplicateGatewayRouteUnavailable,
+			emitEvent:   r.emitHTTPRouteReconcileFailed,
+		})
+	}
+
 	// Determine Ready condition based on deployment status
 	readyCondition := r.reconcileReadyCondition(
 		ctx,
@@ -388,6 +404,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				WithCompletions(serverInfo.Capabilities.Completions))
 		}
 		status = status.WithServerInfo(si)
+	}
+
+	if mcpServer.Spec.Gateway != nil {
+		status = status.WithGatewayRouteName(mcpServer.Name)
+	} else {
+		status = status.WithGatewayRouteName("")
 	}
 
 	if err := r.applyStatus(ctx, mcpServer, status); err != nil {
@@ -597,6 +619,14 @@ func (r *MCPServerReconciler) emitNetworkPolicyReconcileFailed(mcpServer *mcpv1a
 		"MCPServer %s: %s", mcpServer.Name, message)
 }
 
+func (r *MCPServerReconciler) emitHTTPRouteReconcileFailed(mcpServer *mcpv1alpha1.MCPServer, message string) {
+	if r.Recorder == nil {
+		return
+	}
+	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonGatewayRouteUnavailable, eventActionHTTPRouteReconcileFailed,
+		"MCPServer %s: %s", mcpServer.Name, message)
+}
+
 func (r *MCPServerReconciler) emitMCPHandshakeFailed(mcpServer *mcpv1alpha1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
@@ -659,6 +689,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&networkingv1.NetworkPolicy{}).
+		Owns(&gatewayv1.HTTPRoute{}).
 		Watches(
 			&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForConfigMap),

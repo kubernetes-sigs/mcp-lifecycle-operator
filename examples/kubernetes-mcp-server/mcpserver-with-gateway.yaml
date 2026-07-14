@@ -1,0 +1,75 @@
+---
+# ServiceAccount for the kubernetes-mcp-server
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-viewer
+  namespace: default
+---
+# ClusterRoleBinding to grant read-only access across the cluster
+# Uses the built-in 'view' ClusterRole which provides read-only access to most resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-viewer-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view  # Built-in ClusterRole with read-only permissions
+subjects:
+  - kind: ServiceAccount
+    name: mcp-viewer
+    namespace: default
+---
+# ConfigMap containing the kubernetes-mcp-server configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubernetes-mcp-server-config
+  namespace: default
+data:
+  config.toml: |
+    # Kubernetes MCP Server Configuration
+    log_level = 5
+    port = "8080"
+    read_only = true
+    toolsets = ["core", "config"]
+---
+# MCPServer with RBAC, ConfigMap, and Gateway integration
+#
+# This creates:
+# - Deployment + Service for the MCP server (managed by the operator)
+# - HTTPRoute pointing to the MCP server's Service via the specified Gateway
+#
+# The HTTPRoute is created automatically by the operator when spec.gateway is set.
+# Gateway vendors (e.g. Kuadrant mcp-gateway) can then discover the HTTPRoute
+# and layer their own resources on top (e.g. MCPServerRegistration).
+apiVersion: mcp.x-k8s.io/v1alpha1
+kind: MCPServer
+metadata:
+  name: kubernetes-mcp-server
+  namespace: default
+spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: quay.io/containers/kubernetes_mcp_server:latest
+  config:
+    port: 8080
+    arguments:
+      - --config
+      - /etc/mcp-config/config.toml
+    storage:
+      - path: /etc/mcp-config
+        source:
+          type: ConfigMap
+          configMap:
+            name: kubernetes-mcp-server-config
+  runtime:
+    security:
+      serviceAccountName: mcp-viewer
+  gateway:
+    parentRef:
+      name: mcp-gateway
+      namespace: gateway-system
+    hostname: kubernetes-mcp.mcp.local

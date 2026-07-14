@@ -360,6 +360,43 @@ type MCPServerSpec struct {
 	// as opposed to how it is sourced, configured, or managed at runtime.
 	// +optional
 	MCP MCPConfig `json:"mcp,omitzero"`
+
+	// Gateway configures gateway integration. When set, the operator
+	// creates an HTTPRoute attaching the MCPServer's Service to the
+	// specified Gateway.
+	// +optional
+	Gateway *GatewayConfig `json:"gateway,omitempty"`
+}
+
+// GatewayConfig configures gateway integration.
+// When set on MCPServerSpec, the operator creates an HTTPRoute attaching
+// the MCPServer's Service to the referenced Gateway.
+type GatewayConfig struct {
+	// ParentRef identifies the Gateway to attach the HTTPRoute to.
+	// +kubebuilder:validation:Required
+	ParentRef GatewayParentRef `json:"parentRef"`
+
+	// Hostname is the DNS hostname for the HTTPRoute.
+	// When set, the HTTPRoute's hostnames field is populated with this value,
+	// enabling host-based routing at the Gateway.
+	// Example: my-mcp-server.mcp.local
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Hostname string `json:"hostname,omitempty"`
+}
+
+// GatewayParentRef identifies a Gateway resource.
+type GatewayParentRef struct {
+	// Name of the Gateway resource.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// Namespace of the Gateway resource.
+	// When empty, defaults to the MCPServer's namespace.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // MCPConfig defines Model Context Protocol specific properties of the server.
@@ -443,6 +480,10 @@ type MCPServerStatus struct {
 	// ServiceName is the name of the Service created for this MCPServer.
 	// +optional
 	ServiceName string `json:"serviceName,omitempty"`
+
+	// GatewayRouteName is the name of the HTTPRoute created for gateway integration.
+	// +optional
+	GatewayRouteName string `json:"gatewayRouteName,omitempty"`
 
 	// Address contains the address of the MCP server service.
 	// +optional

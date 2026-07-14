@@ -308,3 +308,9 @@ func duplicateNetworkPolicyUnavailable(conditions []metav1.Condition, message st
 	return prevReady != nil && prevReady.Status == metav1.ConditionFalse &&
 		prevReady.Reason == ReasonNetworkPolicyUnavailable && prevReady.Message == message
 }
+
+func duplicateGatewayRouteUnavailable(conditions []metav1.Condition, message string) bool {
+	prevReady := meta.FindStatusCondition(conditions, ConditionTypeReady)
+	return prevReady != nil && prevReady.Status == metav1.ConditionFalse &&
+		prevReady.Reason == ReasonGatewayRouteUnavailable && prevReady.Message == message
+}

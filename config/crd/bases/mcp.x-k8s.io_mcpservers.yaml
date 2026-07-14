@@ -592,6 +592,40 @@ spec:
                   ExtraLabels are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
                   The operator-managed keys "app" and "mcp-server" cannot be overridden.
                 type: object
+              gateway:
+                description: |-
+                  Gateway configures gateway integration. When set, the operator
+                  creates an HTTPRoute attaching the MCPServer's Service to the
+                  specified Gateway.
+                properties:
+                  hostname:
+                    description: |-
+                      Hostname is the DNS hostname for the HTTPRoute.
+                      When set, the HTTPRoute's hostnames field is populated with this value,
+                      enabling host-based routing at the Gateway.
+                      Example: my-mcp-server.mcp.local
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                  parentRef:
+                    description: ParentRef identifies the Gateway to attach the HTTPRoute
+                      to.
+                    properties:
+                      name:
+                        description: Name of the Gateway resource.
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          Namespace of the Gateway resource.
+                          When empty, defaults to the MCPServer's namespace.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - parentRef
+                type: object
               mcp:
                 description: |-
                   MCP defines Model Context Protocol specific properties of the server.
@@ -1655,6 +1689,10 @@ spec:
               deploymentName:
                 description: DeploymentName is the name of the Deployment created
                   for this MCPServer.
+                type: string
+              gatewayRouteName:
+                description: GatewayRouteName is the name of the HTTPRoute created
+                  for gateway integration.
                 type: string
               handshakeRetryCount:
                 description: |-

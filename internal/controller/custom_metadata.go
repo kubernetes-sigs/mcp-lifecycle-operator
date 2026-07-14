@@ -10,6 +10,7 @@ import (
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 var ErrNilMap = errors.New("destination map not initialized")
@@ -317,4 +318,155 @@ func networkPolicyLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, obj client.Obj
 
 func networkPolicyAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, obj client.Object) bool {
 	return objectAnnotationsChanged(mcpServer, obj)
+}
+
+func applyCustomHTTPRouteMetadata(mcpServer *mcpv1alpha1.MCPServer, route *gatewayv1.HTTPRoute) error {
+	currentLabels := make(map[string]string)
+	if managedLabels, ok := route.Annotations[managedExtraLabels]; ok {
+		if err := json.Unmarshal([]byte(managedLabels), &currentLabels); err != nil {
+			return fmt.Errorf("retrieving current custom labels failed; %w", err)
+		}
+	}
+
+	effectiveLabels := filterReservedKeys(mcpServer.Spec.ExtraLabels)
+
+	if !maps.Equal(effectiveLabels, currentLabels) {
+		for key := range currentLabels {
+			delete(route.Labels, key)
+		}
+		delete(route.Annotations, managedExtraLabels)
+	}
+
+	effectiveAnnotations := filterReservedAnnotationKeys(mcpServer.Spec.ExtraAnnotations)
+
+	currentAnnotations := make(map[string]string)
+	if managedAnnotations, ok := route.Annotations[managedExtraAnnotations]; ok {
+		if err := json.Unmarshal([]byte(managedAnnotations), &currentAnnotations); err != nil {
+			return fmt.Errorf("retrieving current custom annotations failed; %w", err)
+		}
+	}
+
+	if !maps.Equal(effectiveAnnotations, currentAnnotations) {
+		for key := range currentAnnotations {
+			delete(route.Annotations, key)
+		}
+		delete(route.Annotations, managedExtraAnnotations)
+	}
+
+	if len(effectiveLabels) == 0 &&
+		len(effectiveAnnotations) == 0 &&
+		len(currentLabels) == 0 &&
+		len(currentAnnotations) == 0 {
+		return nil
+	}
+
+	if route.Labels == nil {
+		route.Labels = make(map[string]string)
+	}
+
+	if route.Annotations == nil {
+		route.Annotations = make(map[string]string)
+	}
+
+	if len(effectiveLabels) > 0 {
+		if err := mergeMaps(route.Labels, effectiveLabels); err != nil {
+			return fmt.Errorf("appending httproute labels failed; %w", err)
+		}
+	}
+
+	if len(effectiveAnnotations) > 0 {
+		if err := mergeMaps(route.Annotations, effectiveAnnotations); err != nil {
+			return fmt.Errorf("appending httproute annotations failed; %w", err)
+		}
+	}
+
+	extraLabelsByte, err := json.Marshal(effectiveLabels)
+	if err != nil {
+		return fmt.Errorf("marshaling .spec.extraLabels failed; %w", err)
+	}
+	if len(extraLabelsByte) != 0 && string(extraLabelsByte) != jsonNull {
+		route.Annotations[managedExtraLabels] = string(extraLabelsByte)
+	}
+
+	extraAnnotationsByte, err := json.Marshal(effectiveAnnotations)
+	if err != nil {
+		return fmt.Errorf("marshaling .spec.extraAnnotations failed; %w", err)
+	}
+	if len(extraAnnotationsByte) != 0 && string(extraAnnotationsByte) != jsonNull {
+		route.Annotations[managedExtraAnnotations] = string(extraAnnotationsByte)
+	}
+
+	return nil
+}
+
+func httpRouteLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, route *gatewayv1.HTTPRoute) bool {
+	effectiveLabels := filterReservedKeys(mcpServer.Spec.ExtraLabels)
+
+	var currentLabels map[string]string
+	vals, ok := route.Annotations[managedExtraLabels]
+	if ok {
+		if err := json.Unmarshal([]byte(vals), &currentLabels); err != nil {
+			return true
+		}
+
+		if len(currentLabels) > 0 {
+			if len(effectiveLabels) != 0 &&
+				!maps.Equal(currentLabels, effectiveLabels) {
+				return true
+			}
+
+			if len(effectiveLabels) == 0 {
+				return true
+			}
+
+			for k := range currentLabels {
+				if _, ok := route.Labels[k]; !ok {
+					return true
+				}
+			}
+		}
+	}
+
+	if len(currentLabels) == 0 &&
+		len(effectiveLabels) != 0 {
+		return true
+	}
+
+	return false
+}
+
+func httpRouteAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, route *gatewayv1.HTTPRoute) bool {
+	effectiveAnnotations := filterReservedAnnotationKeys(mcpServer.Spec.ExtraAnnotations)
+
+	var currentAnnotations map[string]string
+	vals, ok := route.Annotations[managedExtraAnnotations]
+	if ok {
+		if err := json.Unmarshal([]byte(vals), &currentAnnotations); err != nil {
+			return true
+		}
+
+		if len(currentAnnotations) > 0 {
+			if len(effectiveAnnotations) != 0 &&
+				!maps.Equal(currentAnnotations, effectiveAnnotations) {
+				return true
+			}
+
+			if len(effectiveAnnotations) == 0 {
+				return true
+			}
+
+			for k := range currentAnnotations {
+				if _, ok := route.Annotations[k]; !ok {
+					return true
+				}
+			}
+		}
+	}
+
+	if len(currentAnnotations) == 0 &&
+		len(effectiveAnnotations) != 0 {
+		return true
+	}
+
+	return false
 }

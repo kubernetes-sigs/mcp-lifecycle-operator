@@ -231,6 +231,19 @@ live-docs: api-ref-docs ## Run live documentation server using Docker
 	$(CONTAINER_TOOL) build -t mkdocs-builder -f hack/mkdocs/image/Dockerfile hack/mkdocs/image
 	$(CONTAINER_TOOL) run --rm -it -v $(shell pwd):/work -w /work -p 3000:3000 mkdocs-builder serve --dev-addr=0.0.0.0:3000
 
+##@ Gateway API
+
+GATEWAY_API_VERSION ?= v1.5.1
+
+.PHONY: setup-gateway-api
+setup-gateway-api: ## Install Gateway API CRDs into the current cluster.
+	$(KUBECTL) apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
+	$(KUBECTL) wait --for condition=Established --timeout=60s crd/httproutes.gateway.networking.k8s.io
+
+.PHONY: uninstall-gateway-api
+uninstall-gateway-api: ## Remove Gateway API CRDs from the current cluster.
+	$(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
+
 ##@ Deployment
 
 ifndef ignore-not-found
