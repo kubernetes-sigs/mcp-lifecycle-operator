@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 type want struct {
@@ -22,6 +23,7 @@ type extraMetaArgs struct {
 	deployment    *appsv1.Deployment
 	service       *corev1.Service
 	networkPolicy *networkingv1.NetworkPolicy
+	httpRoute     *gatewayv1.HTTPRoute
 }
 
 func Test_mergeMaps(t *testing.T) {
@@ -2284,6 +2286,453 @@ func Test_networkPolicyAnnotationsChanged(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			got := networkPolicyAnnotationsChanged(tc.args.mcp, tc.args.networkPolicy)
+			if got != tc.want {
+				t.Errorf("wanted metadata changed to be %t but, got %t\n", tc.want, got)
+			}
+		})
+	}
+}
+
+func Test_applyCustomHTTPRouteMetadata(t *testing.T) {
+	tt := []struct {
+		name    string
+		mcp     *mcpv1alpha1.MCPServer
+		route   *gatewayv1.HTTPRoute
+		wantErr bool
+		check   func(*testing.T, *gatewayv1.HTTPRoute)
+	}{
+		{
+			name: "no custom metadata",
+			mcp: &mcpv1alpha1.MCPServer{
+				Spec: mcpv1alpha1.MCPServerSpec{},
+			},
+			route: &gatewayv1.HTTPRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "mcp-server"},
+				},
+			},
+			check: func(t *testing.T, r *gatewayv1.HTTPRoute) {
+				if _, ok := r.Annotations[managedExtraLabels]; ok {
+					t.Error("unexpected managed labels annotation")
+				}
+			},
+		},
+		{
+			name: "applies extra labels and annotations",
+			mcp: &mcpv1alpha1.MCPServer{
+				Spec: mcpv1alpha1.MCPServerSpec{
+					ExtraLabels:      map[string]string{"department": "eng"},
+					ExtraAnnotations: map[string]string{"note": "test"},
+				},
+			},
+			route: &gatewayv1.HTTPRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "mcp-server"},
+				},
+			},
+			check: func(t *testing.T, r *gatewayv1.HTTPRoute) {
+				if r.Labels["department"] != "eng" {
+					t.Errorf("expected label department=eng, got %s", r.Labels["department"])
+				}
+				if r.Annotations["note"] != "test" {
+					t.Errorf("expected annotation note=test, got %s", r.Annotations["note"])
+				}
+				if _, ok := r.Annotations[managedExtraLabels]; !ok {
+					t.Error("missing managed labels tracking annotation")
+				}
+			},
+		},
+		{
+			name: "replaces old labels with new ones",
+			mcp: &mcpv1alpha1.MCPServer{
+				Spec: mcpv1alpha1.MCPServerSpec{
+					ExtraLabels: map[string]string{"team": "platform"},
+				},
+			},
+			route: &gatewayv1.HTTPRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app":        "mcp-server",
+						"department": "procurement",
+					},
+					Annotations: map[string]string{
+						managedExtraLabels: `{"department":"procurement"}`,
+					},
+				},
+			},
+			check: func(t *testing.T, r *gatewayv1.HTTPRoute) {
+				if _, ok := r.Labels["department"]; ok {
+					t.Error("old label 'department' should have been removed")
+				}
+				if r.Labels["team"] != "platform" {
+					t.Errorf("expected label team=platform, got %s", r.Labels["team"])
+				}
+			},
+		},
+		{
+			name: "corrupted annotation returns error",
+			mcp: &mcpv1alpha1.MCPServer{
+				Spec: mcpv1alpha1.MCPServerSpec{
+					ExtraLabels: map[string]string{"env": "prod"},
+				},
+			},
+			route: &gatewayv1.HTTPRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "mcp-server"},
+					Annotations: map[string]string{
+						managedExtraLabels: "not-valid-json",
+					},
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			err := applyCustomHTTPRouteMetadata(tc.mcp, tc.route)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("wantErr=%t, got %v", tc.wantErr, err)
+				return
+			}
+			if tc.check != nil {
+				tc.check(t, tc.route)
+			}
+		})
+	}
+}
+
+func Test_httpRouteLabelsChanged(t *testing.T) {
+	tt := []struct {
+		name string
+		args *extraMetaArgs
+		want bool
+	}{
+		{
+			name: "no custom metadata provided",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{},
+					},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mcp-server",
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "custom metadata matches .spec.extraLabels",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{
+							"department": "procurement",
+						},
+					},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp:  "mcp-server",
+							"department": "procurement",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: `{"department":"procurement"}`,
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "route missing custom labels defined in .spec.extraLabels",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{
+							"department": "procurement",
+							"env":        "production",
+						},
+					},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp:  "mcp-server",
+							"department": "procurement",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: `{"department":"procurement","env":"production"}`,
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "corrupted JSON in managed labels annotation forces update",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mcp-server",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: "not-valid-json",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "label tracked but missing from route.Labels",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{
+							"department": "procurement",
+						},
+					},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mcp-server",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: `{"department":"procurement"}`,
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "spec labels changed from tracked labels",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{
+							"department": "engineering",
+						},
+					},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp:  "mcp-server",
+							"department": "procurement",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: `{"department":"procurement"}`,
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "all spec labels removed but tracked labels exist",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp:  "mcp-server",
+							"department": "procurement",
+						},
+						Annotations: map[string]string{
+							managedExtraLabels: `{"department":"procurement"}`,
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "new labels added when no tracking annotation exists",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraLabels: map[string]string{
+							"team": "platform",
+						},
+					},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							LabelKeyApp: "mcp-server",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			got := httpRouteLabelsChanged(tc.args.mcp, tc.args.httpRoute)
+			if got != tc.want {
+				t.Errorf("wanted metadata changed to be %t but, got %t\n", tc.want, got)
+			}
+		})
+	}
+}
+
+func Test_httpRouteAnnotationsChanged(t *testing.T) {
+	tt := []struct {
+		name string
+		args *extraMetaArgs
+		want bool
+	}{
+		{
+			name: "no custom metadata provided",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraAnnotations: map[string]string{},
+					},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "custom metadata matches .spec.extraAnnotations",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraAnnotations: map[string]string{
+							"note": "test",
+						},
+					},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{
+							"note":                  "test",
+							managedExtraAnnotations: `{"note":"test"}`,
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "route missing custom annotations defined in .spec.extraAnnotations",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraAnnotations: map[string]string{
+							"note":    "test",
+							"contact": "team@example.com",
+						},
+					},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{
+							"note":                  "test",
+							managedExtraAnnotations: `{"note":"test","contact":"team@example.com"}`,
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "corrupted JSON in managed annotations forces update",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{
+							managedExtraAnnotations: "not-valid-json",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "spec annotations changed from tracked annotations",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraAnnotations: map[string]string{
+							"note": "updated",
+						},
+					},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{
+							"note":                  "original",
+							managedExtraAnnotations: `{"note":"original"}`,
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "all spec annotations removed but tracked annotations exist",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{
+							"note":                  "test",
+							managedExtraAnnotations: `{"note":"test"}`,
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "new annotations added when no tracking annotation exists",
+			args: &extraMetaArgs{
+				mcp: &mcpv1alpha1.MCPServer{
+					Spec: mcpv1alpha1.MCPServerSpec{
+						ExtraAnnotations: map[string]string{
+							"note": "new",
+						},
+					},
+				},
+				httpRoute: &gatewayv1.HTTPRoute{
+					ObjectMeta: metav1.ObjectMeta{},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			got := httpRouteAnnotationsChanged(tc.args.mcp, tc.args.httpRoute)
 			if got != tc.want {
 				t.Errorf("wanted metadata changed to be %t but, got %t\n", tc.want, got)
 			}
