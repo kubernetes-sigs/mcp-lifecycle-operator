@@ -1,5 +1,3 @@
-//go:build e2e
-
 /*
 Copyright 2026 The Kubernetes Authors
 
@@ -92,7 +90,7 @@ func PodLogs(ctx context.Context, t *testing.T, cfg *envconf.Config,
 	if err != nil {
 		t.Fatalf("failed to get logs for pod %s/%s: %v", namespace, podName, err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 	data, err := io.ReadAll(stream)
 	if err != nil {
 		t.Fatalf("failed to read logs for pod %s/%s: %v", namespace, podName, err)

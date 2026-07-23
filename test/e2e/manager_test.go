@@ -41,11 +41,12 @@ import (
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
 )
 
-const (
-	operatorNamespace  = "mcp-lifecycle-operator-system"
-	serviceAccountName = "mcp-lifecycle-operator-controller-manager"
-	metricsServiceName = "mcp-lifecycle-operator-controller-manager-metrics-service"
-	metricsRoleBinding = "mcp-lifecycle-operator-metrics-binding"
+// operatorNamespace, serviceAccountName, and metricsServiceName are populated
+// by the discovery framework in BeforeEachTest (see main_test.go).
+var (
+	operatorNamespace  string
+	serviceAccountName string
+	metricsServiceName string
 )
 
 func TestManagerPodRunning(t *testing.T) {
@@ -62,6 +63,8 @@ func TestManagerPodRunning(t *testing.T) {
 }
 
 func TestMetricsEndpoint(t *testing.T) {
+	const metricsRoleBinding = "mcp-lifecycle-operator-metrics-binding"
+
 	feature := features.New("Metrics endpoint serves data").
 		WithLabel("type", "manager").
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
