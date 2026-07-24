@@ -34,6 +34,7 @@ import (
 )
 
 func TestMCPServerHappyPath(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer happy path").
 		WithLabel("type", "lifecycle").
 		WithLabel("component", "mcpserver").
@@ -109,6 +110,7 @@ func TestMCPServerHappyPath(t *testing.T) {
 }
 
 func TestMCPServerUpdatePort(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer port update").
 		WithLabel("type", "update").
 		WithLabel("component", "mcpserver").

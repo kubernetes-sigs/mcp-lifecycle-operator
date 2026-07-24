@@ -35,6 +35,7 @@ import (
 )
 
 func TestMCPHandshake(t *testing.T) {
+	t.Parallel()
 	const mcpServerPort = 3001
 
 	feature := features.New("MCP handshake with everything-mcp-server").

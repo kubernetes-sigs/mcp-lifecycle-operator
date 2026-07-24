@@ -38,6 +38,7 @@ import (
 )
 
 func TestNetworkPolicyCreated(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer creates NetworkPolicy").
 		WithLabel("type", "networkpolicy").
 		WithLabel("component", "mcpserver").
@@ -105,6 +106,7 @@ func TestNetworkPolicyCreated(t *testing.T) {
 }
 
 func TestNetworkPolicyPortUpdate(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer NetworkPolicy port update").
 		WithLabel("type", "networkpolicy").
 		WithLabel("scenario", "port-update").
@@ -157,6 +159,7 @@ func TestNetworkPolicyPortUpdate(t *testing.T) {
 }
 
 func TestNetworkPolicyGarbageCollected(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer NetworkPolicy garbage collection").
 		WithLabel("type", "networkpolicy").
 		WithLabel("scenario", "gc").

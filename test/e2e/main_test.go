@@ -50,6 +50,14 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
+	// Pre-pull test images so parallel tests don't thundering-herd the
+	// registry with duplicate pulls on a cold node.
+	testenv.Setup(f.PrewarmImages(
+		f.DefaultMCPServerImage,
+		f.DefaultMCPServerImageDigest,
+		f.BusyboxImage,
+	))
+
 	// Create a unique namespace before each test, delete it after.
 	testenv.BeforeEachTest(func(ctx context.Context, cfg *envconf.Config, t *testing.T) (context.Context, error) {
 		ns := envconf.RandomName("e2e", 16)
@@ -157,3 +165,4 @@ func dumpDiagnostics(ctx context.Context, t *testing.T, cfg *envconf.Config, ns 
 
 	t.Log("=== END DIAGNOSTICS ===")
 }
+
