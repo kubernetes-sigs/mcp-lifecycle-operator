@@ -194,6 +194,7 @@ func PrewarmImages(images ...string) env.Func {
 		if err := r.Create(ctx, nsObj); err != nil {
 			return ctx, fmt.Errorf("creating prewarm namespace: %w", err)
 		}
+		defer cleanupPrewarmNamespace(ctx, r, nsObj)
 
 		log.Printf("pre-warming %d images on all nodes...", len(images))
 		for i, img := range images {
@@ -226,11 +227,21 @@ func PrewarmImages(images ...string) env.Func {
 			log.Printf("  pulled %s", img)
 		}
 
-		if err := r.Delete(ctx, nsObj); err != nil {
-			log.Printf("failed to delete prewarm namespace: %v", err)
-		}
-
 		return ctx, nil
+	}
+}
+
+func cleanupPrewarmNamespace(ctx context.Context, r *resources.Resources, nsObj *corev1.Namespace) {
+	if err := r.Delete(ctx, nsObj); err != nil {
+		log.Printf("failed to delete prewarm namespace: %v", err)
+		return
+	}
+	if err := wait.For(
+		conditions.New(r).ResourceDeleted(nsObj),
+		wait.WithTimeout(1*time.Minute),
+		wait.WithContext(ctx),
+	); err != nil {
+		log.Printf("timed out waiting for prewarm namespace deletion: %v", err)
 	}
 }
 

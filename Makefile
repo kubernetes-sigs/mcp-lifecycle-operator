@@ -257,11 +257,13 @@ deploy-debug: manifests kustomize ## Deploy controller with Delve for remote deb
 
 define kustomize-set-image
 $(eval _DEPLOY_DIR := $(shell mktemp -d))
-ln -s $(CURDIR)/$(1) $(_DEPLOY_DIR)/base
-printf 'resources:\n- base\n' > $(_DEPLOY_DIR)/kustomization.yaml
-cd $(_DEPLOY_DIR) && "$(KUSTOMIZE)" edit set image $(IMAGE_TAG_BASE)=$(2)
-"$(KUSTOMIZE)" build $(_DEPLOY_DIR) | "$(KUBECTL)" apply -f -
-rm -rf $(_DEPLOY_DIR)
+set -euo pipefail; \
+dir=$(_DEPLOY_DIR); \
+trap 'rm -rf $$dir' EXIT; \
+ln -s $(CURDIR)/$(1) $$dir/base && \
+printf 'resources:\n- base\n' > $$dir/kustomization.yaml && \
+cd $$dir && "$(KUSTOMIZE)" edit set image $(IMAGE_TAG_BASE)=$(2) && \
+"$(KUSTOMIZE)" build $$dir | "$(KUBECTL)" apply -f -
 endef
 
 .PHONY: undeploy
