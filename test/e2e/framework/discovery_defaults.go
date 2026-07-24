@@ -61,30 +61,49 @@ type PodLabelLocator struct {
 
 func (d *PodLabelLocator) Priority() int { return 50 }
 
-func (d *PodLabelLocator) Namespace(ctx context.Context, cfg *envconf.Config) (string, bool) {
-	r := cfg.Client().Resources()
+func (d *PodLabelLocator) findPod(ctx context.Context, cfg *envconf.Config, namespace string) (*corev1.Pod, bool) {
+	if d.pod != nil {
+		return d.pod, true
+	}
+	if cfg == nil {
+		return nil, false
+	}
+	var r *resources.Resources
+	if namespace != "" {
+		r = cfg.Client().Resources(namespace)
+	} else {
+		r = cfg.Client().Resources()
+	}
 	var pods corev1.PodList
 	if err := r.List(ctx, &pods,
-		resources.WithLabelSelector("control-plane=controller-manager"),
+		resources.WithLabelSelector("control-plane=controller-manager,app.kubernetes.io/name=mcp-lifecycle-operator"),
 	); err != nil {
-		return "", false
+		return nil, false
 	}
 	for i := range pods.Items {
 		p := &pods.Items[i]
-		if p.Status.Phase == corev1.PodRunning && p.DeletionTimestamp == nil &&
-			strings.Contains(p.Name, "mcp-lifecycle") {
+		if p.Status.Phase == corev1.PodRunning && p.DeletionTimestamp == nil {
 			d.pod = p
-			return p.Namespace, true
+			return p, true
 		}
 	}
-	return "", false
+	return nil, false
 }
 
-func (d *PodLabelLocator) ServiceAccount(_ context.Context, _ *envconf.Config, _ string) (string, bool) {
-	if d.pod == nil {
+func (d *PodLabelLocator) Namespace(ctx context.Context, cfg *envconf.Config) (string, bool) {
+	p, ok := d.findPod(ctx, cfg, "")
+	if !ok {
 		return "", false
 	}
-	sa := d.pod.Spec.ServiceAccountName
+	return p.Namespace, true
+}
+
+func (d *PodLabelLocator) ServiceAccount(ctx context.Context, cfg *envconf.Config, namespace string) (string, bool) {
+	p, ok := d.findPod(ctx, cfg, namespace)
+	if !ok {
+		return "", false
+	}
+	sa := p.Spec.ServiceAccountName
 	if sa == "" {
 		sa = "default"
 	}
@@ -92,7 +111,8 @@ func (d *PodLabelLocator) ServiceAccount(_ context.Context, _ *envconf.Config, _
 }
 
 func (d *PodLabelLocator) MetricsService(ctx context.Context, cfg *envconf.Config, namespace string) (string, bool) {
-	if d.pod == nil {
+	p, ok := d.findPod(ctx, cfg, namespace)
+	if !ok {
 		return "", false
 	}
 	r := cfg.Client().Resources(namespace)
@@ -104,7 +124,7 @@ func (d *PodLabelLocator) MetricsService(ctx context.Context, cfg *envconf.Confi
 		if !strings.Contains(svc.Name, "metrics") {
 			continue
 		}
-		if selectorMatchesLabels(svc.Spec.Selector, d.pod.Labels) {
+		if selectorMatchesLabels(svc.Spec.Selector, p.Labels) {
 			return svc.Name, true
 		}
 	}

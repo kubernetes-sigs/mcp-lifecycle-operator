@@ -41,137 +41,118 @@ func (s *stubLocator) MetricsService(_ context.Context, _ *envconf.Config, _ str
 	return s.metrics, s.metrics != ""
 }
 
-func resetLocators() {
-	locators = nil
-}
-
 func TestRegisterLocator_SortsByPriorityHighestFirst(t *testing.T) {
-	resetLocators()
-	defer resetLocators()
-
+	r := &Registry{}
 	low := &stubLocator{priority: 10}
 	high := &stubLocator{priority: 5000}
 
-	RegisterLocator(low)
-	RegisterLocator(high)
+	r.RegisterLocator(low)
+	r.RegisterLocator(high)
 
-	if len(locators) != 2 {
-		t.Fatalf("expected 2 locators, got %d", len(locators))
+	if len(r.locators) != 2 {
+		t.Fatalf("expected 2 locators, got %d", len(r.locators))
 	}
-	if locators[0].Priority() != 5000 {
-		t.Errorf("locators[0].Priority() = %d, want 5000 (highest first)", locators[0].Priority())
+	if r.locators[0].Priority() != 5000 {
+		t.Errorf("locators[0].Priority() = %d, want 5000 (highest first)", r.locators[0].Priority())
 	}
-	if locators[1].Priority() != 10 {
-		t.Errorf("locators[1].Priority() = %d, want 10", locators[1].Priority())
+	if r.locators[1].Priority() != 10 {
+		t.Errorf("locators[1].Priority() = %d, want 10", r.locators[1].Priority())
 	}
 }
 
 func TestRegisterLocator_SingleLocator(t *testing.T) {
-	resetLocators()
-	defer resetLocators()
+	r := &Registry{}
 
-	RegisterLocator(&stubLocator{priority: 500})
+	r.RegisterLocator(&stubLocator{priority: 500})
 
-	if len(locators) != 1 {
-		t.Fatalf("expected 1 locator, got %d", len(locators))
+	if len(r.locators) != 1 {
+		t.Fatalf("expected 1 locator, got %d", len(r.locators))
 	}
-	if locators[0].Priority() != 500 {
-		t.Errorf("locators[0].Priority() = %d, want 500", locators[0].Priority())
+	if r.locators[0].Priority() != 500 {
+		t.Errorf("locators[0].Priority() = %d, want 500", r.locators[0].Priority())
 	}
 }
 
 func TestRegisterLocator_ThreeLocatorsSortedCorrectly(t *testing.T) {
-	resetLocators()
-	defer resetLocators()
+	r := &Registry{}
 
-	RegisterLocator(&stubLocator{priority: 50})
-	RegisterLocator(&stubLocator{priority: 5000})
-	RegisterLocator(&stubLocator{priority: 500})
+	r.RegisterLocator(&stubLocator{priority: 50})
+	r.RegisterLocator(&stubLocator{priority: 5000})
+	r.RegisterLocator(&stubLocator{priority: 500})
 
 	want := []int{5000, 500, 50}
 	for i, wantPri := range want {
-		if locators[i].Priority() != wantPri {
-			t.Errorf("locators[%d].Priority() = %d, want %d", i, locators[i].Priority(), wantPri)
+		if r.locators[i].Priority() != wantPri {
+			t.Errorf("locators[%d].Priority() = %d, want %d", i, r.locators[i].Priority(), wantPri)
 		}
 	}
 }
 
 func TestDiscoverNamespace_HighPriorityWins(t *testing.T) {
-	resetLocators()
-	defer resetLocators()
+	r := &Registry{}
+	r.RegisterLocator(&stubLocator{priority: 50, namespace: "low-ns"})
+	r.RegisterLocator(&stubLocator{priority: 5000, namespace: "high-ns"})
 
-	RegisterLocator(&stubLocator{priority: 50, namespace: "low-ns"})
-	RegisterLocator(&stubLocator{priority: 5000, namespace: "high-ns"})
-
-	got := DiscoverNamespace(context.Background(), nil)
+	got := r.DiscoverNamespace(context.Background(), nil)
 	if got != "high-ns" {
 		t.Errorf("DiscoverNamespace() = %q, want %q", got, "high-ns")
 	}
 }
 
 func TestDiscoverNamespace_FallsBackToDefault(t *testing.T) {
-	resetLocators()
-	defer resetLocators()
+	r := &Registry{}
+	r.RegisterLocator(&stubLocator{priority: 5000, namespace: ""})
 
-	RegisterLocator(&stubLocator{priority: 5000, namespace: ""})
-
-	got := DiscoverNamespace(context.Background(), nil)
+	got := r.DiscoverNamespace(context.Background(), nil)
 	if got != defaultNamespace {
 		t.Errorf("DiscoverNamespace() = %q, want default %q", got, defaultNamespace)
 	}
 }
 
 func TestDiscoverNamespace_EmptyRegistry(t *testing.T) {
-	resetLocators()
-	defer resetLocators()
+	r := &Registry{}
 
-	got := DiscoverNamespace(context.Background(), nil)
+	got := r.DiscoverNamespace(context.Background(), nil)
 	if got != defaultNamespace {
 		t.Errorf("DiscoverNamespace() = %q, want default %q", got, defaultNamespace)
 	}
 }
 
 func TestDiscoverServiceAccount_HighPriorityWins(t *testing.T) {
-	resetLocators()
-	defer resetLocators()
+	r := &Registry{}
+	r.RegisterLocator(&stubLocator{priority: 50, sa: "low-sa"})
+	r.RegisterLocator(&stubLocator{priority: 5000, sa: "high-sa"})
 
-	RegisterLocator(&stubLocator{priority: 50, sa: "low-sa"})
-	RegisterLocator(&stubLocator{priority: 5000, sa: "high-sa"})
-
-	got := DiscoverServiceAccount(context.Background(), nil, "ns")
+	got := r.DiscoverServiceAccount(context.Background(), nil, "ns")
 	if got != "high-sa" {
 		t.Errorf("DiscoverServiceAccount() = %q, want %q", got, "high-sa")
 	}
 }
 
 func TestDiscoverServiceAccount_FallsBackToDefault(t *testing.T) {
-	resetLocators()
-	defer resetLocators()
+	r := &Registry{}
 
-	got := DiscoverServiceAccount(context.Background(), nil, "ns")
+	got := r.DiscoverServiceAccount(context.Background(), nil, "ns")
 	if got != defaultServiceAccountName {
 		t.Errorf("DiscoverServiceAccount() = %q, want default %q", got, defaultServiceAccountName)
 	}
 }
 
 func TestDiscoverMetricsService_HighPriorityWins(t *testing.T) {
-	resetLocators()
-	defer resetLocators()
+	r := &Registry{}
+	r.RegisterLocator(&stubLocator{priority: 50, metrics: "low-svc"})
+	r.RegisterLocator(&stubLocator{priority: 5000, metrics: "high-svc"})
 
-	RegisterLocator(&stubLocator{priority: 50, metrics: "low-svc"})
-	RegisterLocator(&stubLocator{priority: 5000, metrics: "high-svc"})
-
-	got := DiscoverMetricsService(context.Background(), nil, "ns")
+	got := r.DiscoverMetricsService(context.Background(), nil, "ns")
 	if got != "high-svc" {
 		t.Errorf("DiscoverMetricsService() = %q, want %q", got, "high-svc")
 	}
 }
 
 func TestDiscoverMetricsService_FallsBackToDefault(t *testing.T) {
-	resetLocators()
-	defer resetLocators()
+	r := &Registry{}
 
-	got := DiscoverMetricsService(context.Background(), nil, "ns")
+	got := r.DiscoverMetricsService(context.Background(), nil, "ns")
 	if got != defaultMetricsServiceName {
 		t.Errorf("DiscoverMetricsService() = %q, want default %q", got, defaultMetricsServiceName)
 	}

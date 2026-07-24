@@ -46,21 +46,43 @@ type OperatorLocator interface {
 	Priority() int
 }
 
-var locators []OperatorLocator
+// Registry holds a priority-sorted list of OperatorLocators.
+type Registry struct {
+	locators []OperatorLocator
+}
+
+var defaultRegistry Registry
+
+// RegisterLocator adds a locator to the default registry.
+func RegisterLocator(d OperatorLocator) {
+	defaultRegistry.RegisterLocator(d)
+}
+
+// DiscoverNamespace tries the default registry. Falls back to "mcp-lifecycle-operator-system".
+func DiscoverNamespace(ctx context.Context, cfg *envconf.Config) string {
+	return defaultRegistry.DiscoverNamespace(ctx, cfg)
+}
+
+// DiscoverServiceAccount tries the default registry. Falls back to "mcp-lifecycle-operator-controller-manager".
+func DiscoverServiceAccount(ctx context.Context, cfg *envconf.Config, namespace string) string {
+	return defaultRegistry.DiscoverServiceAccount(ctx, cfg, namespace)
+}
+
+// DiscoverMetricsService tries the default registry. Falls back to "mcp-lifecycle-operator-controller-manager-metrics-service".
+func DiscoverMetricsService(ctx context.Context, cfg *envconf.Config, namespace string) string {
+	return defaultRegistry.DiscoverMetricsService(ctx, cfg, namespace)
+}
 
 // RegisterLocator adds a locator and re-sorts by priority (highest first).
-// Call from init() in separate files to register platform-specific strategies.
-func RegisterLocator(d OperatorLocator) {
-	locators = append(locators, d)
-	sort.Slice(locators, func(i, j int) bool {
-		return locators[i].Priority() > locators[j].Priority()
+func (r *Registry) RegisterLocator(d OperatorLocator) {
+	r.locators = append(r.locators, d)
+	sort.Slice(r.locators, func(i, j int) bool {
+		return r.locators[i].Priority() > r.locators[j].Priority()
 	})
 }
 
-// DiscoverNamespace tries each registered locator in priority order.
-// Falls back to "mcp-lifecycle-operator-system".
-func DiscoverNamespace(ctx context.Context, cfg *envconf.Config) string {
-	for _, d := range locators {
+func (r *Registry) DiscoverNamespace(ctx context.Context, cfg *envconf.Config) string {
+	for _, d := range r.locators {
 		if ns, ok := d.Namespace(ctx, cfg); ok {
 			log.Printf("operator namespace discovered: %s (by %T)", ns, d)
 			return ns
@@ -70,10 +92,8 @@ func DiscoverNamespace(ctx context.Context, cfg *envconf.Config) string {
 	return defaultNamespace
 }
 
-// DiscoverServiceAccount tries each registered locator in priority order.
-// Falls back to "mcp-lifecycle-operator-controller-manager".
-func DiscoverServiceAccount(ctx context.Context, cfg *envconf.Config, namespace string) string {
-	for _, d := range locators {
+func (r *Registry) DiscoverServiceAccount(ctx context.Context, cfg *envconf.Config, namespace string) string {
+	for _, d := range r.locators {
 		if sa, ok := d.ServiceAccount(ctx, cfg, namespace); ok {
 			log.Printf("operator service account discovered: %s (by %T)", sa, d)
 			return sa
@@ -83,10 +103,8 @@ func DiscoverServiceAccount(ctx context.Context, cfg *envconf.Config, namespace 
 	return defaultServiceAccountName
 }
 
-// DiscoverMetricsService tries each registered locator in priority order.
-// Falls back to "mcp-lifecycle-operator-controller-manager-metrics-service".
-func DiscoverMetricsService(ctx context.Context, cfg *envconf.Config, namespace string) string {
-	for _, d := range locators {
+func (r *Registry) DiscoverMetricsService(ctx context.Context, cfg *envconf.Config, namespace string) string {
+	for _, d := range r.locators {
 		if svc, ok := d.MetricsService(ctx, cfg, namespace); ok {
 			log.Printf("operator metrics service discovered: %s (by %T)", svc, d)
 			return svc

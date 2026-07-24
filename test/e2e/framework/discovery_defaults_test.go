@@ -197,7 +197,10 @@ func TestPodLabelLocator_Namespace(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mcp-lifecycle-operator-controller-manager-abc",
 					Namespace: "test-operator-ns",
-					Labels:    map[string]string{"control-plane": "controller-manager"},
+					Labels: map[string]string{
+						"control-plane":          "controller-manager",
+						"app.kubernetes.io/name": "mcp-lifecycle-operator",
+					},
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{Name: "manager", Image: "test:latest"}},
@@ -263,7 +266,10 @@ func TestPodLabelLocator_ServiceAccount(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "mcp-lifecycle-controller-manager-xyz",
 			Namespace: "test-sa-ns",
-			Labels:    map[string]string{"control-plane": "controller-manager"},
+			Labels: map[string]string{
+				"control-plane":          "controller-manager",
+				"app.kubernetes.io/name": "mcp-lifecycle-operator",
+			},
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: "my-custom-sa",
@@ -316,7 +322,10 @@ func TestPodLabelLocator_MetricsService(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "mcp-lifecycle-controller-manager-xyz",
 			Namespace: "test-svc-ns",
-			Labels:    map[string]string{"control-plane": "controller-manager"},
+			Labels: map[string]string{
+				"control-plane":          "controller-manager",
+				"app.kubernetes.io/name": "mcp-lifecycle-operator",
+			},
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{{Name: "manager", Image: "test:latest"}},
@@ -365,5 +374,184 @@ func TestPodLabelLocator_MetricsService_NoMatch(t *testing.T) {
 	got, ok := d.MetricsService(context.Background(), nil, "any-ns")
 	if ok {
 		t.Errorf("MetricsService() ok = true, want false (got %q)", got)
+	}
+}
+
+func TestPodLabelLocator_ServiceAccount_WithNamespaceOnly(t *testing.T) {
+	cfg := setupEnvtest(t)
+	ctx := context.Background()
+	r := cfg.Client().Resources()
+
+	namespace := "test-lazy-sa-ns"
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
+	if err := r.Create(ctx, ns); err != nil {
+		t.Fatalf("failed to create namespace: %v", err)
+	}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "mcp-lifecycle-controller-manager-lazy",
+			Namespace: namespace,
+			Labels: map[string]string{
+				"control-plane":          "controller-manager",
+				"app.kubernetes.io/name": "mcp-lifecycle-operator",
+			},
+		},
+		Spec: corev1.PodSpec{
+			ServiceAccountName: "my-discovered-sa",
+			Containers:         []corev1.Container{{Name: "manager", Image: "test:latest"}},
+		},
+	}
+	if err := r.Create(ctx, pod); err != nil {
+		t.Fatalf("failed to create pod: %v", err)
+	}
+	pod.Status.Phase = corev1.PodRunning
+	cs := Clientset(t, cfg)
+	if _, err := cs.CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("failed to update pod status: %v", err)
+	}
+
+	d := &PodLabelLocator{}
+	got, ok := d.ServiceAccount(ctx, cfg, namespace)
+	if !ok {
+		t.Fatal("ServiceAccount() ok = false, want true")
+	}
+	if got != "my-discovered-sa" {
+		t.Errorf("ServiceAccount() = %q, want %q", got, "my-discovered-sa")
+	}
+}
+
+func TestPodLabelLocator_MetricsService_WithNamespaceOnly(t *testing.T) {
+	cfg := setupEnvtest(t)
+	ctx := context.Background()
+	r := cfg.Client().Resources()
+
+	namespace := "test-lazy-svc-ns"
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
+	if err := r.Create(ctx, ns); err != nil {
+		t.Fatalf("failed to create namespace: %v", err)
+	}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "mcp-lifecycle-controller-manager-lazy",
+			Namespace: namespace,
+			Labels: map[string]string{
+				"control-plane":          "controller-manager",
+				"app.kubernetes.io/name": "mcp-lifecycle-operator",
+			},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "manager", Image: "test:latest"}},
+		},
+	}
+	if err := r.Create(ctx, pod); err != nil {
+		t.Fatalf("failed to create pod: %v", err)
+	}
+	pod.Status.Phase = corev1.PodRunning
+	cs := Clientset(t, cfg)
+	if _, err := cs.CoreV1().Pods(pod.Namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("failed to update pod status: %v", err)
+	}
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "mcp-lifecycle-operator-metrics-service",
+			Namespace: namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{
+				"control-plane":          "controller-manager",
+				"app.kubernetes.io/name": "mcp-lifecycle-operator",
+			},
+			Ports: []corev1.ServicePort{{Port: 8443}},
+		},
+	}
+	if err := r.Create(ctx, svc); err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	d := &PodLabelLocator{}
+	got, ok := d.MetricsService(ctx, cfg, namespace)
+	if !ok {
+		t.Fatal("MetricsService() ok = false, want true")
+	}
+	if got != "mcp-lifecycle-operator-metrics-service" {
+		t.Errorf("MetricsService() = %q, want %q", got, "mcp-lifecycle-operator-metrics-service")
+	}
+}
+
+func TestDiscover_EnvVarNamespace_PodLabelSAAndMetrics(t *testing.T) {
+	cfg := setupEnvtest(t)
+	ctx := context.Background()
+	r := cfg.Client().Resources()
+
+	namespace := "custom-operator-ns"
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
+	if err := r.Create(ctx, ns); err != nil {
+		t.Fatalf("failed to create namespace: %v", err)
+	}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "mcp-lifecycle-controller-manager-xyz",
+			Namespace: namespace,
+			Labels: map[string]string{
+				"control-plane":          "controller-manager",
+				"app.kubernetes.io/name": "mcp-lifecycle-operator",
+			},
+		},
+		Spec: corev1.PodSpec{
+			ServiceAccountName: "custom-sa",
+			Containers:         []corev1.Container{{Name: "manager", Image: "test:latest"}},
+		},
+	}
+	if err := r.Create(ctx, pod); err != nil {
+		t.Fatalf("failed to create pod: %v", err)
+	}
+	pod.Status.Phase = corev1.PodRunning
+	cs := Clientset(t, cfg)
+	if _, err := cs.CoreV1().Pods(namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("failed to update pod status: %v", err)
+	}
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "custom-metrics-service",
+			Namespace: namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{
+				"control-plane":          "controller-manager",
+				"app.kubernetes.io/name": "mcp-lifecycle-operator",
+			},
+			Ports: []corev1.ServicePort{{Port: 8443}},
+		},
+	}
+	if err := r.Create(ctx, svc); err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	reg := &Registry{}
+	reg.RegisterLocator(&EnvVarLocator{})
+	reg.RegisterLocator(&PodLabelLocator{})
+
+	t.Setenv("MCPLO_NAMESPACE", namespace)
+	t.Setenv("MCPLO_SA_NAME", "")
+	t.Setenv("MCPLO_METRICS_SERVICE", "")
+
+	gotNS := reg.DiscoverNamespace(ctx, cfg)
+	if gotNS != namespace {
+		t.Errorf("DiscoverNamespace() = %q, want %q", gotNS, namespace)
+	}
+
+	gotSA := reg.DiscoverServiceAccount(ctx, cfg, gotNS)
+	if gotSA != "custom-sa" {
+		t.Errorf("DiscoverServiceAccount() = %q, want %q", gotSA, "custom-sa")
+	}
+
+	gotSvc := reg.DiscoverMetricsService(ctx, cfg, gotNS)
+	if gotSvc != "custom-metrics-service" {
+		t.Errorf("DiscoverMetricsService() = %q, want %q", gotSvc, "custom-metrics-service")
 	}
 }
