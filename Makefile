@@ -249,22 +249,13 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	$(call kustomize-set-image,$(KUSTOMIZE_DEFAULT_DIR),${IMG})
+	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	"$(KUSTOMIZE)" build $(KUSTOMIZE_DEFAULT_DIR) | "$(KUBECTL)" apply -f -
 
 .PHONY: deploy-debug
 deploy-debug: manifests kustomize ## Deploy controller with Delve for remote debugging.
-	$(call kustomize-set-image,config/manager-debug,${IMG})
-
-define kustomize-set-image
-$(eval _DEPLOY_DIR := $(shell mktemp -d))
-set -euo pipefail; \
-dir=$(_DEPLOY_DIR); \
-trap 'rm -rf $$dir' EXIT; \
-ln -s $(CURDIR)/$(1) $$dir/base && \
-printf 'resources:\n- base\n' > $$dir/kustomization.yaml && \
-cd $$dir && "$(KUSTOMIZE)" edit set image $(IMAGE_TAG_BASE)=$(2) && \
-"$(KUSTOMIZE)" build $$dir | "$(KUBECTL)" apply -f -
-endef
+	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	"$(KUSTOMIZE)" build config/manager-debug | "$(KUBECTL)" apply -f -
 
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
