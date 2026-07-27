@@ -40,7 +40,7 @@ func TestMCPServerHappyPath(t *testing.T) {
 	feature := features.New("MCPServer happy path").
 		WithLabel(category.Label, category.Lifecycle).
 		WithLabel(speed.Label, speed.Fast).
-		WithLabel(scenario.Label, scenario.CRUD).
+		WithLabel(scenario.Label, scenario.Deploy).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "test-server", false)
 		}).
@@ -116,7 +116,7 @@ func TestMCPServerUpdatePort(t *testing.T) {
 	feature := features.New("MCPServer port update").
 		WithLabel(category.Label, category.Lifecycle).
 		WithLabel(speed.Label, speed.Fast).
-		WithLabel(scenario.Label, scenario.CRUD).
+		WithLabel(scenario.Label, scenario.SpecUpdate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "test-server", true)
 		}).

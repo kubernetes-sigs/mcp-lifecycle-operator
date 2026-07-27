@@ -14,13 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package scenario provides the optional third label dimension for e2e tests.
+// Scenarios slice larger categories (lifecycle, configuration, resilience) into
+// finer groups. Categories with few tests (networking, observability) intentionally
+// omit scenario labels.
 package scenario
 
 const (
 	Label = "scenario"
 
 	// Lifecycle scenarios.
-	CRUD       = "crud"
+	Deploy     = "deploy"
 	SpecUpdate = "spec-update"
 	Drift      = "drift"
 	Ownership  = "ownership"
