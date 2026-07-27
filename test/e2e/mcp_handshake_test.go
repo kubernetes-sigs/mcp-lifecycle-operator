@@ -32,14 +32,16 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
 func TestMCPHandshake(t *testing.T) {
 	const mcpServerPort = 3001
 
 	feature := features.New("MCP handshake with everything-mcp-server").
-		WithLabel("type", "mcp").
-		WithLabel("component", "mcpserver").
+		WithLabel(category.Label, category.Networking).
+		WithLabel(speed.Label, speed.Moderate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "everything-mcp-server", true)
 		}).

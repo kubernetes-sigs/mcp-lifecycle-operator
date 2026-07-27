@@ -31,12 +31,16 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scenario"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
 func TestMCPServerHappyPath(t *testing.T) {
 	feature := features.New("MCPServer happy path").
-		WithLabel("type", "lifecycle").
-		WithLabel("component", "mcpserver").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.CRUD).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "test-server", false)
 		}).
@@ -110,8 +114,9 @@ func TestMCPServerHappyPath(t *testing.T) {
 
 func TestMCPServerUpdatePort(t *testing.T) {
 	feature := features.New("MCPServer port update").
-		WithLabel("type", "update").
-		WithLabel("component", "mcpserver").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.CRUD).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "test-server", true)
 		}).

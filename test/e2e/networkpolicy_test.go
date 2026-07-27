@@ -35,12 +35,14 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
 func TestNetworkPolicyCreated(t *testing.T) {
 	feature := features.New("MCPServer creates NetworkPolicy").
-		WithLabel("type", "networkpolicy").
-		WithLabel("component", "mcpserver").
+		WithLabel(category.Label, category.Networking).
+		WithLabel(speed.Label, speed.Fast).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "netpol-test", true)
 		}).
@@ -106,8 +108,8 @@ func TestNetworkPolicyCreated(t *testing.T) {
 
 func TestNetworkPolicyPortUpdate(t *testing.T) {
 	feature := features.New("MCPServer NetworkPolicy port update").
-		WithLabel("type", "networkpolicy").
-		WithLabel("scenario", "port-update").
+		WithLabel(category.Label, category.Networking).
+		WithLabel(speed.Label, speed.Slow).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "netpol-port", true)
 		}).
@@ -158,8 +160,8 @@ func TestNetworkPolicyPortUpdate(t *testing.T) {
 
 func TestNetworkPolicyGarbageCollected(t *testing.T) {
 	feature := features.New("MCPServer NetworkPolicy garbage collection").
-		WithLabel("type", "networkpolicy").
-		WithLabel("scenario", "gc").
+		WithLabel(category.Label, category.Networking).
+		WithLabel(speed.Label, speed.Moderate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "netpol-gc", true)
 		}).

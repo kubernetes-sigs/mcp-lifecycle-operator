@@ -38,9 +38,14 @@ import (
 var testenv env.Environment
 
 func TestMain(m *testing.M) {
+	f.RegisterProfileFlag()
 	cfg, err := envconf.NewFromFlags()
 	if err != nil {
 		panic(err)
+	}
+
+	if labels := f.ResolveProfile(); labels != nil {
+		cfg.WithLabels(labels)
 	}
 
 	testenv = env.NewWithConfig(cfg)

@@ -39,6 +39,8 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
 const (
@@ -50,7 +52,8 @@ const (
 
 func TestManagerPodRunning(t *testing.T) {
 	feature := features.New("Manager pod is running").
-		WithLabel("type", "manager").
+		WithLabel(category.Label, category.Observability).
+		WithLabel(speed.Label, speed.Fast).
 		Assess("controller-manager pod is Running", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			pod := f.FindPodByLabel(ctx, t, cfg, operatorNamespace, "control-plane=controller-manager")
 			t.Logf("controller-manager pod %s is Running", pod.Name)
@@ -63,7 +66,8 @@ func TestManagerPodRunning(t *testing.T) {
 
 func TestMetricsEndpoint(t *testing.T) {
 	feature := features.New("Metrics endpoint serves data").
-		WithLabel("type", "manager").
+		WithLabel(category.Label, category.Observability).
+		WithLabel(speed.Label, speed.Fast).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			r := cfg.Client().Resources()
 

@@ -37,6 +37,9 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scenario"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
 const configHashAnnotation = "mcp.x-k8s.io/config-hash"
@@ -47,8 +50,9 @@ func TestImageUpdate(t *testing.T) {
 	digestRef := "quay.io/matzew/mcp-everything@sha256:537cdedad807bb56140caca9c332d3577b16e533584164bbc3f27abac7b5ba15"
 
 	feature := features.New("MCPServer image update").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "image-update").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Slow).
+		WithLabel(scenario.Label, scenario.SpecUpdate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "img-update", true)
 		}).
@@ -95,8 +99,9 @@ func TestImageUpdate(t *testing.T) {
 
 func TestStorageAddition(t *testing.T) {
 	feature := features.New("MCPServer storage addition").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "storage-add").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.SpecUpdate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
@@ -182,8 +187,9 @@ func TestStorageAddition(t *testing.T) {
 
 func TestStorageRemoval(t *testing.T) {
 	feature := features.New("MCPServer storage removal").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "storage-remove").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.SpecUpdate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
@@ -260,8 +266,9 @@ func TestStorageRemoval(t *testing.T) {
 
 func TestReplicaDrift(t *testing.T) {
 	feature := features.New("MCPServer replica drift correction").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "drift-replicas").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Drift).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "drift-repl", true, f.WithReplicas(1))
 		}).
@@ -305,8 +312,9 @@ func TestReplicaDrift(t *testing.T) {
 
 func TestServicePortDrift(t *testing.T) {
 	feature := features.New("MCPServer Service port drift correction").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "drift-service-port").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Drift).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "drift-port", true)
 		}).
@@ -350,8 +358,9 @@ func TestServicePortDrift(t *testing.T) {
 
 func TestDeploymentDeletion(t *testing.T) {
 	feature := features.New("MCPServer Deployment recreation after deletion").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "drift-deployment-deleted").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Slow).
+		WithLabel(scenario.Label, scenario.Drift).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "drift-dep", true)
 		}).
@@ -400,8 +409,9 @@ func TestDeploymentDeletion(t *testing.T) {
 
 func TestServiceDeletion(t *testing.T) {
 	feature := features.New("MCPServer Service recreation after deletion").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "drift-service-deleted").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Drift).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "drift-svc", true)
 		}).
@@ -451,8 +461,9 @@ func TestServiceDeletion(t *testing.T) {
 
 func TestOwnerReferences(t *testing.T) {
 	feature := features.New("MCPServer OwnerReferences on child resources").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "ownership").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Ownership).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "owner-ref", true)
 		}).
@@ -502,8 +513,9 @@ func assertOwnerReference(t *testing.T, refs []metav1.OwnerReference, expectedNa
 
 func TestCascadingDeletion(t *testing.T) {
 	feature := features.New("MCPServer cascading deletion").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "cascading-delete").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Ownership).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "cascade-del", true)
 		}).
@@ -551,8 +563,9 @@ func TestCascadingDeletion(t *testing.T) {
 
 func TestConfigMapDataUpdateTriggersRestart(t *testing.T) {
 	feature := features.New("MCPServer config hash update on ConfigMap change").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "config-hash").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Drift).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
