@@ -28,10 +28,25 @@ const ManagedWorkloadName = "mcp-server"
 
 // ReconcilePhase is the value for the "phase" label on mcpserver_reconcile_phase_duration_seconds.
 const (
-	ReconcilePhaseValidation    = "validation"
-	ReconcilePhaseDeployment    = "deployment"
-	ReconcilePhaseService       = "service"
-	ReconcilePhaseNetworkPolicy = "networkpolicy"
+	ReconcilePhaseValidation     = "validation"
+	ReconcilePhaseDeployment     = "deployment"
+	ReconcilePhaseService        = "service"
+	ReconcilePhaseNetworkPolicy  = "networkpolicy"
+	ReconcilePhaseGatewayBinding = "gatewaybinding"
+)
+
+// ProviderHTTPRoute is the provider name for the reference Gateway API HTTPRoute
+// integration controller.
+const ProviderHTTPRoute = "httproute"
+
+// Gateway integration condition types and reasons.
+const (
+	ConditionTypeRegistered        = "Registered"
+	ConditionTypeGatewayRegistered = "GatewayRegistered"
+
+	ReasonGatewayRegistered      = "Registered"
+	ReasonGatewayNotRegistered   = "NotRegistered"
+	ReasonGatewayBindingNotFound = "BindingNotFound"
 )
 
 // MetricReasonReconcileError is the `reason` label on deployment/service failure counters

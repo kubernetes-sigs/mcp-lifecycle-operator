@@ -421,6 +421,31 @@ type MCPServerSpec struct {
 	// operator-to-MCP-server communication.
 	// +optional
 	Transport *TransportConfig `json:"transport,omitempty"`
+
+	// Gateway configures gateway integration for this MCPServer.
+	// When set, the operator creates an MCPGatewayBinding resource that
+	// integration controllers watch to provision gateway-specific resources.
+	// +optional
+	Gateway *GatewaySpec `json:"gateway,omitempty"`
+}
+
+// GatewaySpec configures gateway integration for an MCPServer.
+type GatewaySpec struct {
+	// ClassName identifies which gateway integration controller should handle
+	// this MCPServer. The operator creates an MCPGatewayBinding with this value
+	// as spec.provider. Integration controllers filter bindings by provider.
+	// Example: "httproute" for the reference Gateway API HTTPRoute controller.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	ClassName string `json:"className"`
+
+	// ConfigRef is the name of a ConfigMap in the same namespace containing
+	// gateway-specific configuration. The ConfigMap is referenced by the
+	// MCPGatewayBinding and read by the integration controller.
+	// +optional
+	// +kubebuilder:validation:MaxLength=253
+	ConfigRef string `json:"configRef,omitempty"`
 }
 
 // MCPConfig defines Model Context Protocol specific properties of the server.
@@ -512,6 +537,11 @@ type MCPServerStatus struct {
 	// +optional
 	ServiceName string `json:"serviceName,omitempty"`
 
+	// GatewayBinding contains the status of the MCPGatewayBinding created for
+	// this MCPServer, when spec.gateway is configured.
+	// +optional
+	GatewayBinding *GatewayBindingStatus `json:"gatewayBinding,omitempty"`
+
 	// Address contains the address of the MCP server service.
 	// +optional
 	Address *MCPServerAddress `json:"address,omitempty"`
@@ -541,18 +571,21 @@ type MCPServerStatus struct {
 	// Standard condition types:
 	// - "Accepted": Configuration is valid and all referenced resources exist
 	// - "Ready": MCP server is operational and ready to serve requests
+	// - "GatewayRegistered": Gateway integration is active (only when spec.gateway is set)
 	//
 	// The "Accepted" condition validates configuration before creating resources.
 	// Reasons: Valid (True), Invalid (False with details in message)
 	//
 	// The "Ready" condition indicates overall server readiness.
 	// Status=True means at least one instance is healthy and serving requests.
+	// When spec.gateway is configured, Ready=False until gateway is registered.
 	// Reasons:
 	//   - Available: Server is ready (Status=True)
 	//   - ConfigurationInvalid: Accepted=False, cannot proceed
 	//   - DeploymentUnavailable: No healthy instances (all deployment/pod issues)
 	//   - ScaledToZero: Deployment scaled to 0 replicas
 	//   - Initializing: Waiting for initial status
+	//   - GatewayNotRegistered: Gateway binding not yet registered
 	//
 	// Note: Specific failure details (ImagePullBackOff, OOMKilled, CrashLoop, etc.)
 	// are included in the condition message, not the reason.
@@ -561,6 +594,16 @@ type MCPServerStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// GatewayBindingStatus contains the status of the MCPGatewayBinding
+// created for this MCPServer.
+type GatewayBindingStatus struct {
+	// Name is the name of the MCPGatewayBinding resource.
+	Name string `json:"name"`
+
+	// Provider is the gateway integration provider handling this binding.
+	Provider string `json:"provider"`
 }
 
 // +kubebuilder:object:root=true

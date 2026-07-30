@@ -1,0 +1,164 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: mcpgatewaybindings.mcp.x-k8s.io
+spec:
+  group: mcp.x-k8s.io
+  names:
+    kind: MCPGatewayBinding
+    listKind: MCPGatewayBindingList
+    plural: mcpgatewaybindings
+    singular: mcpgatewaybinding
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.provider
+      name: Provider
+      type: string
+    - jsonPath: .spec.mcpServerRef
+      name: MCPServer
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Registered")].status
+      name: Registered
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          MCPGatewayBinding binds an MCPServer to a gateway integration provider.
+          The MCP Lifecycle Operator creates this resource when an MCPServer has
+          spec.gateway configured. Integration controllers watch MCPGatewayBinding
+          resources filtered by spec.provider and create provider-specific gateway
+          resources (e.g., HTTPRoute for the "httproute" provider).
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MCPGatewayBindingSpec defines the desired state of MCPGatewayBinding.
+            properties:
+              configRef:
+                description: |-
+                  ConfigRef is the name of a ConfigMap in the same namespace containing
+                  provider-specific configuration.
+                maxLength: 253
+                type: string
+              mcpServerRef:
+                description: |-
+                  MCPServerRef is the name of the MCPServer resource in the same namespace
+                  that this binding is for.
+                minLength: 1
+                type: string
+              provider:
+                description: |-
+                  Provider identifies which integration controller should handle this binding.
+                  Integration controllers filter on this field to only process bindings they own.
+                  Example: "httproute" for the reference Gateway API HTTPRoute controller.
+                maxLength: 253
+                minLength: 1
+                type: string
+            required:
+            - mcpServerRef
+            - provider
+            type: object
+          status:
+            description: MCPGatewayBindingStatus defines the observed state of MCPGatewayBinding.
+            properties:
+              conditions:
+                description: |-
+                  Conditions represent the latest available observations of the binding's state.
+
+                  Standard condition types:
+                  - "Registered": The integration controller has processed this binding
+                    and created the necessary gateway resources.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              url:
+                description: |-
+                  URL is the gateway endpoint URL, set by the integration controller.
+                  The MCPServer reconciler reflects this into MCPServer status.
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
