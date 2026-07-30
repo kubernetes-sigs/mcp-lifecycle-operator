@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -41,8 +40,6 @@ const (
 	configKeyGatewayName      = "gateway-name"
 	configKeyGatewayNamespace = "gateway-namespace"
 	configKeyHostname         = "hostname"
-
-	bindingFieldManager = "mcpgatewaybinding-httproute-controller"
 )
 
 // MCPGatewayBindingReconciler reconciles MCPGatewayBinding resources with
@@ -76,33 +73,28 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	mcpServer := &mcpv1alpha1.MCPServer{}
 	if err := r.Get(ctx, client.ObjectKey{Name: binding.Spec.MCPServerRef, Namespace: binding.Namespace}, mcpServer); err != nil {
-		return ctrl.Result{}, r.setRegisteredCondition(ctx, binding, metav1.ConditionFalse,
-			ReasonGatewayNotRegistered,
+		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
 			fmt.Sprintf("MCPServer %q not found: %v", binding.Spec.MCPServerRef, err))
 	}
 
 	configMap := &corev1.ConfigMap{}
 	if binding.Spec.ConfigRef == "" {
-		return ctrl.Result{}, r.setRegisteredCondition(ctx, binding, metav1.ConditionFalse,
-			ReasonGatewayNotRegistered,
+		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
 			"spec.configRef is required for httproute provider")
 	}
 	if err := r.Get(ctx, client.ObjectKey{Name: binding.Spec.ConfigRef, Namespace: binding.Namespace}, configMap); err != nil {
-		return ctrl.Result{}, r.setRegisteredCondition(ctx, binding, metav1.ConditionFalse,
-			ReasonGatewayNotRegistered,
+		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
 			fmt.Sprintf("ConfigMap %q not found: %v", binding.Spec.ConfigRef, err))
 	}
 
 	gwName, ok := configMap.Data[configKeyGatewayName]
 	if !ok || gwName == "" {
-		return ctrl.Result{}, r.setRegisteredCondition(ctx, binding, metav1.ConditionFalse,
-			ReasonGatewayNotRegistered,
+		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
 			fmt.Sprintf("ConfigMap %q missing required key %q", binding.Spec.ConfigRef, configKeyGatewayName))
 	}
 	gwNamespace, ok := configMap.Data[configKeyGatewayNamespace]
 	if !ok || gwNamespace == "" {
-		return ctrl.Result{}, r.setRegisteredCondition(ctx, binding, metav1.ConditionFalse,
-			ReasonGatewayNotRegistered,
+		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
 			fmt.Sprintf("ConfigMap %q missing required key %q", binding.Spec.ConfigRef, configKeyGatewayNamespace))
 	}
 
@@ -111,6 +103,9 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		path = defaultMCPPath
 	}
 	pathType := gatewayv1.PathMatchPathPrefix
+
+	gwNS := gatewayv1.Namespace(gwNamespace)
+	port := mcpServer.Spec.Config.Port
 
 	httpRoute := &gatewayv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
@@ -122,7 +117,7 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				ParentRefs: []gatewayv1.ParentReference{
 					{
 						Name:      gatewayv1.ObjectName(gwName),
-						Namespace: ptr.To(gatewayv1.Namespace(gwNamespace)),
+						Namespace: &gwNS,
 					},
 				},
 			},
@@ -141,7 +136,7 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 							BackendRef: gatewayv1.BackendRef{
 								BackendObjectReference: gatewayv1.BackendObjectReference{
 									Name: gatewayv1.ObjectName(mcpServer.Name),
-									Port: ptr.To(gatewayv1.PortNumber(mcpServer.Spec.Config.Port)),
+									Port: &port,
 								},
 							},
 						},
@@ -164,8 +159,7 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if apierrors.IsNotFound(err) {
 		logger.Info("Creating HTTPRoute", "name", httpRoute.Name)
 		if err := r.Create(ctx, httpRoute); err != nil {
-			return ctrl.Result{}, r.setRegisteredCondition(ctx, binding, metav1.ConditionFalse,
-				ReasonGatewayNotRegistered,
+			return ctrl.Result{}, r.setNotRegistered(ctx, binding,
 				fmt.Sprintf("Failed to create HTTPRoute: %v", err))
 		}
 	} else if err != nil {
@@ -175,8 +169,7 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			logger.Info("Updating HTTPRoute", "name", httpRoute.Name)
 			existing.Spec = httpRoute.Spec
 			if err := r.Update(ctx, existing); err != nil {
-				return ctrl.Result{}, r.setRegisteredCondition(ctx, binding, metav1.ConditionFalse,
-					ReasonGatewayNotRegistered,
+				return ctrl.Result{}, r.setNotRegistered(ctx, binding,
 					fmt.Sprintf("Failed to update HTTPRoute: %v", err))
 			}
 		}
@@ -187,20 +180,19 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		url = fmt.Sprintf("http://%s%s", hostname, path)
 	}
 
-	return ctrl.Result{}, r.setRegisteredConditionWithURL(ctx, binding, metav1.ConditionTrue,
+	return ctrl.Result{}, r.updateBindingStatus(ctx, binding, metav1.ConditionTrue,
 		ReasonGatewayRegistered, "HTTPRoute created", url)
 }
 
-func (r *MCPGatewayBindingReconciler) setRegisteredCondition(
+func (r *MCPGatewayBindingReconciler) setNotRegistered(
 	ctx context.Context,
 	binding *mcpv1alpha1.MCPGatewayBinding,
-	status metav1.ConditionStatus,
-	reason, message string,
+	message string,
 ) error {
-	return r.setRegisteredConditionWithURL(ctx, binding, status, reason, message, "")
+	return r.updateBindingStatus(ctx, binding, metav1.ConditionFalse, ReasonGatewayNotRegistered, message, "")
 }
 
-func (r *MCPGatewayBindingReconciler) setRegisteredConditionWithURL(
+func (r *MCPGatewayBindingReconciler) updateBindingStatus(
 	ctx context.Context,
 	binding *mcpv1alpha1.MCPGatewayBinding,
 	status metav1.ConditionStatus,

@@ -347,11 +347,6 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	gatewayBindingStart := time.Now()
 	if err := r.reconcileGatewayBinding(ctx, mcpServer); err != nil {
 		reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseGatewayBinding}).Observe(time.Since(gatewayBindingStart).Seconds())
-		gatewayBindingFailuresTotal.With(prometheus.Labels{
-			"name":      mcpServer.Name,
-			"namespace": mcpServer.Namespace,
-			"reason":    MetricReasonReconcileError,
-		}).Inc()
 		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
 			counter:     gatewayBindingFailuresTotal,
 			reason:      ReasonGatewayNotRegistered,
