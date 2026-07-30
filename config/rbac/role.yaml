@@ -44,6 +44,17 @@ rules:
   - update
   - watch
 - apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - mcp.x-k8s.io
   resources:
   - mcpgatewaybindings
@@ -54,6 +65,15 @@ rules:
   - list
   - update
   - watch
+- apiGroups:
+  - mcp.x-k8s.io
+  resources:
+  - mcpgatewaybindings/status
+  - mcpservers/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - mcp.x-k8s.io
   resources:
@@ -69,14 +89,6 @@ rules:
   resources:
   - mcpservers/finalizers
   verbs:
-  - update
-- apiGroups:
-  - mcp.x-k8s.io
-  resources:
-  - mcpservers/status
-  verbs:
-  - get
-  - patch
   - update
 - apiGroups:
   - networking.k8s.io

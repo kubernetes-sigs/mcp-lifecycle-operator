@@ -21,6 +21,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
@@ -65,12 +67,17 @@ var _ = BeforeSuite(func() {
 	var err error
 	err = mcpv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
+	err = gatewayv1.Install(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "config", "crd", "bases"),
+			gatewayAPICRDPath(),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -96,6 +103,21 @@ var _ = AfterSuite(func() {
 		return testEnv.Stop()
 	}, time.Minute, time.Second).Should(Succeed())
 })
+
+// gatewayAPICRDPath resolves the Gateway API CRD directory from the Go module cache.
+func gatewayAPICRDPath() string {
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		gopath = filepath.Join(os.Getenv("HOME"), "go")
+	}
+
+	entries, err := filepath.Glob(filepath.Join(gopath, "pkg", "mod", "sigs.k8s.io", "gateway-api@*", "config", "crd", "standard"))
+	if err != nil || len(entries) == 0 {
+		logf.Log.Error(fmt.Errorf("gateway-api CRDs not found"), "Failed to resolve Gateway API CRD path")
+		return ""
+	}
+	return entries[len(entries)-1]
+}
 
 // getFirstFoundEnvTestBinaryDir locates the first binary in the specified path.
 // ENVTEST-based tests depend on specific binaries, usually located in paths set by
