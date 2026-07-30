@@ -46,6 +46,17 @@ rules:
 - apiGroups:
   - mcp.x-k8s.io
   resources:
+  - mcpgatewaybindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - mcp.x-k8s.io
+  resources:
   - mcpservers
   verbs:
   - get
