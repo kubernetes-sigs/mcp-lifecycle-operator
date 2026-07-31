@@ -56,6 +56,9 @@ func (r *MCPServerReconciler) reconcileGatewayBinding(
 
 	if mcpServer.Spec.Gateway == nil {
 		if err == nil {
+			if ownerErr := r.validateOwnership(existing, mcpServer); ownerErr != nil {
+				return ownerErr
+			}
 			logger.Info("Deleting MCPGatewayBinding (gateway removed from spec)", "name", bindingName)
 			return r.Delete(ctx, existing)
 		}
@@ -86,6 +89,10 @@ func (r *MCPServerReconciler) reconcileGatewayBinding(
 	}
 	if err != nil {
 		return err
+	}
+
+	if ownerErr := r.validateOwnership(existing, mcpServer); ownerErr != nil {
+		return ownerErr
 	}
 
 	if existing.Spec.Provider != desired.Spec.Provider {
@@ -137,6 +144,8 @@ func (r *MCPServerReconciler) applyGatewayStatus(
 			mcpServer.Generation,
 			mcpServer.Status.Conditions,
 		)
+		recordCondition(mcpServer.Name, mcpServer.Namespace,
+			readyCondition.Type, string(readyCondition.Status), readyCondition.Reason)
 	}
 
 	if gwStatus.gatewayAddress != "" {

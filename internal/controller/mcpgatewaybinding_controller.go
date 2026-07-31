@@ -28,9 +28,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
@@ -52,6 +55,8 @@ type MCPGatewayBindingReconciler struct {
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings,verbs=get;list;watch
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;delete
 
 func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -236,6 +241,50 @@ func (r *MCPGatewayBindingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.MCPGatewayBinding{}).
 		Owns(&gatewayv1.HTTPRoute{}).
+		Watches(
+			&corev1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(r.findBindingsForConfigMap),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		Watches(
+			&mcpv1alpha1.MCPServer{},
+			handler.EnqueueRequestsFromMapFunc(r.findBindingsForMCPServer),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
 		Named("mcpgatewaybinding-httproute").
 		Complete(r)
+}
+
+func (r *MCPGatewayBindingReconciler) findBindingsForConfigMap(ctx context.Context, obj client.Object) []ctrl.Request {
+	bindingList := &mcpv1alpha1.MCPGatewayBindingList{}
+	if err := r.List(ctx, bindingList, client.InNamespace(obj.GetNamespace())); err != nil {
+		return nil
+	}
+	var requests []ctrl.Request
+	for i := range bindingList.Items {
+		if bindingList.Items[i].Spec.Provider == ProviderHTTPRoute &&
+			bindingList.Items[i].Spec.ConfigRef == obj.GetName() {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(&bindingList.Items[i]),
+			})
+		}
+	}
+	return requests
+}
+
+func (r *MCPGatewayBindingReconciler) findBindingsForMCPServer(ctx context.Context, obj client.Object) []ctrl.Request {
+	bindingList := &mcpv1alpha1.MCPGatewayBindingList{}
+	if err := r.List(ctx, bindingList, client.InNamespace(obj.GetNamespace())); err != nil {
+		return nil
+	}
+	var requests []ctrl.Request
+	for i := range bindingList.Items {
+		if bindingList.Items[i].Spec.Provider == ProviderHTTPRoute &&
+			bindingList.Items[i].Spec.MCPServerRef == obj.GetName() {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(&bindingList.Items[i]),
+			})
+		}
+	}
+	return requests
 }

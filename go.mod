@@ -17,6 +17,7 @@ require (
 	k8s.io/utils v0.0.0-20260617174310-a95e086a2553
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/e2e-framework v0.7.0
+	sigs.k8s.io/gateway-api v1.6.1
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0
 )
 
@@ -113,7 +114,6 @@ require (
 	k8s.io/kube-openapi v0.0.0-20260623045532-0b43c5e46c6b // indirect
 	k8s.io/streaming v0.36.2 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.36.0 // indirect
-	sigs.k8s.io/gateway-api v1.6.1 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect

@@ -127,6 +127,7 @@ deploy-test-e2e: setup-test-e2e manifests generate ## Build and deploy the opera
 	$(MAKE) docker-build IMG=example.com/mcp-lifecycle-operator:e2e
 	$(KIND) load docker-image example.com/mcp-lifecycle-operator:e2e --name $(KIND_CLUSTER)
 	$(KUBECTL) apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
+	$(KUBECTL) wait --for=condition=Established --timeout=120s crd/httproutes.gateway.networking.k8s.io
 	$(MAKE) install deploy IMG=example.com/mcp-lifecycle-operator:e2e
 	$(KUBECTL) rollout status deployment/mcp-lifecycle-operator-controller-manager -n mcp-lifecycle-operator-system --timeout=120s
 
