@@ -105,6 +105,7 @@ cover-clean: ## Remove cover.out and out/coverage.{txt,html} from test-cover.
 	rm -f $(COVER_PROFILE) $(COVER_OUTPUT_DIR)/coverage.txt $(COVER_OUTPUT_DIR)/coverage.html
 
 KIND_CLUSTER ?= mcp-lifecycle-operator-test-e2e
+GATEWAY_API_VERSION ?= v1.6.1
 
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
@@ -125,6 +126,7 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 deploy-test-e2e: setup-test-e2e manifests generate ## Build and deploy the operator to the Kind cluster for e2e tests.
 	$(MAKE) docker-build IMG=example.com/mcp-lifecycle-operator:e2e
 	$(KIND) load docker-image example.com/mcp-lifecycle-operator:e2e --name $(KIND_CLUSTER)
+	$(KUBECTL) apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
 	$(MAKE) install deploy IMG=example.com/mcp-lifecycle-operator:e2e
 	$(KUBECTL) rollout status deployment/mcp-lifecycle-operator-controller-manager -n mcp-lifecycle-operator-system --timeout=120s
 
