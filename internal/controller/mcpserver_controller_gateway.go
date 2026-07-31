@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	acv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1/applyconfiguration/api/v1alpha1"
 )
 
 const gatewayBindingSuffix = "-gateway-binding"
@@ -111,6 +112,66 @@ type gatewayStatus struct {
 	condition      metav1.Condition
 	bindingStatus  *mcpv1alpha1.GatewayBindingStatus
 	gatewayAddress string
+}
+
+// applyGatewayStatus records metrics, adjusts the ready condition when the
+// gateway is not yet registered, and overrides the address URL when the
+// gateway provides one. Returns the (possibly updated) readyCondition and
+// mcpURL. Extracting this from Reconcile keeps cyclomatic complexity down.
+func (r *MCPServerReconciler) applyGatewayStatus(
+	mcpServer *mcpv1alpha1.MCPServer,
+	gwStatus *gatewayStatus,
+	readyCondition metav1.Condition,
+	mcpURL string,
+) (metav1.Condition, string) {
+	preserveLastTransitionTime(&gwStatus.condition, mcpServer.Status.Conditions)
+	recordCondition(mcpServer.Name, mcpServer.Namespace,
+		gwStatus.condition.Type, string(gwStatus.condition.Status), gwStatus.condition.Reason)
+
+	if gwStatus.condition.Status != metav1.ConditionTrue &&
+		readyCondition.Status != metav1.ConditionFalse {
+		readyCondition = newReadyCondition(
+			metav1.ConditionFalse,
+			ReasonGatewayNotRegistered,
+			gwStatus.condition.Message,
+			mcpServer.Generation,
+			mcpServer.Status.Conditions,
+		)
+	}
+
+	if gwStatus.gatewayAddress != "" {
+		mcpURL = gwStatus.gatewayAddress
+	}
+
+	return readyCondition, mcpURL
+}
+
+// applyGatewayStatusToAC sets the gateway-related conditions and binding
+// status on the apply-configuration status builder.
+func applyGatewayStatusToAC(
+	status *acv1alpha1.MCPServerStatusApplyConfiguration,
+	gwStatus *gatewayStatus,
+	acceptedCondition, readyCondition metav1.Condition,
+) {
+	if gwStatus == nil {
+		status.WithConditions(
+			conditionToAC(acceptedCondition),
+			conditionToAC(readyCondition),
+		)
+		return
+	}
+	status.WithConditions(
+		conditionToAC(acceptedCondition),
+		conditionToAC(readyCondition),
+		conditionToAC(gwStatus.condition),
+	)
+	if gwStatus.bindingStatus != nil {
+		status.WithGatewayBinding(
+			acv1alpha1.GatewayBindingStatus().
+				WithName(gwStatus.bindingStatus.Name).
+				WithProvider(gwStatus.bindingStatus.Provider),
+		)
+	}
 }
 
 func (r *MCPServerReconciler) reconcileGatewayCondition(

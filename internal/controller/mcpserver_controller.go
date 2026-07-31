@@ -402,24 +402,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Resolve gateway status: condition + binding status + address override
 	gwStatus := r.reconcileGatewayCondition(ctx, mcpServer)
 	if gwStatus != nil {
-		preserveLastTransitionTime(&gwStatus.condition, mcpServer.Status.Conditions)
-		recordCondition(mcpServer.Name, mcpServer.Namespace,
-			gwStatus.condition.Type, string(gwStatus.condition.Status), gwStatus.condition.Reason)
-
-		if gwStatus.condition.Status != metav1.ConditionTrue &&
-			readyCondition.Status != metav1.ConditionFalse {
-			readyCondition = newReadyCondition(
-				metav1.ConditionFalse,
-				ReasonGatewayNotRegistered,
-				gwStatus.condition.Message,
-				mcpServer.Generation,
-				mcpServer.Status.Conditions,
-			)
-		}
-
-		if gwStatus.gatewayAddress != "" {
-			mcpURL = gwStatus.gatewayAddress
-		}
+		readyCondition, mcpURL = r.applyGatewayStatus(mcpServer, gwStatus, readyCondition, mcpURL)
 	}
 
 	status := acv1alpha1.MCPServerStatus().
@@ -432,25 +415,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		WithAddress(acv1alpha1.MCPServerAddress().
 			WithURL(mcpURL))
 
-	if gwStatus != nil {
-		status = status.WithConditions(
-			conditionToAC(acceptedCondition),
-			conditionToAC(readyCondition),
-			conditionToAC(gwStatus.condition),
-		)
-		if gwStatus.bindingStatus != nil {
-			status = status.WithGatewayBinding(
-				acv1alpha1.GatewayBindingStatus().
-					WithName(gwStatus.bindingStatus.Name).
-					WithProvider(gwStatus.bindingStatus.Provider),
-			)
-		}
-	} else {
-		status = status.WithConditions(
-			conditionToAC(acceptedCondition),
-			conditionToAC(readyCondition),
-		)
-	}
+	applyGatewayStatusToAC(status, gwStatus, acceptedCondition, readyCondition)
 
 	capDiff := capabilityChangeMessage(mcpServer, serverInfo)
 
