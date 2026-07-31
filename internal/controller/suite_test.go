@@ -21,9 +21,10 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,19 +105,16 @@ var _ = AfterSuite(func() {
 	}, time.Minute, time.Second).Should(Succeed())
 })
 
-// gatewayAPICRDPath resolves the Gateway API CRD directory from the Go module cache.
+// gatewayAPICRDPath resolves the Gateway API CRD directory from the Go module cache
+// using `go list -m` to get the exact module directory for the pinned version.
 func gatewayAPICRDPath() string {
-	gopath := os.Getenv("GOPATH")
-	if gopath == "" {
-		gopath = filepath.Join(os.Getenv("HOME"), "go")
-	}
-
-	entries, err := filepath.Glob(filepath.Join(gopath, "pkg", "mod", "sigs.k8s.io", "gateway-api@*", "config", "crd", "standard"))
-	if err != nil || len(entries) == 0 {
-		logf.Log.Error(fmt.Errorf("gateway-api CRDs not found"), "Failed to resolve Gateway API CRD path")
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "sigs.k8s.io/gateway-api")
+	out, err := cmd.Output()
+	if err != nil {
+		logf.Log.Error(err, "Failed to resolve Gateway API module directory via 'go list'")
 		return ""
 	}
-	return entries[len(entries)-1]
+	return filepath.Join(strings.TrimSpace(string(out)), "config", "crd", "standard")
 }
 
 // getFirstFoundEnvTestBinaryDir locates the first binary in the specified path.
