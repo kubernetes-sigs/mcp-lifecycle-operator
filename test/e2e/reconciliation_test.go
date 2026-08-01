@@ -348,6 +348,57 @@ func TestServicePortDrift(t *testing.T) {
 	testenv.Test(t, feature)
 }
 
+func TestServiceSelectorDrift(t *testing.T) {
+	feature := features.New("MCPServer Service selector drift correction").
+		WithLabel("type", "reconciliation").
+		WithLabel("scenario", "drift-service-selector").
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return f.SetupMCPServer(ctx, t, cfg, "drift-selector", true)
+		}).
+		Assess("manually change Service selector and verify reconciliation", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace}}
+			if err := r.Get(ctx, server.Name, server.Namespace, svc); err != nil {
+				t.Fatalf("Service not found: %v", err)
+			}
+			originalClusterIP := svc.Spec.ClusterIP
+
+			f.UpdateWithRetry(ctx, t, r, svc, func(s *corev1.Service) {
+				s.Spec.Selector = map[string]string{
+					"mcp-server": "wrong",
+					"unexpected": "value",
+				}
+			})
+			t.Log("manually changed Service selector")
+
+			err := wait.For(
+				conditions.New(r).ResourceMatch(svc, func(obj k8s.Object) bool {
+					s := obj.(*corev1.Service)
+					return len(s.Spec.Selector) == 1 &&
+						s.Spec.Selector["mcp-server"] == server.Name &&
+						s.Spec.ClusterIP == originalClusterIP
+				}),
+				wait.WithTimeout(2*time.Minute),
+				wait.WithInterval(2*time.Second),
+			)
+			if err != nil {
+				t.Fatalf("controller did not reconcile Service selector back to mcp-server=%s: %v", server.Name, err)
+			}
+
+			f.WaitForEndpointsReady(ctx, t, cfg, server.Namespace, server.Name)
+			t.Logf("controller restored Service selector and endpoints for %s", server.Name)
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return f.TeardownMCPServer(ctx, t, cfg)
+		}).
+		Feature()
+
+	testenv.Test(t, feature)
+}
+
 func TestDeploymentDeletion(t *testing.T) {
 	feature := features.New("MCPServer Deployment recreation after deletion").
 		WithLabel("type", "reconciliation").

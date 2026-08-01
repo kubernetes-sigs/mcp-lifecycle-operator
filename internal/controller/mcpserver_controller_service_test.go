@@ -273,6 +273,42 @@ var _ = Describe("MCPServer Controller - reconcileService", func() {
 		Expect(reconciler.reconcileService(ctx, mcpServer)).To(Succeed())
 		Expect(reconciler.reconcileService(ctx, mcpServer)).To(Succeed())
 	})
+
+	It("should restore a drifted selector without changing the ClusterIP", func() {
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		By("Creating the managed Service")
+		Expect(reconciler.reconcileService(ctx, mcpServer)).To(Succeed())
+
+		svc := &corev1.Service{}
+		serviceKey := client.ObjectKey{Name: resourceName, Namespace: "default"}
+		Expect(k8sClient.Get(ctx, serviceKey, svc)).To(Succeed())
+		originalClusterIP := svc.Spec.ClusterIP
+		originalClusterIPs := append([]string(nil), svc.Spec.ClusterIPs...)
+
+		By("Changing the selector to no longer match the managed workload")
+		svc.Spec.Selector = map[string]string{
+			LabelKeyMCPServer: "wrong",
+			"unexpected":      "value",
+		}
+		Expect(k8sClient.Update(ctx, svc)).To(Succeed())
+
+		By("Reconciling the Service selector drift")
+		Expect(reconciler.reconcileService(ctx, mcpServer)).To(Succeed())
+
+		By("Verifying the selector is restored and allocated addresses are preserved")
+		Expect(k8sClient.Get(ctx, serviceKey, svc)).To(Succeed())
+		Expect(svc.Spec.Selector).To(Equal(managedWorkloadSelector(resourceName)))
+		Expect(svc.Spec.ClusterIP).To(Equal(originalClusterIP))
+		Expect(svc.Spec.ClusterIPs).To(Equal(originalClusterIPs))
+	})
 })
 
 var _ = Describe("MCPServer Controller - Stateless Service", func() {

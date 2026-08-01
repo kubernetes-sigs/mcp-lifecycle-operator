@@ -88,8 +88,9 @@ func (r *MCPServerReconciler) reconcileService(
 		ownershipChanged = oldOwnerUID != string(newOwner.UID)
 	}
 
-	// Update if ports changed OR if we adopted an orphaned resource
+	// Update if the desired Service fields changed OR if we adopted an orphaned resource.
 	needsUpdate := !equality.Semantic.DeepEqual(service.Spec.Ports, existingService.Spec.Ports) ||
+		!equality.Semantic.DeepEqual(service.Spec.Selector, existingService.Spec.Selector) ||
 		existingService.Spec.SessionAffinity != service.Spec.SessionAffinity ||
 		serviceLabelsChanged(mcpServer, existingService) ||
 		serviceAnnotationsChanged(mcpServer, existingService) ||
@@ -100,6 +101,7 @@ func (r *MCPServerReconciler) reconcileService(
 			return fmt.Errorf("applying custom service metadata; %w", err)
 		}
 		existingService.Spec.Ports = service.Spec.Ports
+		existingService.Spec.Selector = service.Spec.Selector
 		existingService.Spec.SessionAffinity = service.Spec.SessionAffinity
 		if err := r.Update(ctx, existingService); err != nil {
 			logger.Error(err, "Failed to update Service")
