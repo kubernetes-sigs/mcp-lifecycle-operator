@@ -355,6 +355,116 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 	})
 
+	Context("applyGatewayStatus", func() {
+		It("should not override Ready reason when already False", func() {
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-apply-gw",
+					Namespace:  "default",
+					Generation: 1,
+				},
+			}
+
+			readyCondition := metav1.Condition{
+				Type:               ConditionTypeReady,
+				Status:             metav1.ConditionFalse,
+				Reason:             ReasonDeploymentUnavailable,
+				Message:            "Deployment not available",
+				ObservedGeneration: 1,
+				LastTransitionTime: metav1.Now(),
+			}
+
+			gwStatus := &gatewayStatus{
+				condition: metav1.Condition{
+					Type:               ConditionTypeGatewayRegistered,
+					Status:             metav1.ConditionFalse,
+					Reason:             ReasonGatewayNotRegistered,
+					Message:            "Waiting for registration",
+					ObservedGeneration: 1,
+					LastTransitionTime: metav1.Now(),
+				},
+			}
+
+			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+			result, _ := reconciler.applyGatewayStatus(mcpServer, gwStatus, readyCondition, "http://svc:8080/mcp")
+
+			Expect(result.Status).To(Equal(metav1.ConditionFalse))
+			Expect(result.Reason).To(Equal(ReasonDeploymentUnavailable))
+		})
+
+		It("should override Ready when not already False", func() {
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-apply-gw-override",
+					Namespace:  "default",
+					Generation: 1,
+				},
+			}
+
+			readyCondition := metav1.Condition{
+				Type:               ConditionTypeReady,
+				Status:             metav1.ConditionTrue,
+				Reason:             ReasonAvailable,
+				Message:            "Available",
+				ObservedGeneration: 1,
+				LastTransitionTime: metav1.Now(),
+			}
+
+			gwStatus := &gatewayStatus{
+				condition: metav1.Condition{
+					Type:               ConditionTypeGatewayRegistered,
+					Status:             metav1.ConditionFalse,
+					Reason:             ReasonGatewayNotRegistered,
+					Message:            "Waiting for registration",
+					ObservedGeneration: 1,
+					LastTransitionTime: metav1.Now(),
+				},
+			}
+
+			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+			result, _ := reconciler.applyGatewayStatus(mcpServer, gwStatus, readyCondition, "http://svc:8080/mcp")
+
+			Expect(result.Status).To(Equal(metav1.ConditionFalse))
+			Expect(result.Reason).To(Equal(ReasonGatewayNotRegistered))
+		})
+
+		It("should override mcpURL when gateway provides an address", func() {
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-apply-gw-url",
+					Namespace:  "default",
+					Generation: 1,
+				},
+			}
+
+			readyCondition := metav1.Condition{
+				Type:               ConditionTypeReady,
+				Status:             metav1.ConditionTrue,
+				Reason:             ReasonAvailable,
+				Message:            "Available",
+				ObservedGeneration: 1,
+				LastTransitionTime: metav1.Now(),
+			}
+
+			gwStatus := &gatewayStatus{
+				condition: metav1.Condition{
+					Type:               ConditionTypeGatewayRegistered,
+					Status:             metav1.ConditionTrue,
+					Reason:             ReasonGatewayRegistered,
+					Message:            "Registered",
+					ObservedGeneration: 1,
+					LastTransitionTime: metav1.Now(),
+				},
+				gatewayAddress: "https://gateway.example.com/mcp",
+			}
+
+			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+			_, url := reconciler.applyGatewayStatus(mcpServer, gwStatus, readyCondition, "http://svc:8080/mcp")
+
+			Expect(url).To(Equal("https://gateway.example.com/mcp"))
+		})
+	})
+
 	Context("gatewayBindingName", func() {
 		It("should append -gateway-binding suffix", func() {
 			Expect(gatewayBindingName("my-server")).To(Equal("my-server-gateway-binding"))

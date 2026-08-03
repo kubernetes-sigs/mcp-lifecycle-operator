@@ -115,6 +115,8 @@ var _ = Describe("MCPGatewayBinding Controller (httproute)", func() {
 		Expect(route.Spec.Rules).To(HaveLen(1))
 		Expect(route.Spec.Rules[0].BackendRefs).To(HaveLen(1))
 		Expect(string(route.Spec.Rules[0].BackendRefs[0].Name)).To(Equal(mcpServerName))
+		Expect(route.Spec.Rules[0].BackendRefs[0].Port).NotTo(BeNil())
+		Expect(*route.Spec.Rules[0].BackendRefs[0].Port).To(Equal(gatewayv1.PortNumber(8080)))
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{}
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
@@ -262,6 +264,60 @@ var _ = Describe("MCPGatewayBinding Controller (httproute)", func() {
 		route := &gatewayv1.HTTPRoute{}
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
 		Expect(*route.Spec.Rules[0].Matches[0].Path.Value).To(Equal("/mcp"))
+	})
+
+	It("should update existing HTTPRoute when ConfigMap changes", func() {
+		createMCPServer()
+		createConfigMap(map[string]string{
+			configKeyGatewayName:      "my-gateway",
+			configKeyGatewayNamespace: "gateway-ns",
+		})
+		createBinding(ProviderHTTPRoute)
+
+		r := newReconciler()
+		_, err := r.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		route := &gatewayv1.HTTPRoute{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal("my-gateway"))
+
+		cm := &corev1.ConfigMap{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: configMapName, Namespace: "default"}, cm)).To(Succeed())
+		cm.Data[configKeyGatewayName] = "updated-gateway"
+		Expect(k8sClient.Update(ctx, cm)).To(Succeed())
+
+		_, err = r.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal("updated-gateway"))
+	})
+
+	It("should set Registered=False when gateway-namespace is empty string", func() {
+		createMCPServer()
+		createConfigMap(map[string]string{
+			configKeyGatewayName:      "my-gateway",
+			configKeyGatewayNamespace: "",
+		})
+		createBinding(ProviderHTTPRoute)
+
+		r := newReconciler()
+		_, err := r.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+		Expect(registered.Message).To(ContainSubstring(configKeyGatewayNamespace))
 	})
 
 	It("should set Registered=False when configRef is empty", func() {
