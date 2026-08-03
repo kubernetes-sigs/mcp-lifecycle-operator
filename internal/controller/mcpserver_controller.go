@@ -36,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	v1ac "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -347,13 +348,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	gatewayBindingStart := time.Now()
 	if err := r.reconcileGatewayBinding(ctx, mcpServer); err != nil {
 		reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseGatewayBinding}).Observe(time.Since(gatewayBindingStart).Seconds())
-		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
-			counter:     gatewayBindingFailuresTotal,
-			reason:      ReasonGatewayNotRegistered,
-			resource:    "MCPGatewayBinding",
-			isDuplicate: duplicateGatewayBindingUnavailable,
-			emitEvent:   r.emitGatewayBindingReconcileFailed,
-		})
+		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err,
+			r.gatewayBindingFailureParams(mcpServer))
 	}
 	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseGatewayBinding}).Observe(time.Since(gatewayBindingStart).Seconds())
 
@@ -618,11 +614,30 @@ func (r *MCPServerReconciler) emitServiceReconcileFailed(mcpServer *mcpv1alpha1.
 }
 
 type resourceFailureParams struct {
-	counter     *prometheus.CounterVec
-	reason      string
-	resource    string
-	isDuplicate func([]metav1.Condition, string) bool
-	emitEvent   func(*mcpv1alpha1.MCPServer, string)
+	counter         *prometheus.CounterVec
+	reason          string
+	resource        string
+	isDuplicate     func([]metav1.Condition, string) bool
+	emitEvent       func(*mcpv1alpha1.MCPServer, string)
+	extraConditions []metav1.Condition
+	gatewayBinding  *mcpv1alpha1.GatewayBindingStatus
+}
+
+func (r *MCPServerReconciler) gatewayBindingFailureParams(mcpServer *mcpv1alpha1.MCPServer) resourceFailureParams {
+	params := resourceFailureParams{
+		counter:     gatewayBindingFailuresTotal,
+		reason:      ReasonGatewayNotRegistered,
+		resource:    "MCPGatewayBinding",
+		isDuplicate: duplicateGatewayBindingUnavailable,
+		emitEvent:   r.emitGatewayBindingReconcileFailed,
+	}
+	if gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered); gwCond != nil {
+		params.extraConditions = []metav1.Condition{*gwCond}
+	}
+	if mcpServer.Status.GatewayBinding != nil {
+		params.gatewayBinding = mcpServer.Status.GatewayBinding
+	}
+	return params
 }
 
 func (r *MCPServerReconciler) handleResourceFailure(
@@ -657,6 +672,12 @@ func (r *MCPServerReconciler) handleResourceFailure(
 		params.emitEvent(mcpServer, readyCondition.Message)
 	}
 
+	conditions := make([]*v1ac.ConditionApplyConfiguration, 0, 2+len(params.extraConditions))
+	conditions = append(conditions, conditionToAC(acceptedCondition), conditionToAC(readyCondition))
+	for i := range params.extraConditions {
+		conditions = append(conditions, conditionToAC(params.extraConditions[i]))
+	}
+
 	status := acv1alpha1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
 		WithDeploymentName(existingDeployment.Name).
@@ -664,10 +685,15 @@ func (r *MCPServerReconciler) handleResourceFailure(
 		WithHandshakeRetryCount(0).
 		WithReplicas(ptr.Deref(existingDeployment.Spec.Replicas, 1)).
 		WithReadyReplicas(existingDeployment.Status.ReadyReplicas).
-		WithConditions(
-			conditionToAC(acceptedCondition),
-			conditionToAC(readyCondition),
+		WithConditions(conditions...)
+
+	if params.gatewayBinding != nil {
+		status.WithGatewayBinding(
+			acv1alpha1.GatewayBindingStatus().
+				WithName(params.gatewayBinding.Name).
+				WithProvider(params.gatewayBinding.Provider),
 		)
+	}
 
 	if statusErr := r.applyStatus(ctx, mcpServer, status); statusErr != nil {
 		logger.Error(statusErr, "Failed to update MCPServer status")
