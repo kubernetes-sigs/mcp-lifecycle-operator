@@ -60,9 +60,21 @@ func TestNetworkPolicyCreated(t *testing.T) {
 				t.Fatalf("expected podSelector {mcp-server: %s}, got %v", server.Name, netpol.Spec.PodSelector.MatchLabels)
 			}
 
-			// Verify only Ingress policyType
-			if len(netpol.Spec.PolicyTypes) != 1 || netpol.Spec.PolicyTypes[0] != networkingv1.PolicyTypeIngress {
-				t.Fatalf("expected policyTypes [Ingress], got %v", netpol.Spec.PolicyTypes)
+			// Verify Ingress and Egress policyTypes
+			if len(netpol.Spec.PolicyTypes) != 2 {
+				t.Fatalf("expected 2 policyTypes, got %d: %v", len(netpol.Spec.PolicyTypes), netpol.Spec.PolicyTypes)
+			}
+			hasIngress, hasEgress := false, false
+			for _, pt := range netpol.Spec.PolicyTypes {
+				switch pt {
+				case networkingv1.PolicyTypeIngress:
+					hasIngress = true
+				case networkingv1.PolicyTypeEgress:
+					hasEgress = true
+				}
+			}
+			if !hasIngress || !hasEgress {
+				t.Fatalf("expected policyTypes [Ingress, Egress], got %v", netpol.Spec.PolicyTypes)
 			}
 
 			// Verify ingress allows only the configured port
@@ -86,6 +98,18 @@ func TestNetworkPolicyCreated(t *testing.T) {
 				t.Fatalf("expected empty From (allow all sources), got %d entries", len(rule.From))
 			}
 
+			// Verify egress allows all traffic
+			if len(netpol.Spec.Egress) != 1 {
+				t.Fatalf("expected 1 egress rule, got %d", len(netpol.Spec.Egress))
+			}
+			egressRule := netpol.Spec.Egress[0]
+			if len(egressRule.Ports) != 0 {
+				t.Fatalf("expected empty egress ports (allow all), got %d", len(egressRule.Ports))
+			}
+			if len(egressRule.To) != 0 {
+				t.Fatalf("expected empty egress To (allow all destinations), got %d", len(egressRule.To))
+			}
+
 			// Verify owner reference
 			if len(netpol.OwnerReferences) == 0 {
 				t.Fatal("expected owner reference on NetworkPolicy")
@@ -94,7 +118,7 @@ func TestNetworkPolicyCreated(t *testing.T) {
 				t.Fatalf("expected owner %s, got %s", server.Name, netpol.OwnerReferences[0].Name)
 			}
 
-			t.Logf("NetworkPolicy %s exists with correct spec: podSelector={mcp-server: %s}, port=3001/TCP, ingress-only",
+			t.Logf("NetworkPolicy %s exists with correct spec: podSelector={mcp-server: %s}, port=3001/TCP, ingress+egress",
 				netpol.Name, server.Name)
 			return ctx
 		}).

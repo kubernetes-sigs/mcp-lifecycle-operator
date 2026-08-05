@@ -87,9 +87,10 @@ var _ = Describe("MCPServer Controller - reconcileNetworkPolicy", func() {
 		By("Verifying podSelector targets MCP server pods")
 		Expect(netpol.Spec.PodSelector.MatchLabels).To(HaveKeyWithValue("mcp-server", resourceName))
 
-		By("Verifying only Ingress policyType is set")
-		Expect(netpol.Spec.PolicyTypes).To(HaveLen(1))
-		Expect(netpol.Spec.PolicyTypes[0]).To(Equal(networkingv1.PolicyTypeIngress))
+		By("Verifying Ingress and Egress policyTypes are set")
+		Expect(netpol.Spec.PolicyTypes).To(HaveLen(2))
+		Expect(netpol.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeIngress))
+		Expect(netpol.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeEgress))
 
 		By("Verifying ingress allows only the configured port")
 		Expect(netpol.Spec.Ingress).To(HaveLen(1))
@@ -99,6 +100,11 @@ var _ = Describe("MCPServer Controller - reconcileNetworkPolicy", func() {
 
 		By("Verifying ingress From is empty (all sources allowed on MCP port)")
 		Expect(netpol.Spec.Ingress[0].From).To(BeEmpty())
+
+		By("Verifying egress allows all traffic")
+		Expect(netpol.Spec.Egress).To(HaveLen(1))
+		Expect(netpol.Spec.Egress[0].Ports).To(BeEmpty())
+		Expect(netpol.Spec.Egress[0].To).To(BeEmpty())
 
 		By("Verifying owner reference is set")
 		Expect(netpol.OwnerReferences).To(HaveLen(1))
