@@ -1068,7 +1068,7 @@ var _ = Describe("extractServerInfo", func() {
 				Tools:       &mcp.ToolCapabilities{},
 				Resources:   &mcp.ResourceCapabilities{},
 				Prompts:     &mcp.PromptCapabilities{},
-				Logging:     &mcp.LoggingCapabilities{}, //nolint:staticcheck // deprecated per SEP-2577, still functional
+				Logging:     &mcp.LoggingCapabilities{}, //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 				Completions: &mcp.CompletionCapabilities{},
 			},
 		}

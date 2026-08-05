@@ -148,7 +148,7 @@ func extractServerInfo(res *mcp.InitializeResult) *mcpv1alpha1.MCPServerInfo {
 			Tools:       res.Capabilities.Tools != nil,
 			Resources:   res.Capabilities.Resources != nil,
 			Prompts:     res.Capabilities.Prompts != nil,
-			Logging:     res.Capabilities.Logging != nil, //nolint:staticcheck // deprecated per SEP-2577, still functional
+			Logging:     res.Capabilities.Logging != nil, //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 			Completions: res.Capabilities.Completions != nil,
 		}
 	}
