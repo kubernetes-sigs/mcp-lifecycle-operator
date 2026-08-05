@@ -18,98 +18,151 @@ package framework
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
-	"sort"
+	"reflect"
+	"runtime"
+	"strings"
+	"sync"
+	"testing"
 
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
-const (
-	defaultNamespace          = "mcp-lifecycle-operator-system"
-	defaultServiceAccountName = "mcp-lifecycle-operator-controller-manager"
-	defaultMetricsServiceName = "mcp-lifecycle-operator-controller-manager-metrics-service"
-)
-
-// OperatorLocator finds the operator namespace, SA, and metrics service.
-// Each method returns the value and true if found, or ("", false) to
-// fall through to the next locator.
-type OperatorLocator interface {
-	Namespace(ctx context.Context, cfg *envconf.Config) (string, bool)
-	ServiceAccount(ctx context.Context, cfg *envconf.Config, namespace string) (string, bool)
-	MetricsService(ctx context.Context, cfg *envconf.Config, namespace string) (string, bool)
-	// Priority determines execution order. Higher priority runs first.
-	// Recommended bands:
-	//   5000 = env var overrides (always wins when set)
-	//    500 = platform-specific (e.g. ODH/RHOAI module operator CR)
-	//     50 = generic cluster search (pod label scan)
-	//      0 = hardcoded fallback (built into Discover* functions)
-	Priority() int
+// OperatorRef holds the discovered operator namespace and resource names.
+type OperatorRef struct {
+	Namespace          string
+	ServiceAccountName string
+	MetricsServiceName string
 }
 
-// Registry holds a priority-sorted list of OperatorLocators.
+// LocateFunc finds the operator. A non-zero OperatorRef means found (possibly
+// partial). A zero OperatorRef with nil error means not found. A non-nil error
+// is propagated and aborts discovery.
+type LocateFunc func(ctx context.Context, cfg *envconf.Config) (OperatorRef, error)
+
+// Tier determines evaluation order: Explicit -> Platform -> Fallback.
+type Tier string
+
+const (
+	Explicit Tier = "Explicit"
+	Platform Tier = "Platform"
+	Fallback Tier = "Fallback"
+)
+
+var tierOrder = []Tier{Explicit, Platform, Fallback}
+
+// Registry holds tier-keyed locators and caches the discovery result.
 type Registry struct {
-	locators []OperatorLocator
+	tiers        map[Tier]LocateFunc
+	discoverOnce sync.Once
+	cached       OperatorRef
+	cachedErr    error
 }
 
 var defaultRegistry Registry
 
-// RegisterLocator adds a locator to the default registry.
-func RegisterLocator(d OperatorLocator) {
-	defaultRegistry.RegisterLocator(d)
+// Register adds a locator to the default registry at the given tier.
+func Register(tier Tier, fn LocateFunc) {
+	defaultRegistry.Register(tier, fn)
 }
 
-// DiscoverNamespace tries the default registry. Falls back to "mcp-lifecycle-operator-system".
-func DiscoverNamespace(ctx context.Context, cfg *envconf.Config) string {
-	return defaultRegistry.DiscoverNamespace(ctx, cfg)
+// DiscoverOperator runs the default registry through all tiers.
+func DiscoverOperator(ctx context.Context, cfg *envconf.Config) (OperatorRef, error) {
+	return defaultRegistry.DiscoverOperator(ctx, cfg)
 }
 
-// DiscoverServiceAccount tries the default registry. Falls back to "mcp-lifecycle-operator-controller-manager".
-func DiscoverServiceAccount(ctx context.Context, cfg *envconf.Config, namespace string) string {
-	return defaultRegistry.DiscoverServiceAccount(ctx, cfg, namespace)
+func MustDiscoverOperatorOnce(ctx context.Context, cfg *envconf.Config, t testing.TB) OperatorRef {
+	return defaultRegistry.MustDiscoverOperatorOnce(ctx, cfg, t)
 }
 
-// DiscoverMetricsService tries the default registry. Falls back to "mcp-lifecycle-operator-controller-manager-metrics-service".
-func DiscoverMetricsService(ctx context.Context, cfg *envconf.Config, namespace string) string {
-	return defaultRegistry.DiscoverMetricsService(ctx, cfg, namespace)
+// Register adds a locator at the given tier, replacing any existing one.
+func (r *Registry) Register(tier Tier, fn LocateFunc) {
+	if r.tiers == nil {
+		r.tiers = make(map[Tier]LocateFunc)
+	}
+	r.tiers[tier] = fn
 }
 
-// RegisterLocator adds a locator and re-sorts by priority (highest first).
-func (r *Registry) RegisterLocator(d OperatorLocator) {
-	r.locators = append(r.locators, d)
-	sort.Slice(r.locators, func(i, j int) bool {
-		return r.locators[i].Priority() > r.locators[j].Priority()
+func (r *Registry) DiscoverOperator(ctx context.Context, cfg *envconf.Config) (OperatorRef, error) {
+	r.ensureDefaults()
+	var result OperatorRef
+	matched := false
+	for _, tier := range tierOrder {
+		fn, ok := r.tiers[tier]
+		if !ok {
+			continue
+		}
+		ref, err := fn(ctx, cfg)
+		if err != nil {
+			return OperatorRef{}, fmt.Errorf("operator discovery (%s/%s): %w",
+				tier, locateFuncName(fn), err)
+		}
+		if ref.isZero() {
+			continue
+		}
+		matched = true
+		log.Printf("operator discovery: tier=%s func=%s ns=%s sa=%s svc=%s",
+			tier, locateFuncName(fn), ref.Namespace, ref.ServiceAccountName, ref.MetricsServiceName)
+		result.merge(ref)
+		if result.isComplete() {
+			break
+		}
+	}
+	if !matched {
+		return OperatorRef{}, errors.New("operator discovery: no locator matched")
+	}
+	log.Printf("operator resolved: ns=%s sa=%s svc=%s",
+		result.Namespace, result.ServiceAccountName, result.MetricsServiceName)
+	return result, nil
+}
+
+// MustDiscoverOperatorOnce runs DiscoverOperator at most once, caches the
+// result, and calls t.Fatalf if discovery fails.
+func (r *Registry) MustDiscoverOperatorOnce(ctx context.Context, cfg *envconf.Config, t testing.TB) OperatorRef {
+	t.Helper()
+	r.discoverOnce.Do(func() {
+		r.cached, r.cachedErr = r.DiscoverOperator(ctx, cfg)
 	})
+	if r.cachedErr != nil {
+		t.Fatalf("operator discovery failed: %v", r.cachedErr)
+	}
+	return r.cached
 }
 
-func (r *Registry) DiscoverNamespace(ctx context.Context, cfg *envconf.Config) string {
-	for _, d := range r.locators {
-		if ns, ok := d.Namespace(ctx, cfg); ok {
-			log.Printf("operator namespace discovered: %s (by %T)", ns, d)
-			return ns
-		}
+func (o *OperatorRef) merge(other OperatorRef) {
+	if o.Namespace == "" {
+		o.Namespace = other.Namespace
 	}
-	log.Printf("operator namespace: using default %s", defaultNamespace)
-	return defaultNamespace
+	if o.ServiceAccountName == "" {
+		o.ServiceAccountName = other.ServiceAccountName
+	}
+	if o.MetricsServiceName == "" {
+		o.MetricsServiceName = other.MetricsServiceName
+	}
 }
 
-func (r *Registry) DiscoverServiceAccount(ctx context.Context, cfg *envconf.Config, namespace string) string {
-	for _, d := range r.locators {
-		if sa, ok := d.ServiceAccount(ctx, cfg, namespace); ok {
-			log.Printf("operator service account discovered: %s (by %T)", sa, d)
-			return sa
-		}
-	}
-	log.Printf("operator service account: using default %s", defaultServiceAccountName)
-	return defaultServiceAccountName
+func (o *OperatorRef) isZero() bool {
+	return o.Namespace == "" && o.ServiceAccountName == "" && o.MetricsServiceName == ""
 }
 
-func (r *Registry) DiscoverMetricsService(ctx context.Context, cfg *envconf.Config, namespace string) string {
-	for _, d := range r.locators {
-		if svc, ok := d.MetricsService(ctx, cfg, namespace); ok {
-			log.Printf("operator metrics service discovered: %s (by %T)", svc, d)
-			return svc
-		}
+func (o *OperatorRef) isComplete() bool {
+	return o.Namespace != "" && o.ServiceAccountName != "" && o.MetricsServiceName != ""
+}
+
+func locateFuncName(fn LocateFunc) string {
+	ptr := reflect.ValueOf(fn).Pointer()
+	f := runtime.FuncForPC(ptr)
+	if f == nil {
+		return "anonymous"
 	}
-	log.Printf("operator metrics service: using default %s", defaultMetricsServiceName)
-	return defaultMetricsServiceName
+	name := f.Name()
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
+	}
+	if strings.HasPrefix(name, "func") {
+		return "anonymous"
+	}
+	return name
 }

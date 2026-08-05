@@ -18,6 +18,7 @@ package framework
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -26,109 +27,82 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
-func init() {
-	RegisterLocator(&EnvVarLocator{})
-	RegisterLocator(&PodLabelLocator{})
-}
+const (
+	DefaultNamespace          = "mcp-lifecycle-operator-system"
+	DefaultServiceAccountName = "mcp-lifecycle-operator-controller-manager"
+	DefaultMetricsServiceName = "mcp-lifecycle-operator-controller-manager-metrics-service"
+)
 
-// EnvVarLocator checks MCPLO_NAMESPACE, MCPLO_SA_NAME, MCPLO_METRICS_SERVICE
-// environment variables. Priority 5000: always wins when set.
-type EnvVarLocator struct{}
-
-func (d *EnvVarLocator) Priority() int { return 5000 }
-
-func (d *EnvVarLocator) Namespace(_ context.Context, _ *envconf.Config) (string, bool) {
-	ns := os.Getenv("MCPLO_NAMESPACE")
-	return ns, ns != ""
-}
-
-func (d *EnvVarLocator) ServiceAccount(_ context.Context, _ *envconf.Config, _ string) (string, bool) {
-	sa := os.Getenv("MCPLO_SA_NAME")
-	return sa, sa != ""
-}
-
-func (d *EnvVarLocator) MetricsService(_ context.Context, _ *envconf.Config, _ string) (string, bool) {
-	svc := os.Getenv("MCPLO_METRICS_SERVICE")
-	return svc, svc != ""
-}
-
-// PodLabelLocator searches the cluster for the operator pod and derives
-// namespace, service account, and metrics service from the running resources.
-// Priority 50: generic fallback, runs after platform-specific locators.
-type PodLabelLocator struct {
-	pod *corev1.Pod
-}
-
-func (d *PodLabelLocator) Priority() int { return 50 }
-
-func (d *PodLabelLocator) findPod(ctx context.Context, cfg *envconf.Config, namespace string) (*corev1.Pod, bool) {
-	if d.pod != nil {
-		return d.pod, true
+func (r *Registry) ensureDefaults() {
+	if _, ok := r.tiers[Explicit]; !ok {
+		r.Register(Explicit, FromEnvVars)
 	}
+	if _, ok := r.tiers[Platform]; !ok {
+		r.Register(Platform, FromPodLabels)
+	}
+	if _, ok := r.tiers[Fallback]; !ok {
+		r.Register(Fallback, FromDefaults)
+	}
+}
+
+func FromDefaults(_ context.Context, _ *envconf.Config) (OperatorRef, error) {
+	return OperatorRef{
+		Namespace:          DefaultNamespace,
+		ServiceAccountName: DefaultServiceAccountName,
+		MetricsServiceName: DefaultMetricsServiceName,
+	}, nil
+}
+
+func FromEnvVars(_ context.Context, _ *envconf.Config) (OperatorRef, error) {
+	return OperatorRef{
+		Namespace:          os.Getenv("MCPLO_NAMESPACE"),
+		ServiceAccountName: os.Getenv("MCPLO_SA_NAME"),
+		MetricsServiceName: os.Getenv("MCPLO_METRICS_SERVICE"),
+	}, nil
+}
+
+func FromPodLabels(ctx context.Context, cfg *envconf.Config) (OperatorRef, error) {
 	if cfg == nil {
-		return nil, false
+		return OperatorRef{}, nil
 	}
-	var r *resources.Resources
-	if namespace != "" {
-		r = cfg.Client().Resources(namespace)
-	} else {
-		r = cfg.Client().Resources()
-	}
+	r := cfg.Client().Resources()
 	var pods corev1.PodList
 	if err := r.List(ctx, &pods,
 		resources.WithLabelSelector("control-plane=controller-manager,app.kubernetes.io/name=mcp-lifecycle-operator"),
 	); err != nil {
-		return nil, false
+		return OperatorRef{}, fmt.Errorf("listing pods: %w", err)
 	}
+	var pod *corev1.Pod
 	for i := range pods.Items {
 		p := &pods.Items[i]
 		if p.Status.Phase == corev1.PodRunning && p.DeletionTimestamp == nil {
-			d.pod = p
-			return p, true
+			pod = p
+			break
 		}
 	}
-	return nil, false
-}
+	if pod == nil {
+		return OperatorRef{}, nil
+	}
 
-func (d *PodLabelLocator) Namespace(ctx context.Context, cfg *envconf.Config) (string, bool) {
-	p, ok := d.findPod(ctx, cfg, "")
-	if !ok {
-		return "", false
-	}
-	return p.Namespace, true
-}
+	ref := OperatorRef{Namespace: pod.Namespace}
+	ref.ServiceAccountName = pod.Spec.ServiceAccountName
 
-func (d *PodLabelLocator) ServiceAccount(ctx context.Context, cfg *envconf.Config, namespace string) (string, bool) {
-	p, ok := d.findPod(ctx, cfg, namespace)
-	if !ok {
-		return "", false
-	}
-	sa := p.Spec.ServiceAccountName
-	if sa == "" {
-		sa = "default"
-	}
-	return sa, true
-}
-
-func (d *PodLabelLocator) MetricsService(ctx context.Context, cfg *envconf.Config, namespace string) (string, bool) {
-	p, ok := d.findPod(ctx, cfg, namespace)
-	if !ok {
-		return "", false
-	}
-	r := cfg.Client().Resources(namespace)
+	rNs := cfg.Client().Resources(pod.Namespace)
 	var svcs corev1.ServiceList
-	if err := r.List(ctx, &svcs); err != nil {
-		return "", false
+	if err := rNs.List(ctx, &svcs); err != nil {
+		return OperatorRef{}, fmt.Errorf("listing services in %s: %w", pod.Namespace, err)
 	}
 	for _, svc := range svcs.Items {
 		if !strings.Contains(svc.Name, "metrics") {
 			continue
 		}
-		if selectorMatchesLabels(svc.Spec.Selector, p.Labels) {
-			return svc.Name, true
+		if selectorMatchesLabels(svc.Spec.Selector, pod.Labels) {
+			ref.MetricsServiceName = svc.Name
+			break
 		}
 	}
-	return "", false
+
+	return ref, nil
 }
 
 func selectorMatchesLabels(selector, labels map[string]string) bool {

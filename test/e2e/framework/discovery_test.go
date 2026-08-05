@@ -18,142 +18,230 @@ package framework
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
-type stubLocator struct {
-	priority  int
-	namespace string
-	sa        string
-	metrics   string
+const testPlatformNS = "platform-ns"
+
+func makeLocateFunc(ref OperatorRef) LocateFunc {
+	return func(_ context.Context, _ *envconf.Config) (OperatorRef, error) {
+		return ref, nil
+	}
 }
 
-func (s *stubLocator) Priority() int { return s.priority }
-func (s *stubLocator) Namespace(_ context.Context, _ *envconf.Config) (string, bool) {
-	return s.namespace, s.namespace != ""
-}
-func (s *stubLocator) ServiceAccount(_ context.Context, _ *envconf.Config, _ string) (string, bool) {
-	return s.sa, s.sa != ""
-}
-func (s *stubLocator) MetricsService(_ context.Context, _ *envconf.Config, _ string) (string, bool) {
-	return s.metrics, s.metrics != ""
+func mustDiscover(t *testing.T, r *Registry) OperatorRef {
+	t.Helper()
+	ref, err := r.DiscoverOperator(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("DiscoverOperator() returned unexpected error: %v", err)
+	}
+	return ref
 }
 
-func TestRegisterLocator_SortsByPriorityHighestFirst(t *testing.T) {
+func TestRegistry_Register_ReplacesExisting(t *testing.T) {
 	r := &Registry{}
-	low := &stubLocator{priority: 10}
-	high := &stubLocator{priority: 5000}
+	r.Register(Explicit, makeLocateFunc(OperatorRef{Namespace: "first"}))
+	r.Register(Explicit, makeLocateFunc(OperatorRef{Namespace: "second"}))
 
-	r.RegisterLocator(low)
-	r.RegisterLocator(high)
-
-	if len(r.locators) != 2 {
-		t.Fatalf("expected 2 locators, got %d", len(r.locators))
-	}
-	if r.locators[0].Priority() != 5000 {
-		t.Errorf("locators[0].Priority() = %d, want 5000 (highest first)", r.locators[0].Priority())
-	}
-	if r.locators[1].Priority() != 10 {
-		t.Errorf("locators[1].Priority() = %d, want 10", r.locators[1].Priority())
+	ref := mustDiscover(t, r)
+	if ref.Namespace != "second" {
+		t.Errorf("Namespace = %q, want %q", ref.Namespace, "second")
 	}
 }
 
-func TestRegisterLocator_SingleLocator(t *testing.T) {
+func TestRegistry_DiscoverOperator_ExplicitBeforePlatform(t *testing.T) {
 	r := &Registry{}
+	full := OperatorRef{Namespace: "explicit-ns", ServiceAccountName: "sa", MetricsServiceName: "svc"}
+	r.Register(Explicit, makeLocateFunc(full))
+	r.Register(Platform, makeLocateFunc(OperatorRef{Namespace: testPlatformNS}))
 
-	r.RegisterLocator(&stubLocator{priority: 500})
-
-	if len(r.locators) != 1 {
-		t.Fatalf("expected 1 locator, got %d", len(r.locators))
-	}
-	if r.locators[0].Priority() != 500 {
-		t.Errorf("locators[0].Priority() = %d, want 500", r.locators[0].Priority())
+	ref := mustDiscover(t, r)
+	if ref.Namespace != "explicit-ns" {
+		t.Errorf("Namespace = %q, want %q", ref.Namespace, "explicit-ns")
 	}
 }
 
-func TestRegisterLocator_ThreeLocatorsSortedCorrectly(t *testing.T) {
+func TestRegistry_DiscoverOperator_PlatformBeforeFallback(t *testing.T) {
 	r := &Registry{}
+	full := OperatorRef{Namespace: testPlatformNS, ServiceAccountName: "sa", MetricsServiceName: "svc"}
+	r.Register(Fallback, makeLocateFunc(OperatorRef{Namespace: "fallback-ns"}))
+	r.Register(Platform, makeLocateFunc(full))
 
-	r.RegisterLocator(&stubLocator{priority: 50})
-	r.RegisterLocator(&stubLocator{priority: 5000})
-	r.RegisterLocator(&stubLocator{priority: 500})
-
-	want := []int{5000, 500, 50}
-	for i, wantPri := range want {
-		if r.locators[i].Priority() != wantPri {
-			t.Errorf("locators[%d].Priority() = %d, want %d", i, r.locators[i].Priority(), wantPri)
-		}
+	ref := mustDiscover(t, r)
+	if ref.Namespace != testPlatformNS {
+		t.Errorf("Namespace = %q, want %q", ref.Namespace, testPlatformNS)
 	}
 }
 
-func TestDiscoverNamespace_HighPriorityWins(t *testing.T) {
+func TestRegistry_DiscoverOperator_FallsThroughWhenLocatorReturnsFalse(t *testing.T) {
 	r := &Registry{}
-	r.RegisterLocator(&stubLocator{priority: 50, namespace: "low-ns"})
-	r.RegisterLocator(&stubLocator{priority: 5000, namespace: "high-ns"})
+	full := OperatorRef{Namespace: testPlatformNS, ServiceAccountName: "sa", MetricsServiceName: "svc"}
+	r.Register(Explicit, makeLocateFunc(OperatorRef{}))
+	r.Register(Platform, makeLocateFunc(full))
 
-	got := r.DiscoverNamespace(context.Background(), nil)
-	if got != "high-ns" {
-		t.Errorf("DiscoverNamespace() = %q, want %q", got, "high-ns")
+	ref := mustDiscover(t, r)
+	if ref.Namespace != testPlatformNS {
+		t.Errorf("Namespace = %q, want %q", ref.Namespace, testPlatformNS)
 	}
 }
 
-func TestDiscoverNamespace_FallsBackToDefault(t *testing.T) {
+func TestRegistry_DiscoverOperator_FallsBackToDefaultsWhenOthersDontMatch(t *testing.T) {
 	r := &Registry{}
-	r.RegisterLocator(&stubLocator{priority: 5000, namespace: ""})
+	r.Register(Explicit, makeLocateFunc(OperatorRef{}))
+	r.Register(Platform, makeLocateFunc(OperatorRef{}))
 
-	got := r.DiscoverNamespace(context.Background(), nil)
-	if got != defaultNamespace {
-		t.Errorf("DiscoverNamespace() = %q, want default %q", got, defaultNamespace)
+	ref := mustDiscover(t, r)
+	want := OperatorRef{
+		Namespace:          DefaultNamespace,
+		ServiceAccountName: DefaultServiceAccountName,
+		MetricsServiceName: DefaultMetricsServiceName,
+	}
+	if ref != want {
+		t.Errorf("expected defaults %+v, got %+v", want, ref)
 	}
 }
 
-func TestDiscoverNamespace_EmptyRegistry(t *testing.T) {
+func TestRegistry_DiscoverOperator_EmptyRegistryReturnsDefaults(t *testing.T) {
 	r := &Registry{}
 
-	got := r.DiscoverNamespace(context.Background(), nil)
-	if got != defaultNamespace {
-		t.Errorf("DiscoverNamespace() = %q, want default %q", got, defaultNamespace)
+	ref := mustDiscover(t, r)
+	want := OperatorRef{
+		Namespace:          DefaultNamespace,
+		ServiceAccountName: DefaultServiceAccountName,
+		MetricsServiceName: DefaultMetricsServiceName,
+	}
+	if ref != want {
+		t.Errorf("expected defaults %+v, got %+v", want, ref)
 	}
 }
 
-func TestDiscoverServiceAccount_HighPriorityWins(t *testing.T) {
+func TestRegistry_DiscoverOperator_SkipsMissingTiers(t *testing.T) {
 	r := &Registry{}
-	r.RegisterLocator(&stubLocator{priority: 50, sa: "low-sa"})
-	r.RegisterLocator(&stubLocator{priority: 5000, sa: "high-sa"})
+	full := OperatorRef{Namespace: testPlatformNS, ServiceAccountName: "sa", MetricsServiceName: "svc"}
+	r.Register(Platform, makeLocateFunc(full))
 
-	got := r.DiscoverServiceAccount(context.Background(), nil, "ns")
-	if got != "high-sa" {
-		t.Errorf("DiscoverServiceAccount() = %q, want %q", got, "high-sa")
+	ref := mustDiscover(t, r)
+	if ref.Namespace != testPlatformNS {
+		t.Errorf("Namespace = %q, want %q", ref.Namespace, testPlatformNS)
 	}
 }
 
-func TestDiscoverServiceAccount_FallsBackToDefault(t *testing.T) {
+func TestRegistry_DiscoverOperator_AllFieldsReturned(t *testing.T) {
 	r := &Registry{}
+	want := OperatorRef{
+		Namespace:          "test-ns",
+		ServiceAccountName: "test-sa",
+		MetricsServiceName: "test-svc",
+	}
+	r.Register(Explicit, makeLocateFunc(want))
 
-	got := r.DiscoverServiceAccount(context.Background(), nil, "ns")
-	if got != defaultServiceAccountName {
-		t.Errorf("DiscoverServiceAccount() = %q, want default %q", got, defaultServiceAccountName)
+	got := mustDiscover(t, r)
+	if got != want {
+		t.Errorf("DiscoverOperator() = %+v, want %+v", got, want)
 	}
 }
 
-func TestDiscoverMetricsService_HighPriorityWins(t *testing.T) {
-	r := &Registry{}
-	r.RegisterLocator(&stubLocator{priority: 50, metrics: "low-svc"})
-	r.RegisterLocator(&stubLocator{priority: 5000, metrics: "high-svc"})
+func TestRegistry_DiscoverOperator_StopsWhenComplete(t *testing.T) {
+	full := OperatorRef{Namespace: "explicit-ns", ServiceAccountName: "sa", MetricsServiceName: "svc"}
+	fallbackCalled := false
+	fallbackLocate := func(_ context.Context, _ *envconf.Config) (OperatorRef, error) {
+		fallbackCalled = true
+		return OperatorRef{Namespace: "fallback-ns"}, nil
+	}
 
-	got := r.DiscoverMetricsService(context.Background(), nil, "ns")
-	if got != "high-svc" {
-		t.Errorf("DiscoverMetricsService() = %q, want %q", got, "high-svc")
+	r := &Registry{}
+	r.Register(Explicit, makeLocateFunc(full))
+	r.Register(Fallback, fallbackLocate)
+
+	mustDiscover(t, r)
+
+	if fallbackCalled {
+		t.Error("Fallback locator was called after result was complete, want skipped")
 	}
 }
 
-func TestDiscoverMetricsService_FallsBackToDefault(t *testing.T) {
+func TestRegistry_DiscoverOperator_MergesPartialResults(t *testing.T) {
 	r := &Registry{}
+	r.Register(Explicit, makeLocateFunc(OperatorRef{Namespace: "env-ns"}))
+	r.Register(Platform, makeLocateFunc(OperatorRef{
+		Namespace:          "platform-ns",
+		ServiceAccountName: "platform-sa",
+		MetricsServiceName: "platform-svc",
+	}))
 
-	got := r.DiscoverMetricsService(context.Background(), nil, "ns")
-	if got != defaultMetricsServiceName {
-		t.Errorf("DiscoverMetricsService() = %q, want default %q", got, defaultMetricsServiceName)
+	ref := mustDiscover(t, r)
+	want := OperatorRef{
+		Namespace:          "env-ns",
+		ServiceAccountName: "platform-sa",
+		MetricsServiceName: "platform-svc",
+	}
+	if ref != want {
+		t.Errorf("DiscoverOperator() = %+v, want %+v", ref, want)
+	}
+}
+
+func TestRegistry_DiscoverOperator_NoMatchReturnsError(t *testing.T) {
+	r := &Registry{}
+	noMatch := func(_ context.Context, _ *envconf.Config) (OperatorRef, error) {
+		return OperatorRef{}, nil
+	}
+	r.Register(Explicit, noMatch)
+	r.Register(Platform, noMatch)
+	r.Register(Fallback, noMatch)
+
+	_, err := r.DiscoverOperator(context.Background(), nil)
+	if err == nil {
+		t.Fatal("DiscoverOperator() returned nil error, want error when no locator matches")
+	}
+}
+
+func TestRegistry_DiscoverOperator_PropagatesLocatorError(t *testing.T) {
+	r := &Registry{}
+	r.Register(Explicit, func(_ context.Context, _ *envconf.Config) (OperatorRef, error) {
+		return OperatorRef{}, fmt.Errorf("connection refused")
+	})
+
+	_, err := r.DiscoverOperator(context.Background(), nil)
+	if err == nil {
+		t.Fatal("DiscoverOperator() returned nil error, want propagated error")
+	}
+	if !strings.Contains(err.Error(), "connection refused") {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), "connection refused")
+	}
+}
+
+func TestRegistry_MustDiscoverOperatorOnce_CachesResult(t *testing.T) {
+	calls := 0
+	r := &Registry{}
+	r.Register(Explicit, func(_ context.Context, _ *envconf.Config) (OperatorRef, error) {
+		calls++
+		return OperatorRef{Namespace: "cached-ns", ServiceAccountName: "sa", MetricsServiceName: "svc"}, nil
+	})
+
+	first := r.MustDiscoverOperatorOnce(context.Background(), nil, t)
+	second := r.MustDiscoverOperatorOnce(context.Background(), nil, t)
+
+	if calls != 1 {
+		t.Errorf("locator called %d times, want 1 (cached)", calls)
+	}
+	if first != second {
+		t.Errorf("first = %+v, second = %+v, want identical", first, second)
+	}
+}
+
+func TestRegistry_Register_OverridesEnsureDefaults(t *testing.T) {
+	r := &Registry{}
+	custom := func(_ context.Context, _ *envconf.Config) (OperatorRef, error) {
+		return OperatorRef{Namespace: "custom-ns", ServiceAccountName: "custom-sa", MetricsServiceName: "custom-svc"}, nil
+	}
+	r.Register(Platform, custom)
+
+	ref := mustDiscover(t, r)
+	if ref.Namespace != "custom-ns" {
+		t.Errorf("Namespace = %q, want %q (ensureDefaults should not overwrite)", ref.Namespace, "custom-ns")
 	}
 }

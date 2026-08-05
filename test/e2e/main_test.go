@@ -22,7 +22,6 @@ import (
 	"context"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -37,8 +36,6 @@ import (
 )
 
 var testenv env.Environment
-
-var discoverOnce sync.Once
 
 func TestMain(m *testing.M) {
 	cfg, err := envconf.NewFromFlags()
@@ -55,13 +52,7 @@ func TestMain(m *testing.M) {
 
 	// Create a unique namespace before each test, delete it after.
 	testenv.BeforeEachTest(func(ctx context.Context, cfg *envconf.Config, t *testing.T) (context.Context, error) {
-		discoverOnce.Do(func() {
-			operatorNamespace = f.DiscoverNamespace(ctx, cfg)
-			serviceAccountName = f.DiscoverServiceAccount(ctx, cfg, operatorNamespace)
-			metricsServiceName = f.DiscoverMetricsService(ctx, cfg, operatorNamespace)
-			t.Logf("discovered operator: namespace=%s sa=%s metrics-svc=%s",
-				operatorNamespace, serviceAccountName, metricsServiceName)
-		})
+		f.MustDiscoverOperatorOnce(ctx, cfg, t)
 
 		ns := envconf.RandomName("e2e", 16)
 		nsObj := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
@@ -146,14 +137,9 @@ func dumpDiagnostics(ctx context.Context, t *testing.T, cfg *envconf.Config, ns 
 		}
 	}
 
-	// Also dump controller-manager pod logs from the operator namespace,
-	// since the controller is relevant to all test failures.
 	t.Log("--- controller-manager logs ---")
-	controllerNs := operatorNamespace
-	if controllerNs == "" {
-		controllerNs = "mcp-lifecycle-operator-system"
-		t.Log("WARNING: operator namespace not yet discovered, using fallback " + controllerNs)
-	}
+	opRef := f.MustDiscoverOperatorOnce(ctx, cfg, t)
+	controllerNs := opRef.Namespace
 	rCtrl := cfg.Client().Resources(controllerNs)
 	var ctrlPods corev1.PodList
 	if err := rCtrl.List(ctx, &ctrlPods); err == nil {
