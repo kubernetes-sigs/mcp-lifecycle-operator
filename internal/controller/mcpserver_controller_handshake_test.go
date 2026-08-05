@@ -912,7 +912,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Tools).To(BeTrue())
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Resources).To(BeTrue())
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Prompts).To(BeFalse())
-		Expect(mcpServer.Status.ServerInfo.Capabilities.Logging).To(BeTrue())
+		Expect(mcpServer.Status.ServerInfo.Capabilities.Logging).To(BeTrue()) //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Completions).To(BeFalse())
 	})
 
@@ -1078,7 +1078,7 @@ var _ = Describe("extractServerInfo", func() {
 		Expect(info.Capabilities.Tools).To(BeTrue())
 		Expect(info.Capabilities.Resources).To(BeTrue())
 		Expect(info.Capabilities.Prompts).To(BeTrue())
-		Expect(info.Capabilities.Logging).To(BeTrue())
+		Expect(info.Capabilities.Logging).To(BeTrue()) //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 		Expect(info.Capabilities.Completions).To(BeTrue())
 	})
 
@@ -1095,7 +1095,7 @@ var _ = Describe("extractServerInfo", func() {
 		Expect(info.Capabilities.Tools).To(BeTrue())
 		Expect(info.Capabilities.Resources).To(BeFalse())
 		Expect(info.Capabilities.Prompts).To(BeFalse())
-		Expect(info.Capabilities.Logging).To(BeFalse())
+		Expect(info.Capabilities.Logging).To(BeFalse()) //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 		Expect(info.Capabilities.Completions).To(BeFalse())
 	})
 

@@ -398,7 +398,8 @@ type MCPServerCapabilities struct {
 	// Prompts indicates the server supports prompt templates.
 	// +optional
 	Prompts bool `json:"prompts,omitempty"`
-	// Logging indicates the server supports sending log messages.
+	// Deprecated: Logging is deprecated per MCP protocol SEP-2577 and will be
+	// removed after the deprecation window (mid-2027).
 	// +optional
 	Logging bool `json:"logging,omitempty"`
 	// Completions indicates the server supports argument autocompletion.

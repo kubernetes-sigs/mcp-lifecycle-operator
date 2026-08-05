@@ -1694,8 +1694,9 @@ spec:
                           autocompletion.
                         type: boolean
                       logging:
-                        description: Logging indicates the server supports sending
-                          log messages.
+                        description: |-
+                          Deprecated: Logging is deprecated per MCP protocol SEP-2577 and will be
+                          removed after the deprecation window (mid-2027).
                         type: boolean
                       prompts:
                         description: Prompts indicates the server supports prompt

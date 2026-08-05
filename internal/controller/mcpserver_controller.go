@@ -388,7 +388,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				WithTools(serverInfo.Capabilities.Tools).
 				WithResources(serverInfo.Capabilities.Resources).
 				WithPrompts(serverInfo.Capabilities.Prompts).
-				WithLogging(serverInfo.Capabilities.Logging).
+				WithLogging(serverInfo.Capabilities.Logging). //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 				WithCompletions(serverInfo.Capabilities.Completions))
 		}
 		status = status.WithServerInfo(si)
