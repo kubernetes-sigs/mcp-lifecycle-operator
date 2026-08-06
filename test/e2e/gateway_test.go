@@ -30,6 +30,8 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
 func TestGatewayBindingCreation(t *testing.T) {
@@ -41,8 +43,8 @@ func TestGatewayBindingCreation(t *testing.T) {
 	)
 
 	feature := features.New("Gateway binding creation").
-		WithLabel("type", "gateway").
-		WithLabel("component", "mcpgatewaybinding").
+		WithLabel(category.Label, category.Networking).
+		WithLabel(speed.Label, speed.Moderate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			f.CreateGatewayConfigMap(ctx, t, cfg, configMapName, ns, gwName, gwNamespace, hostname)
@@ -158,8 +160,8 @@ func TestGatewayRemoval(t *testing.T) {
 	)
 
 	feature := features.New("Gateway removal").
-		WithLabel("type", "gateway").
-		WithLabel("component", "mcpgatewaybinding").
+		WithLabel(category.Label, category.Networking).
+		WithLabel(speed.Label, speed.Moderate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			f.CreateGatewayConfigMap(ctx, t, cfg, configMapName, ns, gwName, gwNamespace, hostname)
