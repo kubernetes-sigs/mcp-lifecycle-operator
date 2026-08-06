@@ -47,7 +47,7 @@ const configHashAnnotation = "mcp.x-k8s.io/config-hash"
 // --- Spec Update Tests ---
 
 func TestImageUpdate(t *testing.T) {
-	digestRef := "quay.io/matzew/mcp-everything@sha256:537cdedad807bb56140caca9c332d3577b16e533584164bbc3f27abac7b5ba15"
+	digestRef := "ghcr.io/kubernetes-sigs/mcp-lifecycle-operator/mcp-everything@sha256:7b7a1358ba0f020916e2259ee6d5e5d92b4a0637d700cb9dc4ae64ba59f0b69e"
 
 	feature := features.New("MCPServer image update").
 		WithLabel(category.Label, category.Lifecycle).

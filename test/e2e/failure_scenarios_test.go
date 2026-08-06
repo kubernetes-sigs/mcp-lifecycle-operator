@@ -436,9 +436,9 @@ func TestRecoveryFromImagePullFailure(t *testing.T) {
 			r := cfg.Client().Resources()
 
 			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
-				s.Spec.Source.ContainerImage.Ref = "quay.io/matzew/mcp-everything:latest"
+				s.Spec.Source.ContainerImage.Ref = "ghcr.io/kubernetes-sigs/mcp-lifecycle-operator/mcp-everything:latest"
 			})
-			t.Log("updated image to quay.io/matzew/mcp-everything:latest")
+			t.Log("updated image to ghcr.io/kubernetes-sigs/mcp-lifecycle-operator/mcp-everything:latest")
 
 			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server, 5*time.Minute)
 			t.Log("Ready=True — recovery from image pull failure complete")

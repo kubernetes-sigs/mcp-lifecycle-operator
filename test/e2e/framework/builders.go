@@ -106,7 +106,7 @@ func WithReplicas(n int32) MCPServerOption {
 }
 
 // NewMCPServer creates an MCPServer with sensible defaults for e2e tests.
-// Defaults: image=quay.io/matzew/mcp-everything:latest, port=3001.
+// Defaults: image=ghcr.io/kubernetes-sigs/mcp-lifecycle-operator/mcp-everything:latest, port=3001.
 func NewMCPServer(name, namespace string, opts ...MCPServerOption) *mcpv1alpha1.MCPServer {
 	server := &mcpv1alpha1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
@@ -117,7 +117,7 @@ func NewMCPServer(name, namespace string, opts ...MCPServerOption) *mcpv1alpha1.
 			Source: mcpv1alpha1.Source{
 				Type: mcpv1alpha1.SourceTypeContainerImage,
 				ContainerImage: &mcpv1alpha1.ContainerImageSource{
-					Ref: "quay.io/matzew/mcp-everything:latest",
+					Ref: "ghcr.io/kubernetes-sigs/mcp-lifecycle-operator/mcp-everything:latest",
 				},
 			},
 			Config: mcpv1alpha1.ServerConfig{

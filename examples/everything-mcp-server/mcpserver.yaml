@@ -7,7 +7,7 @@ spec:
   source:
     type: ContainerImage
     containerImage:
-      ref: quay.io/matzew/mcp-everything:latest
+      ref: ghcr.io/kubernetes-sigs/mcp-lifecycle-operator/mcp-everything:latest
   config:
     port: 3001
     path: /mcp
