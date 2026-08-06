@@ -5,6 +5,7 @@ Welcome to the MCP Lifecycle Operator guides! These guides will help you get sta
 ## Getting Started
 
 - **[Quickstart](quickstart.md)** - Deploy your first MCP server in minutes
+- **[Gateway Integration](gateway.md)** - Expose MCP servers through external gateways
 
 ## Examples
 
@@ -12,6 +13,7 @@ Check out the [examples directory](https://github.com/kubernetes-sigs/mcp-lifecy
 
 - **[Kubernetes MCP Server](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples/kubernetes-mcp-server)** - Deploy the Kubernetes MCP Server with ConfigMap configurations
 - **[Everything MCP Server](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples/everything-mcp-server)** - Deploy the Everything MCP Server
+- **[Gateway Integration](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples/gateway-integration)** - Expose an MCP server through a gateway
 
 ## Additional Resources
 
