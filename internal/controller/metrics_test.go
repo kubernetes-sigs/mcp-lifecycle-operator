@@ -55,6 +55,8 @@ var _ = Describe("MCPServer Metrics", func() {
 		deploymentFailuresTotal.Reset()
 		serviceFailuresTotal.Reset()
 		reconcileDuration.Reset()
+		handshakeTotal.Reset()
+		handshakeDuration.Reset()
 	})
 
 	It("should record Accepted and Ready condition metrics on successful reconcile", func() {
@@ -313,4 +315,112 @@ var _ = Describe("MCPServer Metrics", func() {
 			svcFailName, namespace, "Ready", "False", "ServiceUnavailable",
 		))).To(Equal(1.0))
 	})
+
+	It("should record handshake success metrics when handshake succeeds", func() {
+		hsSuccessName := "metrics-hs-ok"
+		hsSuccessNN := types.NamespacedName{Name: hsSuccessName, Namespace: namespace}
+		resource := &mcpv1alpha1.MCPServer{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hsSuccessName,
+				Namespace: namespace,
+			},
+			Spec: mcpv1alpha1.MCPServerSpec{
+				Source: mcpv1alpha1.Source{
+					Type: mcpv1alpha1.SourceTypeContainerImage,
+					ContainerImage: &mcpv1alpha1.ContainerImageSource{
+						Ref: "docker.io/library/test-image:latest",
+					},
+				},
+				Config: mcpv1alpha1.ServerConfig{Port: 8080},
+			},
+		}
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, resource) }()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+			MCPDialer: func(_ context.Context, _ string) (*mcpv1alpha1.MCPServerInfo, error) {
+				return &mcpv1alpha1.MCPServerInfo{Name: "test-server", Version: "1.0"}, nil
+			},
+		}
+		// First reconcile creates the Deployment
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: hsSuccessNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		simulateDeploymentAvailable(ctx, hsSuccessNN)
+
+		// Second reconcile triggers handshake
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: hsSuccessNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(testutil.ToFloat64(handshakeTotal.WithLabelValues(
+			hsSuccessName, namespace, "success",
+		))).To(Equal(1.0))
+		Expect(testutil.CollectAndCount(handshakeDuration)).To(BeNumerically(">", 0))
+	})
+
+	It("should record handshake failure metrics when handshake fails", func() {
+		hsFailName := "metrics-hs-fail"
+		hsFailNN := types.NamespacedName{Name: hsFailName, Namespace: namespace}
+		resource := &mcpv1alpha1.MCPServer{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hsFailName,
+				Namespace: namespace,
+			},
+			Spec: mcpv1alpha1.MCPServerSpec{
+				Source: mcpv1alpha1.Source{
+					Type: mcpv1alpha1.SourceTypeContainerImage,
+					ContainerImage: &mcpv1alpha1.ContainerImageSource{
+						Ref: "docker.io/library/test-image:latest",
+					},
+				},
+				Config: mcpv1alpha1.ServerConfig{Port: 8080},
+			},
+		}
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, resource) }()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+			MCPDialer: func(_ context.Context, _ string) (*mcpv1alpha1.MCPServerInfo, error) {
+				return nil, fmt.Errorf("connection refused")
+			},
+		}
+		// First reconcile creates the Deployment
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: hsFailNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		simulateDeploymentAvailable(ctx, hsFailNN)
+
+		// Second reconcile triggers handshake
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: hsFailNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(testutil.ToFloat64(handshakeTotal.WithLabelValues(
+			hsFailName, namespace, "failure",
+		))).To(Equal(1.0))
+		Expect(testutil.CollectAndCount(handshakeDuration)).To(BeNumerically(">", 0))
+	})
 })
+
+func simulateDeploymentAvailable(ctx context.Context, nn types.NamespacedName) {
+	dep := &appsv1.Deployment{}
+	EventuallyWithOffset(1, func() error {
+		return k8sClient.Get(ctx, nn, dep)
+	}).Should(Succeed())
+
+	dep.Status.Replicas = 1
+	dep.Status.ReadyReplicas = 1
+	dep.Status.AvailableReplicas = 1
+	dep.Status.Conditions = []appsv1.DeploymentCondition{
+		{
+			Type:   appsv1.DeploymentAvailable,
+			Status: corev1.ConditionTrue,
+		},
+	}
+	ExpectWithOffset(1, k8sClient.Status().Update(ctx, dep)).To(Succeed())
+}

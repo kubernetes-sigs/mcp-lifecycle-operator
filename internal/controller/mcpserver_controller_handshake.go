@@ -19,11 +19,13 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -41,6 +43,11 @@ func (r *MCPServerReconciler) reconcileHandshake(
 ) (metav1.Condition, *mcpv1alpha1.MCPServerInfo) {
 	logger := log.FromContext(ctx)
 
+	metricLabels := prometheus.Labels{
+		"name":      mcpServer.Name,
+		"namespace": mcpServer.Namespace,
+	}
+
 	existingReady := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeReady)
 	alreadyVerified := existingReady != nil &&
 		existingReady.Status == metav1.ConditionTrue &&
@@ -52,6 +59,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	// Ready=True even if the Deployment has a transient status fluctuation
 	// (e.g. during rollout cleanup).
 	if alreadyVerified {
+		handshakeTotal.With(withResult(metricLabels, "skip")).Inc()
 		return *existingReady, mcpServer.Status.ServerInfo
 	}
 
@@ -65,12 +73,16 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	}
 	dialCtx, dialCancel := context.WithTimeout(ctx, mcpHandshakeTimeout)
 	defer dialCancel()
+	start := time.Now()
 	info, err := dialer(dialCtx, mcpURL)
+	handshakeDuration.With(metricLabels).Observe(time.Since(start).Seconds())
 	if err != nil {
 		if isHTTPAuthError(err) {
+			handshakeTotal.With(withResult(metricLabels, "auth_skip")).Inc()
 			logger.Info("MCP endpoint returned auth error, treating as reachable", "url", mcpURL, "error", err)
 			return readyCondition, &mcpv1alpha1.MCPServerInfo{}
 		}
+		handshakeTotal.With(withResult(metricLabels, "failure")).Inc()
 		logger.Info("MCP endpoint handshake failed", "url", mcpURL, "error", err)
 		cond := newCondition(
 			ConditionTypeReady,
@@ -85,12 +97,20 @@ func (r *MCPServerReconciler) reconcileHandshake(
 		return cond, nil
 	}
 
+	handshakeTotal.With(withResult(metricLabels, "success")).Inc()
 	protocolVersion := ""
 	if info != nil {
 		protocolVersion = info.ProtocolVersion
 	}
 	logger.Info("MCP endpoint verified successfully", "url", mcpURL, "protocolVersion", protocolVersion)
 	return readyCondition, info
+}
+
+func withResult(labels prometheus.Labels, result string) prometheus.Labels {
+	m := make(prometheus.Labels, len(labels)+1)
+	maps.Copy(m, labels)
+	m["result"] = result
+	return m
 }
 
 // verifyMCPEndpoint performs an MCP protocol handshake (initialize or

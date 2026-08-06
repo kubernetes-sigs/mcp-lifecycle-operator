@@ -90,6 +90,25 @@ var (
 		},
 		[]string{"phase"},
 	)
+
+	handshakeTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Name:      "handshake_total",
+			Help:      "Total number of MCP handshake attempts.",
+		},
+		[]string{"name", "namespace", "result"},
+	)
+
+	handshakeDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Name:      "handshake_duration_seconds",
+			Help:      "Duration of MCP handshake operations in seconds.",
+			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+		},
+		[]string{"name", "namespace"},
+	)
 )
 
 func init() {
@@ -100,6 +119,8 @@ func init() {
 		serviceFailuresTotal,
 		networkPolicyFailuresTotal,
 		reconcileDuration,
+		handshakeTotal,
+		handshakeDuration,
 	)
 }
 
@@ -132,4 +153,6 @@ func cleanupMetrics(name, namespace string) {
 	deploymentFailuresTotal.DeletePartialMatch(labels)
 	serviceFailuresTotal.DeletePartialMatch(labels)
 	networkPolicyFailuresTotal.DeletePartialMatch(labels)
+	handshakeTotal.DeletePartialMatch(labels)
+	handshakeDuration.DeletePartialMatch(labels)
 }
