@@ -380,6 +380,7 @@ func WaitForBindingRegistered(ctx context.Context, t *testing.T, r *resources.Re
 			}
 			return false
 		}),
+		wait.WithContext(ctx),
 		wait.WithTimeout(d),
 		wait.WithInterval(2*time.Second),
 	)
@@ -399,6 +400,7 @@ func WaitForBindingDeleted(ctx context.Context, t *testing.T, r *resources.Resou
 	}
 	err := wait.For(
 		conditions.New(r).ResourceDeleted(binding),
+		wait.WithContext(ctx),
 		wait.WithTimeout(d),
 		wait.WithInterval(2*time.Second),
 	)
