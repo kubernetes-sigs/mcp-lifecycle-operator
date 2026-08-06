@@ -4,8 +4,9 @@ This example demonstrates exposing an MCP server through a gateway using the bui
 
 ## Prerequisites
 
-- Kubernetes cluster with the MCP Lifecycle Operator installed
-- [Gateway API CRDs](https://gateway-api.sigs.k8s.io/guides/#installing-gateway-api) installed
+- Kubernetes cluster
+- [Gateway API CRDs](https://gateway-api.sigs.k8s.io/guides/#installing-gateway-api) installed **before** the operator starts (the operator checks for HTTPRoute at startup and skips the controller if the CRD is absent)
+- MCP Lifecycle Operator installed (install or restart after the Gateway API CRDs are in place)
 - A Gateway resource deployed and managed by a gateway controller (e.g., Envoy Gateway, Istio, Cilium)
 
 ## Deploy
@@ -26,13 +27,13 @@ kubectl apply -f mcpserver-with-gateway.yaml
 
 ```bash
 # Check the MCPGatewayBinding is registered
-kubectl get mcpgatewaybindings
+kubectl get mcpgatewaybindings -n default
 
 # Check the HTTPRoute was created
-kubectl get httproutes
+kubectl get httproutes -n default
 
 # Verify the MCPServer address reflects the gateway URL
-kubectl get mcpserver kubernetes-mcp-server -o jsonpath='{.status.address.url}'
+kubectl get mcpserver kubernetes-mcp-server -n default -o jsonpath='{.status.address.url}'
 ```
 
 ## Configuration
