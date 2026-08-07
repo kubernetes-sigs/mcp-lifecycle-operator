@@ -193,6 +193,37 @@ func mcpHandshakeBackoff(retryCount int) time.Duration {
 	return delay
 }
 
+// capabilityDiffMessage compares two MCPServerCapabilities and returns a
+// human-readable message describing the differences. Nil is treated as
+// all-false. Returns an empty string when nothing changed.
+func capabilityDiffMessage(old, new *mcpv1alpha1.MCPServerCapabilities) string {
+	var oldCaps, newCaps mcpv1alpha1.MCPServerCapabilities
+	if old != nil {
+		oldCaps = *old
+	}
+	if new != nil {
+		newCaps = *new
+	}
+
+	var diffs []string
+	if oldCaps.Tools != newCaps.Tools {
+		diffs = append(diffs, fmt.Sprintf("tools: %v->%v", oldCaps.Tools, newCaps.Tools))
+	}
+	if oldCaps.Resources != newCaps.Resources {
+		diffs = append(diffs, fmt.Sprintf("resources: %v->%v", oldCaps.Resources, newCaps.Resources))
+	}
+	if oldCaps.Prompts != newCaps.Prompts {
+		diffs = append(diffs, fmt.Sprintf("prompts: %v->%v", oldCaps.Prompts, newCaps.Prompts))
+	}
+	if oldCaps.Logging != newCaps.Logging { //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
+		diffs = append(diffs, fmt.Sprintf("logging: %v->%v", oldCaps.Logging, newCaps.Logging)) //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
+	}
+	if oldCaps.Completions != newCaps.Completions {
+		diffs = append(diffs, fmt.Sprintf("completions: %v->%v", oldCaps.Completions, newCaps.Completions))
+	}
+	return strings.Join(diffs, ", ")
+}
+
 // isHTTPAuthError checks whether the error from the MCP SDK indicates an HTTP
 // 401 Unauthorized or 403 Forbidden response. The SDK does not wrap these with
 // a sentinel error type; it returns a plain error whose message ends with the

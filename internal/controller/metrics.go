@@ -109,6 +109,15 @@ var (
 		},
 		[]string{"name", "namespace"},
 	)
+
+	capabilityChangesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Name:      "capability_changes_total",
+			Help:      "Total number of MCP server capability changes detected.",
+		},
+		[]string{"name", "namespace"},
+	)
 )
 
 func init() {
@@ -121,6 +130,7 @@ func init() {
 		reconcileDuration,
 		handshakeTotal,
 		handshakeDuration,
+		capabilityChangesTotal,
 	)
 }
 
@@ -155,4 +165,5 @@ func cleanupMetrics(name, namespace string) {
 	networkPolicyFailuresTotal.DeletePartialMatch(labels)
 	handshakeTotal.DeletePartialMatch(labels)
 	handshakeDuration.DeletePartialMatch(labels)
+	capabilityChangesTotal.DeletePartialMatch(labels)
 }

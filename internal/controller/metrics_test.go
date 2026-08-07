@@ -57,6 +57,7 @@ var _ = Describe("MCPServer Metrics", func() {
 		reconcileDuration.Reset()
 		handshakeTotal.Reset()
 		handshakeDuration.Reset()
+		capabilityChangesTotal.Reset()
 	})
 
 	It("should record Accepted and Ready condition metrics on successful reconcile", func() {
@@ -447,6 +448,72 @@ var _ = Describe("MCPServer Metrics", func() {
 			hsAuthName, namespace, "auth_skip",
 		))).To(Equal(1.0))
 		Expect(testutil.CollectAndCount(handshakeDuration)).To(BeNumerically(">", 0))
+	})
+
+	It("should increment capabilityChangesTotal when capabilities change between reconciles", func() {
+		capChangeName := "metrics-cap-change"
+		capChangeNN := types.NamespacedName{Name: capChangeName, Namespace: namespace}
+		resource := &mcpv1alpha1.MCPServer{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      capChangeName,
+				Namespace: namespace,
+			},
+			Spec: mcpv1alpha1.MCPServerSpec{
+				Source: mcpv1alpha1.Source{
+					Type: mcpv1alpha1.SourceTypeContainerImage,
+					ContainerImage: &mcpv1alpha1.ContainerImageSource{
+						Ref: "docker.io/library/test-image:latest",
+					},
+				},
+				Config: mcpv1alpha1.ServerConfig{Port: 8080},
+			},
+		}
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, resource) }()
+
+		firstCaps := &mcpv1alpha1.MCPServerCapabilities{Tools: true, Resources: false}
+		secondCaps := &mcpv1alpha1.MCPServerCapabilities{Tools: true, Resources: true}
+
+		currentCaps := firstCaps
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+			MCPDialer: func(_ context.Context, _ string) (*mcpv1alpha1.MCPServerInfo, error) {
+				return &mcpv1alpha1.MCPServerInfo{
+					Name:         "cap-server",
+					Version:      "1.0",
+					Capabilities: currentCaps.DeepCopy(),
+				}, nil
+			},
+		}
+
+		// First reconcile creates the Deployment
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: capChangeNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		simulateDeploymentAvailable(ctx, capChangeNN)
+
+		// Second reconcile triggers handshake and sets initial capabilities
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: capChangeNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Change capabilities for next handshake
+		currentCaps = secondCaps
+
+		// Bump generation by changing a spec field so the handshake re-runs
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, capChangeNN, mcpServer)).To(Succeed())
+		mcpServer.Spec.Config.Path = "/mcp-v2"
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		// Third reconcile detects the capability change
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: capChangeNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(testutil.ToFloat64(capabilityChangesTotal.WithLabelValues(
+			capChangeName, namespace,
+		))).To(Equal(1.0))
 	})
 
 	It("should record skip metrics when handshake was already verified", func() {

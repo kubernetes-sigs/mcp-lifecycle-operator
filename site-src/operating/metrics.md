@@ -43,6 +43,7 @@ Custom metrics use the Prometheus namespace **`mcpserver`** (exported names star
 | `mcpserver_reconcile_phase_duration_seconds` | histogram | Duration of reconciliation phases **validation**, **deployment**, **service**, and **networkpolicy** (seconds; default Prometheus histogram buckets). |
 | `mcpserver_handshake_total` | counter | Total MCP handshake attempts per `MCPServer`, broken down by `result`. |
 | `mcpserver_handshake_duration_seconds` | histogram | Duration of MCP handshake operations in seconds (buckets: 0.1, 0.25, 0.5, 1, 2.5, 5, 10). |
+| `mcpserver_capability_changes_total` | counter | Total MCP server capability changes detected between reconcile generations. |
 
 ### Labels for `mcpserver_condition_info`
 
@@ -127,6 +128,13 @@ histogram_quantile(
 | `namespace` | `MCPServer` namespace |
 
 Duration is recorded for every handshake attempt (success, failure, or auth_skip) but not for skipped handshakes.
+
+### Labels for `mcpserver_capability_changes_total`
+
+| Label | Description |
+| --- | --- |
+| `name` | `MCPServer` name |
+| `namespace` | `MCPServer` namespace |
 
 ### Labels for failure counters (`mcpserver_*_failures_total`)
 

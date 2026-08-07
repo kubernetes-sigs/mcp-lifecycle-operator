@@ -121,6 +121,8 @@ const (
 	eventActionServiceReconcileFailed = "ServiceReconcileFailed"
 	// eventActionNetworkPolicyReconcileFailed is the reporting action when NetworkPolicy reconciliation fails.
 	eventActionNetworkPolicyReconcileFailed = "NetworkPolicyReconcileFailed"
+	// eventActionCapabilityChangeDetected is the reporting action when capability changes are detected.
+	eventActionCapabilityChangeDetected = "CapabilityChangeDetected"
 
 	// requeueDelayMCPHandshake is the initial delay before requeuing when an MCP handshake fails.
 	requeueDelayMCPHandshake = 10 * time.Second
@@ -364,6 +366,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			conditionToAC(acceptedCondition),
 			conditionToAC(readyCondition),
 		)
+
+	r.detectCapabilityChanges(mcpServer, serverInfo)
 
 	if serverInfo != nil {
 		si := acv1alpha1.MCPServerInfo()
@@ -612,6 +616,27 @@ func (r *MCPServerReconciler) emitMCPHandshakeRetriesExhausted(mcpServer *mcpv1a
 	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonMCPEndpointUnavailable, eventActionMCPHandshakeRetriesExhausted,
 		"MCP handshake retries exhausted for MCPServer %s after %d attempts; fix the MCP endpoint or update spec to retry",
 		mcpServer.Name, retryCount)
+}
+
+func (r *MCPServerReconciler) detectCapabilityChanges(mcpServer *mcpv1alpha1.MCPServer, serverInfo *mcpv1alpha1.MCPServerInfo) {
+	if serverInfo == nil || mcpServer.Status.ServerInfo == nil ||
+		serverInfo.Capabilities == nil || mcpServer.Status.ServerInfo.Capabilities == nil {
+		return
+	}
+	diff := capabilityDiffMessage(mcpServer.Status.ServerInfo.Capabilities, serverInfo.Capabilities)
+	if diff == "" {
+		return
+	}
+	capabilityChangesTotal.WithLabelValues(mcpServer.Name, mcpServer.Namespace).Inc()
+	r.emitCapabilityChangeDetected(mcpServer, diff)
+}
+
+func (r *MCPServerReconciler) emitCapabilityChangeDetected(mcpServer *mcpv1alpha1.MCPServer, diff string) {
+	if r.Recorder == nil {
+		return
+	}
+	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, "CapabilityChanged", eventActionCapabilityChangeDetected,
+		"MCP server capabilities changed: %s", diff)
 }
 
 func (r *MCPServerReconciler) applyStatus(
