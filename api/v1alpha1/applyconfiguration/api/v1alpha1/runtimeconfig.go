@@ -50,6 +50,8 @@ type RuntimeConfigApplyConfiguration struct {
 	// - Requests: 50m CPU, 64Mi memory
 	// - Limits: 500m CPU, 256Mi memory
 	// Supports partial specification (e.g., only requests or only limits).
+	// When partially specified, only the provided fields are used; defaults
+	// are not merged into the unspecified fields.
 	// Example:
 	// resources:
 	// requests:
