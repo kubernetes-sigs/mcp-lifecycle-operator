@@ -368,7 +368,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			conditionToAC(readyCondition),
 		)
 
-	r.detectCapabilityChanges(mcpServer, serverInfo)
+	capDiff := capabilityChangeMessage(mcpServer, serverInfo)
 
 	if serverInfo != nil {
 		si := acv1alpha1.MCPServerInfo()
@@ -398,6 +398,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.applyStatus(ctx, mcpServer, status); err != nil {
 		logger.Error(err, "Failed to apply MCPServer status")
 		return ctrl.Result{}, err
+	}
+
+	if capDiff != "" {
+		capabilityChangesTotal.WithLabelValues(mcpServer.Name, mcpServer.Namespace).Inc()
+		r.emitCapabilityChangeDetected(mcpServer, capDiff)
 	}
 
 	logger.Info("Successfully reconciled MCPServer",
@@ -619,19 +624,14 @@ func (r *MCPServerReconciler) emitMCPHandshakeRetriesExhausted(mcpServer *mcpv1a
 		mcpServer.Name, retryCount)
 }
 
-func (r *MCPServerReconciler) detectCapabilityChanges(mcpServer *mcpv1alpha1.MCPServer, serverInfo *mcpv1alpha1.MCPServerInfo) {
+func capabilityChangeMessage(mcpServer *mcpv1alpha1.MCPServer, serverInfo *mcpv1alpha1.MCPServerInfo) string {
 	if serverInfo == nil || mcpServer.Status.ServerInfo == nil {
-		return
+		return ""
 	}
 	if serverInfo.Capabilities == nil && mcpServer.Status.ServerInfo.Capabilities == nil {
-		return
+		return ""
 	}
-	diff := capabilityDiffMessage(mcpServer.Status.ServerInfo.Capabilities, serverInfo.Capabilities)
-	if diff == "" {
-		return
-	}
-	capabilityChangesTotal.WithLabelValues(mcpServer.Name, mcpServer.Namespace).Inc()
-	r.emitCapabilityChangeDetected(mcpServer, diff)
+	return capabilityDiffMessage(mcpServer.Status.ServerInfo.Capabilities, serverInfo.Capabilities)
 }
 
 func (r *MCPServerReconciler) emitCapabilityChangeDetected(mcpServer *mcpv1alpha1.MCPServer, diff string) {

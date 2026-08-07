@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -479,6 +480,7 @@ var _ = Describe("MCPServer Metrics", func() {
 			Client:    k8sClient,
 			Scheme:    k8sClient.Scheme(),
 			APIReader: k8sClient,
+			Recorder:  events.NewFakeRecorder(testRecorderBuffer),
 			MCPDialer: func(_ context.Context, _ string) (*mcpv1alpha1.MCPServerInfo, error) {
 				return &mcpv1alpha1.MCPServerInfo{
 					Name:         "cap-server",

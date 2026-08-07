@@ -1056,6 +1056,61 @@ var _ = Describe("capabilityDiffMessage", func() {
 	})
 })
 
+var _ = Describe("capabilityChangeMessage", func() {
+	It("should return empty when serverInfo is nil", func() {
+		mcpServer := &mcpv1alpha1.MCPServer{
+			Status: mcpv1alpha1.MCPServerStatus{
+				ServerInfo: &mcpv1alpha1.MCPServerInfo{
+					Capabilities: &mcpv1alpha1.MCPServerCapabilities{Tools: true},
+				},
+			},
+		}
+		Expect(capabilityChangeMessage(mcpServer, nil)).To(BeEmpty())
+	})
+
+	It("should return empty when status serverInfo is nil", func() {
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		serverInfo := &mcpv1alpha1.MCPServerInfo{
+			Capabilities: &mcpv1alpha1.MCPServerCapabilities{Tools: true},
+		}
+		Expect(capabilityChangeMessage(mcpServer, serverInfo)).To(BeEmpty())
+	})
+
+	It("should return empty when both capabilities are nil", func() {
+		mcpServer := &mcpv1alpha1.MCPServer{
+			Status: mcpv1alpha1.MCPServerStatus{
+				ServerInfo: &mcpv1alpha1.MCPServerInfo{},
+			},
+		}
+		serverInfo := &mcpv1alpha1.MCPServerInfo{}
+		Expect(capabilityChangeMessage(mcpServer, serverInfo)).To(BeEmpty())
+	})
+
+	It("should return diff when capabilities changed", func() {
+		mcpServer := &mcpv1alpha1.MCPServer{
+			Status: mcpv1alpha1.MCPServerStatus{
+				ServerInfo: &mcpv1alpha1.MCPServerInfo{
+					Capabilities: &mcpv1alpha1.MCPServerCapabilities{Tools: false},
+				},
+			},
+		}
+		serverInfo := &mcpv1alpha1.MCPServerInfo{
+			Capabilities: &mcpv1alpha1.MCPServerCapabilities{Tools: true},
+		}
+		Expect(capabilityChangeMessage(mcpServer, serverInfo)).To(ContainSubstring("tools: false->true"))
+	})
+})
+
+var _ = Describe("emitCapabilityChangeDetected", func() {
+	It("should not panic when Recorder is nil", func() {
+		r := &MCPServerReconciler{}
+		mcpServer := &mcpv1alpha1.MCPServer{
+			ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+		}
+		Expect(func() { r.emitCapabilityChangeDetected(mcpServer, "tools: false->true") }).NotTo(Panic())
+	})
+})
+
 var _ = Describe("extractServerInfo", func() {
 	It("should return nil for nil input", func() {
 		Expect(extractServerInfo(nil)).To(BeNil())
