@@ -59,14 +59,25 @@ module.exports = {
       "matchDepTypes": ["toolchain"],
       "groupName": "go version",
     },
-    // Only bump the minimum supported Go version when adopting a new minor
+    // Bump the `go` directive in place, grouped with the other go updates.
+    // NOTE: `rangeStrategy` cannot be combined with `matchUpdateTypes` in a
+    // single rule (Renovate rejects the rule outright), so the update-type
+    // filtering lives in the follow-up rule below.
     {
       "matchManagers": ["gomod"],
       "matchDepNames": ["go"],
       "matchDepTypes": ["golang"],
-      "matchUpdateTypes": ["minor"],
       "rangeStrategy": "bump",
       "groupName": "go version",
+    },
+    // Only bump the minimum supported Go version when adopting a new minor,
+    // i.e. ignore patch-level bumps of the `go` directive.
+    {
+      "matchManagers": ["gomod"],
+      "matchDepNames": ["go"],
+      "matchDepTypes": ["golang"],
+      "matchUpdateTypes": ["patch"],
+      "enabled": false,
     },
     // Group GitHub Actions updates together
     {

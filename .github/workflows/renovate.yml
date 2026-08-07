@@ -30,4 +30,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           configurationFile: .github/renovate-config.js
         env:
-          LOG_LEVEL: info
+          # TODO: drop back to `info` once the `repository-changed` abort is
+          # diagnosed; the throw sites for it only log at debug level.
+          LOG_LEVEL: debug
