@@ -110,10 +110,7 @@ var _ = AfterSuite(func() {
 func gatewayAPICRDPath() string {
 	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "sigs.k8s.io/gateway-api")
 	out, err := cmd.Output()
-	if err != nil {
-		logf.Log.Error(err, "Failed to resolve Gateway API module directory via 'go list'")
-		return ""
-	}
+	Expect(err).NotTo(HaveOccurred(), "Failed to resolve Gateway API module directory via 'go list -m'; run 'go mod download' first")
 	return filepath.Join(strings.TrimSpace(string(out)), "config", "crd", "standard")
 }
 
