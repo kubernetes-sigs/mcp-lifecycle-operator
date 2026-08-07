@@ -319,13 +319,14 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	serviceStart := time.Now()
 	if err := r.reconcileService(ctx, mcpServer); err != nil {
 		reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
-		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
-			counter:     serviceFailuresTotal,
-			reason:      ReasonServiceUnavailable,
-			resource:    "Service",
-			isDuplicate: duplicateServiceUnavailable,
-			emitEvent:   r.emitServiceReconcileFailed,
-		})
+		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err,
+			r.withGatewayStatus(mcpServer, resourceFailureParams{
+				counter:     serviceFailuresTotal,
+				reason:      ReasonServiceUnavailable,
+				resource:    "Service",
+				isDuplicate: duplicateServiceUnavailable,
+				emitEvent:   r.emitServiceReconcileFailed,
+			}))
 	}
 
 	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
@@ -334,13 +335,14 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	networkPolicyStart := time.Now()
 	if err := r.reconcileNetworkPolicy(ctx, mcpServer); err != nil {
 		reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseNetworkPolicy}).Observe(time.Since(networkPolicyStart).Seconds())
-		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
-			counter:     networkPolicyFailuresTotal,
-			reason:      ReasonNetworkPolicyUnavailable,
-			resource:    "NetworkPolicy",
-			isDuplicate: duplicateNetworkPolicyUnavailable,
-			emitEvent:   r.emitNetworkPolicyReconcileFailed,
-		})
+		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err,
+			r.withGatewayStatus(mcpServer, resourceFailureParams{
+				counter:     networkPolicyFailuresTotal,
+				reason:      ReasonNetworkPolicyUnavailable,
+				resource:    "NetworkPolicy",
+				isDuplicate: duplicateNetworkPolicyUnavailable,
+				emitEvent:   r.emitNetworkPolicyReconcileFailed,
+			}))
 	}
 	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseNetworkPolicy}).Observe(time.Since(networkPolicyStart).Seconds())
 
@@ -349,7 +351,13 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.reconcileGatewayBinding(ctx, mcpServer); err != nil {
 		reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseGatewayBinding}).Observe(time.Since(gatewayBindingStart).Seconds())
 		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err,
-			r.gatewayBindingFailureParams(mcpServer))
+			r.withGatewayStatus(mcpServer, resourceFailureParams{
+				counter:     gatewayBindingFailuresTotal,
+				reason:      ReasonGatewayNotRegistered,
+				resource:    "MCPGatewayBinding",
+				isDuplicate: duplicateGatewayBindingUnavailable,
+				emitEvent:   r.emitGatewayBindingReconcileFailed,
+			}))
 	}
 	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseGatewayBinding}).Observe(time.Since(gatewayBindingStart).Seconds())
 
@@ -623,14 +631,7 @@ type resourceFailureParams struct {
 	gatewayBinding  *mcpv1alpha1.GatewayBindingStatus
 }
 
-func (r *MCPServerReconciler) gatewayBindingFailureParams(mcpServer *mcpv1alpha1.MCPServer) resourceFailureParams {
-	params := resourceFailureParams{
-		counter:     gatewayBindingFailuresTotal,
-		reason:      ReasonGatewayNotRegistered,
-		resource:    "MCPGatewayBinding",
-		isDuplicate: duplicateGatewayBindingUnavailable,
-		emitEvent:   r.emitGatewayBindingReconcileFailed,
-	}
+func (r *MCPServerReconciler) withGatewayStatus(mcpServer *mcpv1alpha1.MCPServer, params resourceFailureParams) resourceFailureParams {
 	if gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered); gwCond != nil {
 		params.extraConditions = []metav1.Condition{*gwCond}
 	}

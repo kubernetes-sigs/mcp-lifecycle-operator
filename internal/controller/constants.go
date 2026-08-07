@@ -44,8 +44,8 @@ const (
 	ConditionTypeRegistered        = "Registered"
 	ConditionTypeGatewayRegistered = "GatewayRegistered"
 
-	ReasonGatewayRegistered      = "Registered"
-	ReasonGatewayNotRegistered   = "NotRegistered"
+	ReasonGatewayRegistered      = "GatewayRegistered"
+	ReasonGatewayNotRegistered   = "GatewayNotRegistered"
 	ReasonGatewayBindingNotFound = "BindingNotFound"
 )
 

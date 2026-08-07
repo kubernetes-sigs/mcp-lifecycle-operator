@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -121,6 +122,8 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			CommonRouteSpec: gatewayv1.CommonRouteSpec{
 				ParentRefs: []gatewayv1.ParentReference{
 					{
+						Group:     ptr.To(gatewayv1.Group(gatewayv1.GroupName)),
+						Kind:      ptr.To(gatewayv1.Kind("Gateway")),
 						Name:      gatewayv1.ObjectName(gwName),
 						Namespace: &gwNS,
 					},
@@ -140,9 +143,12 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 						{
 							BackendRef: gatewayv1.BackendRef{
 								BackendObjectReference: gatewayv1.BackendObjectReference{
-									Name: gatewayv1.ObjectName(mcpServer.Name),
-									Port: &port,
+									Group: ptr.To(gatewayv1.Group("")),
+									Kind:  ptr.To(gatewayv1.Kind("Service")),
+									Name:  gatewayv1.ObjectName(mcpServer.Name),
+									Port:  &port,
 								},
+								Weight: ptr.To(int32(1)), //nolint:modernize // value is 1, not zero
 							},
 						},
 					},
@@ -170,6 +176,9 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	} else if err != nil {
 		return ctrl.Result{}, err
 	} else {
+		if err := controllerutil.SetControllerReference(binding, existing, r.Scheme); err != nil {
+			return ctrl.Result{}, fmt.Errorf("setting controller reference on existing HTTPRoute: %w", err)
+		}
 		if !equality.Semantic.DeepEqual(existing.Spec, httpRoute.Spec) {
 			logger.Info("Updating HTTPRoute", "name", httpRoute.Name)
 			existing.Spec = httpRoute.Spec
@@ -203,6 +212,12 @@ func (r *MCPGatewayBindingReconciler) updateBindingStatus(
 	status metav1.ConditionStatus,
 	reason, message, url string,
 ) error {
+	existing := meta.FindStatusCondition(binding.Status.Conditions, ConditionTypeRegistered)
+	if existing != nil && existing.Status == status && existing.Reason == reason &&
+		existing.Message == message && binding.Status.URL == url {
+		return nil
+	}
+
 	condition := metav1.Condition{
 		Type:               ConditionTypeRegistered,
 		Status:             status,
