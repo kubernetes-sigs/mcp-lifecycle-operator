@@ -85,6 +85,7 @@ const (
 	ReasonScaledToZero             = "ScaledToZero"
 	ReasonInitializing             = "Initializing"
 	ReasonMCPEndpointUnavailable   = "MCPEndpointUnavailable"
+	ReasonCapabilityChanged        = "CapabilityChanged"
 )
 
 // Container waiting reasons from Kubernetes pod status.
@@ -619,8 +620,10 @@ func (r *MCPServerReconciler) emitMCPHandshakeRetriesExhausted(mcpServer *mcpv1a
 }
 
 func (r *MCPServerReconciler) detectCapabilityChanges(mcpServer *mcpv1alpha1.MCPServer, serverInfo *mcpv1alpha1.MCPServerInfo) {
-	if serverInfo == nil || mcpServer.Status.ServerInfo == nil ||
-		serverInfo.Capabilities == nil || mcpServer.Status.ServerInfo.Capabilities == nil {
+	if serverInfo == nil || mcpServer.Status.ServerInfo == nil {
+		return
+	}
+	if serverInfo.Capabilities == nil && mcpServer.Status.ServerInfo.Capabilities == nil {
 		return
 	}
 	diff := capabilityDiffMessage(mcpServer.Status.ServerInfo.Capabilities, serverInfo.Capabilities)
@@ -635,7 +638,7 @@ func (r *MCPServerReconciler) emitCapabilityChangeDetected(mcpServer *mcpv1alpha
 	if r.Recorder == nil {
 		return
 	}
-	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, "CapabilityChanged", eventActionCapabilityChangeDetected,
+	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonCapabilityChanged, eventActionCapabilityChangeDetected,
 		"MCP server capabilities changed: %s", diff)
 }
 

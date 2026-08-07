@@ -564,6 +564,73 @@ var _ = Describe("MCPServer Metrics", func() {
 			hsSkipName, namespace, "skip",
 		))).To(Equal(1.0))
 	})
+
+	It("should detect capability change when capabilities go from non-nil to nil", func() {
+		capNilName := "metrics-cap-nil"
+		capNilNN := types.NamespacedName{Name: capNilName, Namespace: namespace}
+		resource := &mcpv1alpha1.MCPServer{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      capNilName,
+				Namespace: namespace,
+			},
+			Spec: mcpv1alpha1.MCPServerSpec{
+				Source: mcpv1alpha1.Source{
+					Type: mcpv1alpha1.SourceTypeContainerImage,
+					ContainerImage: &mcpv1alpha1.ContainerImageSource{
+						Ref: "docker.io/library/test-image:latest",
+					},
+				},
+				Config: mcpv1alpha1.ServerConfig{Port: 8080},
+			},
+		}
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, resource) }()
+
+		firstCaps := &mcpv1alpha1.MCPServerCapabilities{Tools: true, Resources: true}
+		returnCaps := firstCaps
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+			MCPDialer: func(_ context.Context, _ string) (*mcpv1alpha1.MCPServerInfo, error) {
+				info := &mcpv1alpha1.MCPServerInfo{
+					Name:    "cap-nil-server",
+					Version: "1.0",
+				}
+				if returnCaps != nil {
+					info.Capabilities = returnCaps.DeepCopy()
+				}
+				return info, nil
+			},
+		}
+
+		// First reconcile creates the Deployment
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: capNilNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		simulateDeploymentAvailable(ctx, capNilNN)
+
+		// Second reconcile triggers handshake and sets initial capabilities
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: capNilNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Server now returns nil capabilities
+		returnCaps = nil
+
+		// Bump generation so the handshake re-runs
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, capNilNN, mcpServer)).To(Succeed())
+		mcpServer.Spec.Config.Path = "/mcp-v2"
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		// Third reconcile detects the capability change (non-nil to nil)
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: capNilNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(testutil.ToFloat64(capabilityChangesTotal.WithLabelValues(
+			capNilName, namespace,
+		))).To(Equal(1.0))
+	})
 })
 
 func simulateDeploymentAvailable(ctx context.Context, nn types.NamespacedName) {

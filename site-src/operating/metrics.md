@@ -136,6 +136,12 @@ Duration is recorded for every handshake attempt (success, failure, or auth_skip
 | `name` | `MCPServer` name |
 | `namespace` | `MCPServer` namespace |
 
+**Example query**
+
+```promql
+sum(rate(mcpserver_capability_changes_total[5m])) by (name, namespace)
+```
+
 ### Labels for failure counters (`mcpserver_*_failures_total`)
 
 `mcpserver_validation_failures_total`, `mcpserver_deployment_failures_total`, `mcpserver_service_failures_total`, and `mcpserver_networkpolicy_failures_total` share the **same label set**:
