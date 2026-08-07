@@ -46,7 +46,9 @@ type RuntimeConfigApplyConfiguration struct {
 	Security *SecurityConfigApplyConfiguration `json:"security,omitempty"`
 	// Resources defines the resource requirements for the MCP server container.
 	// This includes CPU and memory requests and limits.
-	// If not specified, the container will run without explicit resource constraints.
+	// If not specified, the following defaults are applied:
+	// - Requests: 50m CPU, 64Mi memory
+	// - Limits: 500m CPU, 256Mi memory
 	// Supports partial specification (e.g., only requests or only limits).
 	// Example:
 	// resources:

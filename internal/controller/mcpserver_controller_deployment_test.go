@@ -705,8 +705,36 @@ var _ = Describe("MCPServer Controller - Resource Requirements", func() {
 			Namespace: "default",
 		}, deployment)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(deployment.Spec.Template.Spec.Containers[0].Resources.Requests).To(BeEmpty())
-		Expect(deployment.Spec.Template.Spec.Containers[0].Resources.Limits).To(BeEmpty())
+		Expect(deployment.Spec.Template.Spec.Containers[0].Resources.Requests).To(HaveKeyWithValue(corev1.ResourceCPU, resource.MustParse("50m")))
+		Expect(deployment.Spec.Template.Spec.Containers[0].Resources.Requests).To(HaveKeyWithValue(corev1.ResourceMemory, resource.MustParse("64Mi")))
+		Expect(deployment.Spec.Template.Spec.Containers[0].Resources.Limits).To(HaveKeyWithValue(corev1.ResourceCPU, resource.MustParse("500m")))
+		Expect(deployment.Spec.Template.Spec.Containers[0].Resources.Limits).To(HaveKeyWithValue(corev1.ResourceMemory, resource.MustParse("256Mi")))
+	})
+
+	It("should apply default resources when none specified", func() {
+		defaultResName := "test-default-resources"
+		defaultResNN := types.NamespacedName{Name: defaultResName, Namespace: "default"}
+		mcpServer := newTestMCPServer(defaultResName)
+		// Resources is nil by default from newTestMCPServer
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{Name: defaultResName, Namespace: "default"},
+			})
+		}()
+
+		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: defaultResNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		deployment := &appsv1.Deployment{}
+		err = k8sClient.Get(ctx, client.ObjectKey{Name: defaultResName, Namespace: "default"}, deployment)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
+		Expect(deployment.Spec.Template.Spec.Containers[0].Resources.Requests).To(HaveKeyWithValue(corev1.ResourceCPU, resource.MustParse("50m")))
+		Expect(deployment.Spec.Template.Spec.Containers[0].Resources.Requests).To(HaveKeyWithValue(corev1.ResourceMemory, resource.MustParse("64Mi")))
+		Expect(deployment.Spec.Template.Spec.Containers[0].Resources.Limits).To(HaveKeyWithValue(corev1.ResourceCPU, resource.MustParse("500m")))
+		Expect(deployment.Spec.Template.Spec.Containers[0].Resources.Limits).To(HaveKeyWithValue(corev1.ResourceMemory, resource.MustParse("256Mi")))
 	})
 
 	It("should handle resources with only requests (no limits)", func() {
