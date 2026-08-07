@@ -1100,6 +1100,19 @@ var _ = Describe("capabilityChangeMessage", func() {
 		Expect(diff).To(ContainSubstring("resources: false->true"))
 	})
 
+	It("should return diff when old capabilities are non-nil and new are nil", func() {
+		mcpServer := &mcpv1alpha1.MCPServer{
+			Status: mcpv1alpha1.MCPServerStatus{
+				ServerInfo: &mcpv1alpha1.MCPServerInfo{
+					Capabilities: &mcpv1alpha1.MCPServerCapabilities{Tools: true},
+				},
+			},
+		}
+		serverInfo := &mcpv1alpha1.MCPServerInfo{}
+		Expect(capabilityChangeMessage(mcpServer, serverInfo)).
+			To(ContainSubstring("tools: true->false"))
+	})
+
 	It("should return diff when capabilities changed", func() {
 		mcpServer := &mcpv1alpha1.MCPServer{
 			Status: mcpv1alpha1.MCPServerStatus{
