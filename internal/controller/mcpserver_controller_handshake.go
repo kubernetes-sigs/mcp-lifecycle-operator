@@ -73,17 +73,21 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	}
 	dialCtx, dialCancel := context.WithTimeout(ctx, mcpHandshakeTimeout)
 	defer dialCancel()
+	auditHandshakeAttempt(ctx, mcpServer, mcpURL)
 	start := time.Now()
 	info, err := dialer(dialCtx, mcpURL)
-	handshakeDuration.With(metricLabels).Observe(time.Since(start).Seconds())
+	elapsed := time.Since(start)
+	handshakeDuration.With(metricLabels).Observe(elapsed.Seconds())
 	if err != nil {
 		if isHTTPAuthError(err) {
 			handshakeTotal.With(withResult(metricLabels, "auth_skip")).Inc()
 			logger.Info("MCP endpoint returned auth error, treating as reachable", "url", mcpURL, "error", err)
+			auditHandshakeAuthSkip(ctx, mcpServer, mcpURL, err)
 			return readyCondition, &mcpv1alpha1.MCPServerInfo{}
 		}
 		handshakeTotal.With(withResult(metricLabels, "failure")).Inc()
 		logger.Info("MCP endpoint handshake failed", "url", mcpURL, "error", err)
+		auditHandshakeFailed(ctx, mcpServer, mcpURL, err, elapsed)
 		cond := newCondition(
 			ConditionTypeReady,
 			metav1.ConditionFalse,
@@ -103,6 +107,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 		protocolVersion = info.ProtocolVersion
 	}
 	logger.Info("MCP endpoint verified successfully", "url", mcpURL, "protocolVersion", protocolVersion)
+	auditHandshakeSuccess(ctx, mcpServer, mcpURL, info, elapsed)
 	return readyCondition, info
 }
 

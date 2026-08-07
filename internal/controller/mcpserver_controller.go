@@ -407,6 +407,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if capDiff != "" {
 		capabilityChangesTotal.WithLabelValues(mcpServer.Name, mcpServer.Namespace).Inc()
 		r.emitCapabilityChangeDetected(mcpServer, capDiff)
+		auditCapabilityChange(ctx, mcpServer, capDiff)
 	}
 
 	logger.Info("Successfully reconciled MCPServer",
@@ -426,6 +427,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if retryCount >= maxMCPHandshakeRetries {
 			logger.Info("MCP handshake retries exhausted, not requeuing",
 				"retries", retryCount, "max", maxMCPHandshakeRetries)
+			auditHandshakeRetriesExhausted(ctx, mcpServer, retryCount, maxMCPHandshakeRetries)
 			return ctrl.Result{}, nil
 		}
 		// retryCount is 1-based (already incremented); backoff expects 0-based
@@ -497,6 +499,7 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 	}
 
 	logger.Info("MCPServer configuration is invalid", "reason", validationErr.Reason)
+	auditConfigurationRejected(ctx, mcpServer, validationErr.Reason, validationErr.Message)
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		readyCondition.Type, string(readyCondition.Status), readyCondition.Reason)
 	return nil
