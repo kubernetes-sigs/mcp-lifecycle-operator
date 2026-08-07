@@ -85,7 +85,11 @@ const (
 	ReasonScaledToZero             = "ScaledToZero"
 	ReasonInitializing             = "Initializing"
 	ReasonMCPEndpointUnavailable   = "MCPEndpointUnavailable"
-	ReasonCapabilityChanged        = "CapabilityChanged"
+)
+
+// Event-only reasons (not used as condition reasons).
+const (
+	ReasonCapabilityChanged = "CapabilityChanged"
 )
 
 // Container waiting reasons from Kubernetes pod status.

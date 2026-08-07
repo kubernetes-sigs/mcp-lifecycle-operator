@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -516,6 +517,17 @@ var _ = Describe("MCPServer Metrics", func() {
 		Expect(testutil.ToFloat64(capabilityChangesTotal.WithLabelValues(
 			capChangeName, namespace,
 		))).To(Equal(1.0))
+
+		collected := drainEvents(reconciler.Recorder.(*events.FakeRecorder).Events)
+		var capEvent string
+		for _, ev := range collected {
+			if strings.Contains(ev, ReasonCapabilityChanged) {
+				capEvent = ev
+			}
+		}
+		Expect(capEvent).NotTo(BeEmpty(), "expected a CapabilityChanged event")
+		Expect(capEvent).To(ContainSubstring(corev1.EventTypeWarning))
+		Expect(capEvent).To(ContainSubstring("resources: false->true"))
 	})
 
 	It("should record skip metrics when handshake was already verified", func() {
@@ -590,10 +602,12 @@ var _ = Describe("MCPServer Metrics", func() {
 
 		firstCaps := &mcpv1alpha1.MCPServerCapabilities{Tools: true, Resources: true}
 		returnCaps := firstCaps
+		fr := events.NewFakeRecorder(testRecorderBuffer)
 		reconciler := &MCPServerReconciler{
 			Client:    k8sClient,
 			Scheme:    k8sClient.Scheme(),
 			APIReader: k8sClient,
+			Recorder:  fr,
 			MCPDialer: func(_ context.Context, _ string) (*mcpv1alpha1.MCPServerInfo, error) {
 				info := &mcpv1alpha1.MCPServerInfo{
 					Name:    "cap-nil-server",

@@ -193,6 +193,9 @@ func mcpHandshakeBackoff(retryCount int) time.Duration {
 	return delay
 }
 
+// capabilityDiffMessage compares two MCPServerCapabilities and returns a
+// human-readable message describing the differences. Nil is treated as
+// all-false. Returns an empty string when nothing changed.
 func capabilityDiffMessage(old, new *mcpv1alpha1.MCPServerCapabilities) string {
 	var oldCaps, newCaps mcpv1alpha1.MCPServerCapabilities
 	if old != nil {
