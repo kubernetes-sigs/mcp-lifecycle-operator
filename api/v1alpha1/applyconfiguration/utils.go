@@ -50,6 +50,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.MCPServerSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("MCPServerStatus"):
 		return &apiv1alpha1.MCPServerStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("NetworkConfig"):
+		return &apiv1alpha1.NetworkConfigApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RuntimeConfig"):
 		return &apiv1alpha1.RuntimeConfigApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("SecurityConfig"):

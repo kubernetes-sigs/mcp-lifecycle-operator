@@ -575,3 +575,115 @@ var _ = Describe("MCPServer Controller - NetworkPolicy ExtraLabels/ExtraAnnotati
 		Expect(updatedNetpol.Annotations).NotTo(HaveKey("example.com/owner"))
 	})
 })
+
+var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictions", func() {
+	ctx := context.Background()
+
+	It("should populate NetworkPolicy ingress From field when ingressFrom is set", func() {
+		mcpServer := newTestMCPServer("test-netpol-ingress-from")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			IngressFrom: []networkingv1.NetworkPolicyPeer{
+				{
+					NamespaceSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"mcp-client": "true"},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		err := reconciler.reconcileNetworkPolicy(ctx, mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-ingress-from",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying ingress From field is populated with the namespace selector")
+		Expect(netpol.Spec.Ingress).To(HaveLen(1))
+		Expect(netpol.Spec.Ingress[0].From).To(HaveLen(1))
+		Expect(netpol.Spec.Ingress[0].From[0].NamespaceSelector).NotTo(BeNil())
+		Expect(netpol.Spec.Ingress[0].From[0].NamespaceSelector.MatchLabels).To(
+			HaveKeyWithValue("mcp-client", "true"))
+
+		By("Verifying port is still set")
+		Expect(netpol.Spec.Ingress[0].Ports).To(HaveLen(1))
+		Expect(netpol.Spec.Ingress[0].Ports[0].Port.IntValue()).To(Equal(8080))
+	})
+
+	It("should update NetworkPolicy when ingressFrom changes", func() {
+		mcpServer := newTestMCPServer("test-netpol-ingress-update")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			IngressFrom: []networkingv1.NetworkPolicyPeer{
+				{
+					NamespaceSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"mcp-client": "true"},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		By("Initial reconcile with namespace selector")
+		Expect(reconciler.reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-ingress-update",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+		Expect(netpol.Spec.Ingress[0].From).To(HaveLen(1))
+
+		By("Updating ingressFrom to add a pod selector")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
+		mcpServer.Spec.Network.IngressFrom = []networkingv1.NetworkPolicyPeer{
+			{
+				NamespaceSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"mcp-client": "true"},
+				},
+			},
+			{
+				PodSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "my-agent"},
+				},
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		By("Reconciling again to pick up the change")
+		Expect(reconciler.reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-ingress-update",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying ingress From now has two entries")
+		Expect(netpol.Spec.Ingress[0].From).To(HaveLen(2))
+		Expect(netpol.Spec.Ingress[0].From[0].NamespaceSelector).NotTo(BeNil())
+		Expect(netpol.Spec.Ingress[0].From[1].PodSelector).NotTo(BeNil())
+		Expect(netpol.Spec.Ingress[0].From[1].PodSelector.MatchLabels).To(
+			HaveKeyWithValue("app", "my-agent"))
+	})
+
+})
