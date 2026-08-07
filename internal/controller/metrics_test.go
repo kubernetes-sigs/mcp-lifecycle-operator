@@ -405,6 +405,98 @@ var _ = Describe("MCPServer Metrics", func() {
 		))).To(Equal(1.0))
 		Expect(testutil.CollectAndCount(handshakeDuration)).To(BeNumerically(">", 0))
 	})
+
+	It("should record auth_skip metrics when handshake returns HTTP auth error", func() {
+		hsAuthName := "metrics-hs-auth"
+		hsAuthNN := types.NamespacedName{Name: hsAuthName, Namespace: namespace}
+		resource := &mcpv1alpha1.MCPServer{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hsAuthName,
+				Namespace: namespace,
+			},
+			Spec: mcpv1alpha1.MCPServerSpec{
+				Source: mcpv1alpha1.Source{
+					Type: mcpv1alpha1.SourceTypeContainerImage,
+					ContainerImage: &mcpv1alpha1.ContainerImageSource{
+						Ref: "docker.io/library/test-image:latest",
+					},
+				},
+				Config: mcpv1alpha1.ServerConfig{Port: 8080},
+			},
+		}
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, resource) }()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+			MCPDialer: func(_ context.Context, _ string) (*mcpv1alpha1.MCPServerInfo, error) {
+				return nil, fmt.Errorf("POST http://localhost:8080/mcp: Unauthorized")
+			},
+		}
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: hsAuthNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		simulateDeploymentAvailable(ctx, hsAuthNN)
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: hsAuthNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(testutil.ToFloat64(handshakeTotal.WithLabelValues(
+			hsAuthName, namespace, "auth_skip",
+		))).To(Equal(1.0))
+		Expect(testutil.CollectAndCount(handshakeDuration)).To(BeNumerically(">", 0))
+	})
+
+	It("should record skip metrics when handshake was already verified", func() {
+		hsSkipName := "metrics-hs-skip"
+		hsSkipNN := types.NamespacedName{Name: hsSkipName, Namespace: namespace}
+		resource := &mcpv1alpha1.MCPServer{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hsSkipName,
+				Namespace: namespace,
+			},
+			Spec: mcpv1alpha1.MCPServerSpec{
+				Source: mcpv1alpha1.Source{
+					Type: mcpv1alpha1.SourceTypeContainerImage,
+					ContainerImage: &mcpv1alpha1.ContainerImageSource{
+						Ref: "docker.io/library/test-image:latest",
+					},
+				},
+				Config: mcpv1alpha1.ServerConfig{Port: 8080},
+			},
+		}
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, resource) }()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+			MCPDialer: func(_ context.Context, _ string) (*mcpv1alpha1.MCPServerInfo, error) {
+				return &mcpv1alpha1.MCPServerInfo{Name: "test-server", Version: "1.0"}, nil
+			},
+		}
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: hsSkipNN})
+		Expect(err).NotTo(HaveOccurred())
+
+		simulateDeploymentAvailable(ctx, hsSkipNN)
+
+		// Second reconcile: handshake succeeds
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: hsSkipNN})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(testutil.ToFloat64(handshakeTotal.WithLabelValues(
+			hsSkipName, namespace, "success",
+		))).To(Equal(1.0))
+
+		// Third reconcile: already verified, hits the skip path
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: hsSkipNN})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(testutil.ToFloat64(handshakeTotal.WithLabelValues(
+			hsSkipName, namespace, "skip",
+		))).To(Equal(1.0))
+	})
 })
 
 func simulateDeploymentAvailable(ctx context.Context, nn types.NamespacedName) {
