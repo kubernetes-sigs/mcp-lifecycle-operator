@@ -95,7 +95,7 @@ var (
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Name:      "handshake_total",
-			Help:      "Total number of MCP handshake attempts.",
+			Help:      "Total number of MCP handshake outcomes.",
 		},
 		[]string{"name", "namespace", "result"},
 	)
