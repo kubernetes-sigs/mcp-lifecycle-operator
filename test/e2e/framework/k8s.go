@@ -220,6 +220,25 @@ func PrewarmImages(images ...string) env.Func {
 				wait.WithContext(ctx),
 			)
 			if err != nil {
+				// Collect pod and container status details for better error message
+				dsName := fmt.Sprintf("prewarm-%d", i)
+				nsResources := cfg.Client().Resources(prewarmNs)
+				var pods corev1.PodList
+				if listErr := nsResources.List(ctx, &pods, resources.WithLabelSelector("app="+dsName)); listErr == nil {
+					var details string
+					for _, pod := range pods.Items {
+						for _, cs := range pod.Status.ContainerStatuses {
+							if cs.State.Waiting != nil {
+								details += fmt.Sprintf("pod %s container %s: %s (%s); ", pod.Name, cs.Name, cs.State.Waiting.Reason, cs.State.Waiting.Message)
+							} else if cs.State.Terminated != nil {
+								details += fmt.Sprintf("pod %s container %s: %s (exit code %d); ", pod.Name, cs.Name, cs.State.Terminated.Reason, cs.State.Terminated.ExitCode)
+							}
+						}
+					}
+					if details != "" {
+						return ctx, fmt.Errorf("prewarm image %s: %s: %w", img, details, err)
+					}
+				}
 				return ctx, fmt.Errorf("prewarm image %s: %w", img, err)
 			}
 			log.Printf("  pulled %s", img)
