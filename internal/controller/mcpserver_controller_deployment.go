@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -252,9 +253,11 @@ func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1alpha1.MCPServer)
 		container.SecurityContext = defaultContainerSecurityContext()
 	}
 
-	// Apply resource requirements if specified
+	// Apply resource requirements: use user-specified if provided, otherwise apply defaults
 	if mcpServer.Spec.Runtime.Resources != nil {
 		container.Resources = *mcpServer.Spec.Runtime.Resources
+	} else {
+		container.Resources = defaultContainerResources()
 	}
 
 	// Apply health probes. Zero-valued timing fields are filled with Kubernetes
@@ -381,6 +384,21 @@ func defaultContainerSecurityContext() *corev1.SecurityContext {
 		RunAsNonRoot:             new(true),
 		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 		SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+	}
+}
+
+// defaultContainerResources returns sensible default resource requests and limits
+// applied to MCP server containers when none are specified.
+func defaultContainerResources() corev1.ResourceRequirements {
+	return corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("50m"),
+			corev1.ResourceMemory: resource.MustParse("64Mi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("500m"),
+			corev1.ResourceMemory: resource.MustParse("256Mi"),
+		},
 	}
 }
 

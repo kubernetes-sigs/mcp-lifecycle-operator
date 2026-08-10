@@ -33,6 +33,9 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scenario"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
 // --- Storage Tests ---
@@ -40,8 +43,9 @@ import (
 func TestStorageConfigMap(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer with ConfigMap storage").
-		WithLabel("type", "configuration").
-		WithLabel("config", "storage-configmap").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Storage).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
@@ -112,8 +116,9 @@ func TestStorageConfigMap(t *testing.T) {
 func TestStorageSecret(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer with Secret storage").
-		WithLabel("type", "configuration").
-		WithLabel("config", "storage-secret").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Storage).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
@@ -184,8 +189,9 @@ func TestStorageSecret(t *testing.T) {
 func TestStorageEmptyDir(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer with EmptyDir storage").
-		WithLabel("type", "configuration").
-		WithLabel("config", "storage-emptydir").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Storage).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			sizeLimit := resource.MustParse("100Mi")
 			return f.SetupMCPServer(ctx, t, cfg, "storage-empty", true,
@@ -246,8 +252,9 @@ func TestStorageEmptyDir(t *testing.T) {
 func TestStorageRecursiveReadOnly(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer with RecursiveReadOnly storage").
-		WithLabel("type", "configuration").
-		WithLabel("config", "storage-recursive-readonly").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Storage).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
@@ -313,8 +320,9 @@ func TestStorageRecursiveReadOnly(t *testing.T) {
 func TestStorageMultipleMounts(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer with multiple storage mounts").
-		WithLabel("type", "configuration").
-		WithLabel("config", "storage-multi").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Storage).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
@@ -416,8 +424,9 @@ func TestStorageMultipleMounts(t *testing.T) {
 func TestCustomPort(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer with custom non-default port").
-		WithLabel("type", "configuration").
-		WithLabel("config", "port-custom").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Port).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			// Use port 9090 at creation time. The test image only listens on 3001,
 			// so the pod won't pass readiness, but we verify port propagation.
@@ -487,8 +496,9 @@ func TestCustomPort(t *testing.T) {
 func TestSamePortDifferentNamespaces(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServers with same port in different namespaces").
-		WithLabel("type", "configuration").
-		WithLabel("config", "port-namespaces").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Slow).
+		WithLabel(scenario.Label, scenario.Port).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			// Server A in the default test namespace
 			ctx = f.SetupMCPServer(ctx, t, cfg, "server-a", true)
@@ -570,8 +580,9 @@ func TestSamePortDifferentNamespaces(t *testing.T) {
 func TestDefaultSecurityContext(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer with default security context").
-		WithLabel("type", "configuration").
-		WithLabel("config", "security-default").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Security).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "sec-default", true)
 		}).
@@ -619,8 +630,9 @@ func TestDefaultSecurityContext(t *testing.T) {
 func TestCustomSecurityContext(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer with custom security context").
-		WithLabel("type", "configuration").
-		WithLabel("config", "security-custom").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Security).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "sec-custom", true,
 				f.WithSecurityContext(&corev1.SecurityContext{
@@ -676,8 +688,9 @@ func TestCustomSecurityContext(t *testing.T) {
 func TestPodSecurityContext(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer with pod security context").
-		WithLabel("type", "configuration").
-		WithLabel("config", "security-pod").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Security).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "sec-pod", true,
 				f.WithPodSecurityContext(&corev1.PodSecurityContext{
@@ -719,8 +732,9 @@ func TestPodSecurityContext(t *testing.T) {
 func TestCustomLabelsAndAnnotations(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer with custom labels and annotations").
-		WithLabel("type", "configuration").
-		WithLabel("config", "metadata-custom").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Metadata).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "meta-custom", true,
 				f.WithExtraLabels(map[string]string{"team": "platform", "env": "test"}),
@@ -794,8 +808,9 @@ func TestCustomLabelsAndAnnotations(t *testing.T) {
 func TestReservedLabelFiltering(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer reserved label filtering").
-		WithLabel("type", "configuration").
-		WithLabel("config", "metadata-reserved").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Metadata).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "meta-reserved", true,
 				f.WithExtraLabels(map[string]string{
@@ -838,8 +853,9 @@ func TestReservedLabelFiltering(t *testing.T) {
 func TestCustomMetadataUpdate(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer custom metadata update").
-		WithLabel("type", "configuration").
-		WithLabel("config", "metadata-update").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Metadata).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "meta-update", true,
 				f.WithExtraLabels(map[string]string{"team": "alpha"}),

@@ -39,21 +39,18 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
-)
-
-const (
-	operatorNamespace  = "mcp-lifecycle-operator-system"
-	serviceAccountName = "mcp-lifecycle-operator-controller-manager"
-	metricsServiceName = "mcp-lifecycle-operator-controller-manager-metrics-service"
-	metricsRoleBinding = "mcp-lifecycle-operator-metrics-binding"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
 func TestManagerPodRunning(t *testing.T) {
 	t.Parallel()
 	feature := features.New("Manager pod is running").
-		WithLabel("type", "manager").
+		WithLabel(category.Label, category.Observability).
+		WithLabel(speed.Label, speed.Fast).
 		Assess("controller-manager pod is Running", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			pod := f.FindPodByLabel(ctx, t, cfg, operatorNamespace, "control-plane=controller-manager")
+			opRef := f.MustDiscoverOperatorOnce(ctx, cfg, t)
+			pod := f.FindPodByLabel(ctx, t, cfg, opRef.Namespace, "control-plane=controller-manager,app.kubernetes.io/name=mcp-lifecycle-operator")
 			t.Logf("controller-manager pod %s is Running", pod.Name)
 			return ctx
 		}).
@@ -64,9 +61,13 @@ func TestManagerPodRunning(t *testing.T) {
 
 func TestMetricsEndpoint(t *testing.T) {
 	t.Parallel()
+	const metricsRoleBinding = "mcp-lifecycle-operator-metrics-binding"
+
 	feature := features.New("Metrics endpoint serves data").
-		WithLabel("type", "manager").
+		WithLabel(category.Label, category.Observability).
+		WithLabel(speed.Label, speed.Fast).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			opRef := f.MustDiscoverOperatorOnce(ctx, cfg, t)
 			r := cfg.Client().Resources()
 
 			crb := &rbacv1.ClusterRoleBinding{
@@ -78,8 +79,8 @@ func TestMetricsEndpoint(t *testing.T) {
 				},
 				Subjects: []rbacv1.Subject{{
 					Kind:      "ServiceAccount",
-					Name:      serviceAccountName,
-					Namespace: operatorNamespace,
+					Name:      opRef.ServiceAccountName,
+					Namespace: opRef.Namespace,
 				}},
 			}
 			if err := r.Create(ctx, crb); err != nil {
@@ -94,11 +95,12 @@ func TestMetricsEndpoint(t *testing.T) {
 			return ctx
 		}).
 		Assess("controller pod is ready and serving metrics", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			pod := f.FindPodByLabel(ctx, t, cfg, operatorNamespace, "control-plane=controller-manager")
+			opRef := f.MustDiscoverOperatorOnce(ctx, cfg, t)
+			pod := f.FindPodByLabel(ctx, t, cfg, opRef.Namespace, "control-plane=controller-manager,app.kubernetes.io/name=mcp-lifecycle-operator")
 
 			deadline := time.Now().Add(1 * time.Minute)
 			for {
-				logs := f.PodLogs(ctx, t, cfg, pod.Name, operatorNamespace)
+				logs := f.PodLogs(ctx, t, cfg, pod.Name, opRef.Namespace)
 				if strings.Contains(logs, "Serving metrics server") {
 					t.Log("controller is serving metrics server")
 					break
@@ -109,18 +111,18 @@ func TestMetricsEndpoint(t *testing.T) {
 				time.Sleep(2 * time.Second)
 			}
 
-			f.WaitForEndpointsReady(ctx, t, cfg, operatorNamespace, metricsServiceName)
+			f.WaitForEndpointsReady(ctx, t, cfg, opRef.Namespace, opRef.MetricsServiceName)
 
 			// Create a short-lived token for the controller-manager SA.
 			cs := f.Clientset(t, cfg)
-			tr, err := cs.CoreV1().ServiceAccounts(operatorNamespace).
-				CreateToken(ctx, serviceAccountName, &authv1.TokenRequest{
+			tr, err := cs.CoreV1().ServiceAccounts(opRef.Namespace).
+				CreateToken(ctx, opRef.ServiceAccountName, &authv1.TokenRequest{
 					Spec: authv1.TokenRequestSpec{
 						ExpirationSeconds: func() *int64 { v := int64(600); return &v }(),
 					},
 				}, metav1.CreateOptions{})
 			if err != nil {
-				t.Fatalf("failed to create token for SA %s: %v", serviceAccountName, err)
+				t.Fatalf("failed to create token for SA %s: %v", opRef.ServiceAccountName, err)
 			}
 
 			// Port-forward to the controller-manager pod so we can send the
@@ -131,7 +133,7 @@ func TestMetricsEndpoint(t *testing.T) {
 				t.Fatalf("failed to create SPDY round tripper: %v", err)
 			}
 			pfURL := fmt.Sprintf("%s/api/v1/namespaces/%s/pods/%s/portforward",
-				restCfg.Host, operatorNamespace, pod.Name)
+				restCfg.Host, opRef.Namespace, pod.Name)
 			dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, http.MethodPost, mustParseURL(t, pfURL))
 
 			stopCh := make(chan struct{})

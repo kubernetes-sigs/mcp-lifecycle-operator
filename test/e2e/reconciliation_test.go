@@ -37,6 +37,9 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scenario"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
 const configHashAnnotation = "mcp.x-k8s.io/config-hash"
@@ -48,8 +51,9 @@ func TestImageUpdate(t *testing.T) {
 	digestRef := f.DefaultMCPServerImageDigest
 
 	feature := features.New("MCPServer image update").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "image-update").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Slow).
+		WithLabel(scenario.Label, scenario.SpecUpdate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "img-update", true)
 		}).
@@ -97,8 +101,9 @@ func TestImageUpdate(t *testing.T) {
 func TestStorageAddition(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer storage addition").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "storage-add").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.SpecUpdate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
@@ -185,8 +190,9 @@ func TestStorageAddition(t *testing.T) {
 func TestStorageRemoval(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer storage removal").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "storage-remove").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.SpecUpdate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
@@ -264,8 +270,9 @@ func TestStorageRemoval(t *testing.T) {
 func TestReplicaDrift(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer replica drift correction").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "drift-replicas").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Drift).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "drift-repl", true, f.WithReplicas(1))
 		}).
@@ -310,8 +317,9 @@ func TestReplicaDrift(t *testing.T) {
 func TestServicePortDrift(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer Service port drift correction").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "drift-service-port").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Drift).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "drift-port", true)
 		}).
@@ -353,11 +361,63 @@ func TestServicePortDrift(t *testing.T) {
 	testenv.Test(t, feature)
 }
 
+func TestServiceSelectorDrift(t *testing.T) {
+	feature := features.New("MCPServer Service selector drift correction").
+		WithLabel("type", "reconciliation").
+		WithLabel("scenario", "drift-service-selector").
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return f.SetupMCPServer(ctx, t, cfg, "drift-selector", true)
+		}).
+		Assess("manually change Service selector and verify reconciliation", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace}}
+			if err := r.Get(ctx, server.Name, server.Namespace, svc); err != nil {
+				t.Fatalf("Service not found: %v", err)
+			}
+			originalClusterIP := svc.Spec.ClusterIP
+
+			f.UpdateWithRetry(ctx, t, r, svc, func(s *corev1.Service) {
+				s.Spec.Selector = map[string]string{
+					"mcp-server": "wrong",
+					"unexpected": "value",
+				}
+			})
+			t.Log("manually changed Service selector")
+
+			err := wait.For(
+				conditions.New(r).ResourceMatch(svc, func(obj k8s.Object) bool {
+					s := obj.(*corev1.Service)
+					return len(s.Spec.Selector) == 1 &&
+						s.Spec.Selector["mcp-server"] == server.Name &&
+						s.Spec.ClusterIP == originalClusterIP
+				}),
+				wait.WithTimeout(2*time.Minute),
+				wait.WithInterval(2*time.Second),
+			)
+			if err != nil {
+				t.Fatalf("controller did not reconcile Service selector back to mcp-server=%s: %v", server.Name, err)
+			}
+
+			f.WaitForEndpointsReady(ctx, t, cfg, server.Namespace, server.Name)
+			t.Logf("controller restored Service selector and endpoints for %s", server.Name)
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return f.TeardownMCPServer(ctx, t, cfg)
+		}).
+		Feature()
+
+	testenv.Test(t, feature)
+}
+
 func TestDeploymentDeletion(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer Deployment recreation after deletion").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "drift-deployment-deleted").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Slow).
+		WithLabel(scenario.Label, scenario.Drift).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "drift-dep", true)
 		}).
@@ -407,8 +467,9 @@ func TestDeploymentDeletion(t *testing.T) {
 func TestServiceDeletion(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer Service recreation after deletion").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "drift-service-deleted").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Drift).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "drift-svc", true)
 		}).
@@ -459,8 +520,9 @@ func TestServiceDeletion(t *testing.T) {
 func TestOwnerReferences(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer OwnerReferences on child resources").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "ownership").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.Ownership).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "owner-ref", true)
 		}).
@@ -511,8 +573,9 @@ func assertOwnerReference(t *testing.T, refs []metav1.OwnerReference, expectedNa
 func TestCascadingDeletion(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer cascading deletion").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "cascading-delete").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Ownership).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "cascade-del", true)
 		}).
@@ -561,8 +624,9 @@ func TestCascadingDeletion(t *testing.T) {
 func TestConfigMapDataUpdateTriggersRestart(t *testing.T) {
 	t.Parallel()
 	feature := features.New("MCPServer config hash update on ConfigMap change").
-		WithLabel("type", "reconciliation").
-		WithLabel("scenario", "config-hash").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scenario.Label, scenario.Drift).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()

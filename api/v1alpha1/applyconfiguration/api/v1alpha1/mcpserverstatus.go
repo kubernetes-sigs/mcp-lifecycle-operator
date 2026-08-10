@@ -38,7 +38,7 @@ type MCPServerStatusApplyConfiguration struct {
 	// Address contains the address of the MCP server service.
 	Address *MCPServerAddressApplyConfiguration `json:"address,omitempty"`
 	// ServerInfo contains identity and capability information reported by the
-	// MCP server during the protocol initialize handshake.
+	// MCP server during the protocol handshake (initialize or server/discover).
 	// This field is populated only after a successful handshake.
 	ServerInfo *MCPServerInfoApplyConfiguration `json:"serverInfo,omitempty"`
 	// HandshakeRetryCount tracks the number of consecutive MCP handshake

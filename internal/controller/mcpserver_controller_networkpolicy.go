@@ -125,6 +125,7 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1alpha1.MCPServ
 			},
 			PolicyTypes: []networkingv1.PolicyType{
 				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
 			},
 			Ingress: []networkingv1.NetworkPolicyIngressRule{
 				{
@@ -135,6 +136,9 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1alpha1.MCPServ
 						},
 					},
 				},
+			},
+			Egress: []networkingv1.NetworkPolicyEgressRule{
+				{},
 			},
 		},
 	}

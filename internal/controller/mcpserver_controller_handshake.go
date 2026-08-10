@@ -19,11 +19,13 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -41,6 +43,11 @@ func (r *MCPServerReconciler) reconcileHandshake(
 ) (metav1.Condition, *mcpv1alpha1.MCPServerInfo) {
 	logger := log.FromContext(ctx)
 
+	metricLabels := prometheus.Labels{
+		"name":      mcpServer.Name,
+		"namespace": mcpServer.Namespace,
+	}
+
 	existingReady := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeReady)
 	alreadyVerified := existingReady != nil &&
 		existingReady.Status == metav1.ConditionTrue &&
@@ -52,6 +59,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	// Ready=True even if the Deployment has a transient status fluctuation
 	// (e.g. during rollout cleanup).
 	if alreadyVerified {
+		handshakeTotal.With(withResult(metricLabels, "skip")).Inc()
 		return *existingReady, mcpServer.Status.ServerInfo
 	}
 
@@ -65,12 +73,16 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	}
 	dialCtx, dialCancel := context.WithTimeout(ctx, mcpHandshakeTimeout)
 	defer dialCancel()
+	start := time.Now()
 	info, err := dialer(dialCtx, mcpURL)
+	handshakeDuration.With(metricLabels).Observe(time.Since(start).Seconds())
 	if err != nil {
 		if isHTTPAuthError(err) {
+			handshakeTotal.With(withResult(metricLabels, "auth_skip")).Inc()
 			logger.Info("MCP endpoint returned auth error, treating as reachable", "url", mcpURL, "error", err)
 			return readyCondition, &mcpv1alpha1.MCPServerInfo{}
 		}
+		handshakeTotal.With(withResult(metricLabels, "failure")).Inc()
 		logger.Info("MCP endpoint handshake failed", "url", mcpURL, "error", err)
 		cond := newCondition(
 			ConditionTypeReady,
@@ -85,12 +97,25 @@ func (r *MCPServerReconciler) reconcileHandshake(
 		return cond, nil
 	}
 
-	logger.Info("MCP endpoint verified successfully", "url", mcpURL)
+	handshakeTotal.With(withResult(metricLabels, "success")).Inc()
+	protocolVersion := ""
+	if info != nil {
+		protocolVersion = info.ProtocolVersion
+	}
+	logger.Info("MCP endpoint verified successfully", "url", mcpURL, "protocolVersion", protocolVersion)
 	return readyCondition, info
 }
 
-// verifyMCPEndpoint performs an MCP initialize handshake against the given URL
-// to verify the endpoint actually speaks the MCP protocol.
+func withResult(labels prometheus.Labels, result string) prometheus.Labels {
+	m := make(prometheus.Labels, len(labels)+1)
+	maps.Copy(m, labels)
+	m["result"] = result
+	return m
+}
+
+// verifyMCPEndpoint performs an MCP protocol handshake (initialize or
+// server/discover) against the given URL to verify the endpoint actually
+// speaks the MCP protocol.
 // On success it returns the server's self-reported identity and capabilities
 // extracted from the InitializeResult.
 // It uses a dedicated context for the connection so that cancelling it tears
@@ -148,7 +173,7 @@ func extractServerInfo(res *mcp.InitializeResult) *mcpv1alpha1.MCPServerInfo {
 			Tools:       res.Capabilities.Tools != nil,
 			Resources:   res.Capabilities.Resources != nil,
 			Prompts:     res.Capabilities.Prompts != nil,
-			Logging:     res.Capabilities.Logging != nil,
+			Logging:     res.Capabilities.Logging != nil, //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 			Completions: res.Capabilities.Completions != nil,
 		}
 	}
@@ -166,6 +191,37 @@ func mcpHandshakeBackoff(retryCount int) time.Duration {
 		}
 	}
 	return delay
+}
+
+// capabilityDiffMessage compares two MCPServerCapabilities and returns a
+// human-readable message describing the differences. Nil is treated as
+// all-false. Returns an empty string when nothing changed.
+func capabilityDiffMessage(old, new *mcpv1alpha1.MCPServerCapabilities) string {
+	var oldCaps, newCaps mcpv1alpha1.MCPServerCapabilities
+	if old != nil {
+		oldCaps = *old
+	}
+	if new != nil {
+		newCaps = *new
+	}
+
+	var diffs []string
+	if oldCaps.Tools != newCaps.Tools {
+		diffs = append(diffs, fmt.Sprintf("tools: %v->%v", oldCaps.Tools, newCaps.Tools))
+	}
+	if oldCaps.Resources != newCaps.Resources {
+		diffs = append(diffs, fmt.Sprintf("resources: %v->%v", oldCaps.Resources, newCaps.Resources))
+	}
+	if oldCaps.Prompts != newCaps.Prompts {
+		diffs = append(diffs, fmt.Sprintf("prompts: %v->%v", oldCaps.Prompts, newCaps.Prompts))
+	}
+	if oldCaps.Logging != newCaps.Logging { //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
+		diffs = append(diffs, fmt.Sprintf("logging: %v->%v", oldCaps.Logging, newCaps.Logging)) //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
+	}
+	if oldCaps.Completions != newCaps.Completions {
+		diffs = append(diffs, fmt.Sprintf("completions: %v->%v", oldCaps.Completions, newCaps.Completions))
+	}
+	return strings.Join(diffs, ", ")
 }
 
 // isHTTPAuthError checks whether the error from the MCP SDK indicates an HTTP

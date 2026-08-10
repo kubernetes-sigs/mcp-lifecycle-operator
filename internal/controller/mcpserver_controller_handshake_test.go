@@ -912,7 +912,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Tools).To(BeTrue())
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Resources).To(BeTrue())
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Prompts).To(BeFalse())
-		Expect(mcpServer.Status.ServerInfo.Capabilities.Logging).To(BeTrue())
+		Expect(mcpServer.Status.ServerInfo.Capabilities.Logging).To(BeTrue()) //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Completions).To(BeFalse())
 	})
 
@@ -1018,6 +1018,44 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 	})
 })
 
+var _ = Describe("capabilityDiffMessage", func() {
+	It("should return empty string when both are nil", func() {
+		Expect(capabilityDiffMessage(nil, nil)).To(BeEmpty())
+	})
+
+	It("should return empty string when capabilities are the same", func() {
+		caps := &mcpv1alpha1.MCPServerCapabilities{
+			Tools:     true,
+			Resources: false,
+			Prompts:   true,
+		}
+		Expect(capabilityDiffMessage(caps, caps.DeepCopy())).To(BeEmpty())
+	})
+
+	It("should detect tools added", func() {
+		old := &mcpv1alpha1.MCPServerCapabilities{Tools: false}
+		new := &mcpv1alpha1.MCPServerCapabilities{Tools: true}
+		diff := capabilityDiffMessage(old, new)
+		Expect(diff).To(ContainSubstring("tools: false->true"))
+	})
+
+	It("should detect multiple changes", func() {
+		old := &mcpv1alpha1.MCPServerCapabilities{Tools: true, Prompts: true}
+		new := &mcpv1alpha1.MCPServerCapabilities{Tools: false, Resources: true}
+		diff := capabilityDiffMessage(old, new)
+		Expect(diff).To(ContainSubstring("tools: true->false"))
+		Expect(diff).To(ContainSubstring("resources: false->true"))
+		Expect(diff).To(ContainSubstring("prompts: true->false"))
+	})
+
+	It("should treat old nil as all-false", func() {
+		new := &mcpv1alpha1.MCPServerCapabilities{Tools: true, Resources: true}
+		diff := capabilityDiffMessage(nil, new)
+		Expect(diff).To(ContainSubstring("tools: false->true"))
+		Expect(diff).To(ContainSubstring("resources: false->true"))
+	})
+})
+
 var _ = Describe("extractServerInfo", func() {
 	It("should return nil for nil input", func() {
 		Expect(extractServerInfo(nil)).To(BeNil())
@@ -1068,7 +1106,7 @@ var _ = Describe("extractServerInfo", func() {
 				Tools:       &mcp.ToolCapabilities{},
 				Resources:   &mcp.ResourceCapabilities{},
 				Prompts:     &mcp.PromptCapabilities{},
-				Logging:     &mcp.LoggingCapabilities{},
+				Logging:     &mcp.LoggingCapabilities{}, //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 				Completions: &mcp.CompletionCapabilities{},
 			},
 		}
@@ -1078,7 +1116,7 @@ var _ = Describe("extractServerInfo", func() {
 		Expect(info.Capabilities.Tools).To(BeTrue())
 		Expect(info.Capabilities.Resources).To(BeTrue())
 		Expect(info.Capabilities.Prompts).To(BeTrue())
-		Expect(info.Capabilities.Logging).To(BeTrue())
+		Expect(info.Capabilities.Logging).To(BeTrue()) //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 		Expect(info.Capabilities.Completions).To(BeTrue())
 	})
 
@@ -1095,7 +1133,7 @@ var _ = Describe("extractServerInfo", func() {
 		Expect(info.Capabilities.Tools).To(BeTrue())
 		Expect(info.Capabilities.Resources).To(BeFalse())
 		Expect(info.Capabilities.Prompts).To(BeFalse())
-		Expect(info.Capabilities.Logging).To(BeFalse())
+		Expect(info.Capabilities.Logging).To(BeFalse()) //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 		Expect(info.Capabilities.Completions).To(BeFalse())
 	})
 

@@ -22,7 +22,7 @@ package v1alpha1
 // with apply.
 //
 // MCPServerCapabilities describes which MCP protocol capabilities the server advertises
-// during the initialize handshake.
+// during the protocol handshake (initialize or server/discover).
 type MCPServerCapabilitiesApplyConfiguration struct {
 	// Tools indicates the server supports tool listing and invocation.
 	Tools *bool `json:"tools,omitempty"`
@@ -31,6 +31,10 @@ type MCPServerCapabilitiesApplyConfiguration struct {
 	// Prompts indicates the server supports prompt templates.
 	Prompts *bool `json:"prompts,omitempty"`
 	// Logging indicates the server supports sending log messages.
+	//
+	// Deprecated: logging capability is deprecated as of MCP protocol version
+	// 2026-07-28 (SEP-2577) and will be removed after the 12-month deprecation
+	// window. The field remains functional during the transition period.
 	Logging *bool `json:"logging,omitempty"`
 	// Completions indicates the server supports argument autocompletion.
 	Completions *bool `json:"completions,omitempty"`

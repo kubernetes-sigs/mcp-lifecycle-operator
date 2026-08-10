@@ -41,6 +41,9 @@ Custom metrics use the Prometheus namespace **`mcpserver`** (exported names star
 | `mcpserver_service_failures_total` | counter | Total failures when reconciling the Service (`reason` is currently `ReconcileError`). |
 | `mcpserver_networkpolicy_failures_total` | counter | Total failures when reconciling the NetworkPolicy (`reason` is currently `ReconcileError`). |
 | `mcpserver_reconcile_phase_duration_seconds` | histogram | Duration of reconciliation phases **validation**, **deployment**, **service**, and **networkpolicy** (seconds; default Prometheus histogram buckets). |
+| `mcpserver_handshake_total` | counter | Total MCP handshake outcomes per `MCPServer`, broken down by `result`. |
+| `mcpserver_handshake_duration_seconds` | histogram | Duration of MCP handshake operations in seconds (buckets: 0.1, 0.25, 0.5, 1, 2.5, 5, 10). |
+| `mcpserver_capability_changes_total` | counter | Total MCP server capability changes detected between reconcile generations. |
 
 ### Labels for `mcpserver_condition_info`
 
@@ -88,6 +91,50 @@ histogram_quantile(
   sum(rate(mcpserver_reconcile_phase_duration_seconds_bucket[5m])) by (le, phase)
 )
 ```
+
+```promql
+sum(rate(mcpserver_handshake_total{result="failure"}[5m])) by (namespace, name)
+```
+
+```promql
+histogram_quantile(
+  0.99,
+  sum(rate(mcpserver_handshake_duration_seconds_bucket[5m])) by (le)
+)
+```
+
+### Labels for `mcpserver_handshake_total`
+
+| Label | Description |
+| --- | --- |
+| `name` | `MCPServer` name |
+| `namespace` | `MCPServer` namespace |
+| `result` | Handshake outcome (see below) |
+
+**`result` values**
+
+| Value | Meaning |
+| --- | --- |
+| `success` | Handshake completed and the server returned valid MCP capabilities. |
+| `failure` | Handshake failed (server unreachable, protocol error, timeout, etc.). |
+| `auth_skip` | Server returned an HTTP auth error (401/403); treated as reachable without completing the handshake. |
+| `skip` | Handshake was skipped because the endpoint was already verified for the current generation. |
+
+### Labels for `mcpserver_handshake_duration_seconds`
+
+| Label | Description |
+| --- | --- |
+| `name` | `MCPServer` name |
+| `namespace` | `MCPServer` namespace |
+
+Duration is recorded for every handshake attempt (success, failure, or auth_skip) but not for skipped handshakes.
+
+### Labels for `mcpserver_capability_changes_total`
+
+| Label | Description |
+| --- | --- |
+| `name` | `MCPServer` name |
+| `namespace` | `MCPServer` namespace |
 
 ### Labels for failure counters (`mcpserver_*_failures_total`)
 

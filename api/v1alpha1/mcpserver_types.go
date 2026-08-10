@@ -310,8 +310,12 @@ type RuntimeConfig struct {
 
 	// Resources defines the resource requirements for the MCP server container.
 	// This includes CPU and memory requests and limits.
-	// If not specified, the container will run without explicit resource constraints.
+	// If not specified, the following defaults are applied:
+	//   - Requests: 50m CPU, 64Mi memory
+	//   - Limits: 500m CPU, 256Mi memory
 	// Supports partial specification (e.g., only requests or only limits).
+	// When partially specified, only the provided fields are used; defaults
+	// are not merged into the unspecified fields.
 	// Example:
 	//   resources:
 	//     requests:
@@ -387,7 +391,7 @@ type MCPServerAddress struct {
 }
 
 // MCPServerCapabilities describes which MCP protocol capabilities the server advertises
-// during the initialize handshake.
+// during the protocol handshake (initialize or server/discover).
 type MCPServerCapabilities struct {
 	// Tools indicates the server supports tool listing and invocation.
 	// +optional
@@ -399,6 +403,10 @@ type MCPServerCapabilities struct {
 	// +optional
 	Prompts bool `json:"prompts,omitempty"`
 	// Logging indicates the server supports sending log messages.
+	//
+	// Deprecated: logging capability is deprecated as of MCP protocol version
+	// 2026-07-28 (SEP-2577) and will be removed after the 12-month deprecation
+	// window. The field remains functional during the transition period.
 	// +optional
 	Logging bool `json:"logging,omitempty"`
 	// Completions indicates the server supports argument autocompletion.
@@ -407,7 +415,7 @@ type MCPServerCapabilities struct {
 }
 
 // MCPServerInfo contains identity and capability information reported by the
-// MCP server during the protocol initialize handshake.
+// MCP server during the protocol handshake (initialize or server/discover).
 type MCPServerInfo struct {
 	// Name is the server's self-reported name.
 	// +optional
@@ -415,7 +423,9 @@ type MCPServerInfo struct {
 	// Version is the server's self-reported version.
 	// +optional
 	Version string `json:"version,omitempty"`
-	// ProtocolVersion is the MCP protocol version negotiated during the handshake.
+	// ProtocolVersion is the MCP protocol version negotiated during the protocol
+	// handshake. The value reflects whichever version was agreed upon by both
+	// client and server.
 	// +optional
 	ProtocolVersion string `json:"protocolVersion,omitempty"`
 	// Instructions describes how to use the server and its features.
@@ -449,7 +459,7 @@ type MCPServerStatus struct {
 	Address *MCPServerAddress `json:"address,omitempty"`
 
 	// ServerInfo contains identity and capability information reported by the
-	// MCP server during the protocol initialize handshake.
+	// MCP server during the protocol handshake (initialize or server/discover).
 	// This field is populated only after a successful handshake.
 	// +optional
 	ServerInfo *MCPServerInfo `json:"serverInfo,omitempty"`
