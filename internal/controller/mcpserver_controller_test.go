@@ -21,6 +21,7 @@ package controller
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -44,7 +45,7 @@ import (
 const testRecorderBuffer = 10000
 
 // testMCPDialerNoop succeeds without dialing; used so envtests do not run real MCP handshakes.
-func testMCPDialerNoop(context.Context, string) (*mcpv1alpha1.MCPServerInfo, error) {
+func testMCPDialerNoop(_ context.Context, _ string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 	return nil, nil
 }
 

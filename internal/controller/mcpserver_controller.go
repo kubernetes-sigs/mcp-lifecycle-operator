@@ -21,8 +21,10 @@ package controller
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -166,11 +168,14 @@ type MCPServerReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
 	Recorder  events.EventRecorder
-	MCPDialer func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) // nil = use real MCP handshake
+	MCPDialer func(ctx context.Context, url string, transport *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) // nil = use real MCP handshake
 	APIReader client.Reader
 	// TLSEnvVars holds TLS-related environment variables to propagate to every
 	// MCP server container. Populated at startup when PROPAGATE_TLS_ENV_VARS is set.
 	TLSEnvVars []corev1.EnvVar
+	// TLSProfile applies operator-wide TLS settings (min version, cipher suites)
+	// to outbound connections. Populated from TLS_MIN_VERSION / TLS_CIPHER_SUITES.
+	TLSProfile func(*tls.Config)
 }
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch;update;patch
@@ -342,8 +347,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		path = defaultMCPPath
 	}
 
-	mcpURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d%s",
-		mcpServer.Name, mcpServer.Namespace, mcpServer.Spec.Config.Port, path)
+	mcpURL := fmt.Sprintf("%s://%s.%s.svc.cluster.local:%d%s",
+		urlScheme(mcpServer), mcpServer.Name, mcpServer.Namespace, mcpServer.Spec.Config.Port, path)
 
 	// If deployment-level readiness reports Available, verify the MCP endpoint.
 	var serverInfo *mcpv1alpha1.MCPServerInfo

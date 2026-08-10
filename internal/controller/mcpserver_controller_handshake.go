@@ -67,6 +67,28 @@ func (r *MCPServerReconciler) reconcileHandshake(
 		return readyCondition, nil
 	}
 
+	var tlsTransport *http.Transport
+	if mcpServer.Spec.Transport != nil && mcpServer.Spec.Transport.TLS != nil {
+		var tlsErr error
+		tlsTransport, tlsErr = buildTLSTransport(ctx, r.Client, mcpServer.Namespace, mcpServer.Spec.Transport.TLS)
+		if tlsErr != nil {
+			handshakeTotal.With(withResult(metricLabels, "failure")).Inc()
+			logger.Info("Failed to build TLS transport for handshake", "error", tlsErr)
+			cond := newCondition(
+				ConditionTypeReady,
+				metav1.ConditionFalse,
+				ReasonMCPEndpointUnavailable,
+				fmt.Sprintf("TLS configuration error: %v", tlsErr),
+				mcpServer.Generation,
+			)
+			preserveLastTransitionTime(&cond, mcpServer.Status.Conditions)
+			return cond, nil
+		}
+		if tlsTransport != nil && r.TLSProfile != nil {
+			r.TLSProfile(tlsTransport.TLSClientConfig)
+		}
+	}
+
 	dialer := r.MCPDialer
 	if dialer == nil {
 		dialer = r.verifyMCPEndpoint
@@ -75,7 +97,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	defer dialCancel()
 	auditHandshakeAttempt(ctx, mcpServer, mcpURL)
 	start := time.Now()
-	info, err := dialer(dialCtx, mcpURL)
+	info, err := dialer(dialCtx, mcpURL, tlsTransport)
 	elapsed := time.Since(start)
 	handshakeDuration.With(metricLabels).Observe(elapsed.Seconds())
 	if err != nil {
@@ -126,7 +148,7 @@ func withResult(labels prometheus.Labels, result string) prometheus.Labels {
 // It uses a dedicated context for the connection so that cancelling it tears
 // down the transport without sending an HTTP DELETE to the server (which some
 // MCP servers do not handle gracefully).
-func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string, httpTransport *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 	connCtx, connCancel := context.WithCancel(ctx)
 
 	mcpClient := mcp.NewClient(
@@ -137,9 +159,14 @@ func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string)
 		nil,
 	)
 
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	if httpTransport != nil {
+		httpClient.Transport = httpTransport
+	}
+
 	transport := &mcp.StreamableClientTransport{
 		Endpoint:             url,
-		HTTPClient:           &http.Client{Timeout: 10 * time.Second},
+		HTTPClient:           httpClient,
 		DisableStandaloneSSE: true,
 		MaxRetries:           -1, // disable retries; the controller handles requeue
 	}

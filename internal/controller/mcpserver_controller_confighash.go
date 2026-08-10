@@ -270,5 +270,16 @@ func extractSecretNames(obj client.Object) []string {
 		}
 	}
 
+	// Extract TLS CA bundle Secret
+	if mcpServer.Spec.Transport != nil &&
+		mcpServer.Spec.Transport.TLS != nil &&
+		mcpServer.Spec.Transport.TLS.CABundleSecret != nil {
+		name := mcpServer.Spec.Transport.TLS.CABundleSecret.Name
+		if !seen[name] {
+			secrets = append(secrets, name)
+			seen[name] = true
+		}
+	}
+
 	return secrets
 }

@@ -76,6 +76,20 @@ func (r *MCPServerReconciler) validateConfig(
 		}
 	}
 
+	// Validate TLS CA bundle Secret
+	if mcpServer.Spec.Transport != nil &&
+		mcpServer.Spec.Transport.TLS != nil &&
+		mcpServer.Spec.Transport.TLS.CABundleSecret != nil {
+		if err := r.validateReferencedSecret(
+			ctx,
+			mcpServer.Namespace,
+			mcpServer.Spec.Transport.TLS.CABundleSecret.Name,
+			"TLS CA bundle Secret",
+		); err != nil {
+			return err
+		}
+	}
+
 	// All validation passed
 	return nil
 }

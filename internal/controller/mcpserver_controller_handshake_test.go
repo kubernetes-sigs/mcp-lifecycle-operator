@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -89,7 +91,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				return nil, fmt.Errorf("connection refused")
 			},
 			APIReader: k8sClient,
@@ -142,7 +144,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				return nil, nil
 			},
 			APIReader: k8sClient,
@@ -191,7 +193,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				dialerCalled = true
 				return nil, nil
 			},
@@ -239,7 +241,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				dialerCalled = true
 				return nil, nil
 			},
@@ -279,7 +281,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				return nil, fmt.Errorf("MCP protocol error")
 			},
 			APIReader: k8sClient,
@@ -321,7 +323,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				dialCount++
 				if shouldFail {
 					return nil, fmt.Errorf("intentional failure")
@@ -395,7 +397,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 	It("should emit a Normal ServerReady event only when Ready transitions to Available after handshake", func() {
 		shouldFail := true
 		reconciler, fr := newReconcilerForTestWithFakeEvents(k8sClient, k8sClient.Scheme())
-		reconciler.MCPDialer = func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+		reconciler.MCPDialer = func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 			if shouldFail {
 				return nil, fmt.Errorf("intentional failure")
 			}
@@ -459,7 +461,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 	It("should emit a Warning MCPHandshakeFailed event only when handshake error message changes", func() {
 		failMsg := "intentional failure"
 		reconciler, fr := newReconcilerForTestWithFakeEvents(k8sClient, k8sClient.Scheme())
-		reconciler.MCPDialer = func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+		reconciler.MCPDialer = func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 			return nil, fmt.Errorf("%s", failMsg)
 		}
 
@@ -521,7 +523,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 
 	It("should emit MCPHandshakeRetriesExhausted once when max handshake retries is reached", func() {
 		reconciler, fr := newReconcilerForTestWithFakeEvents(k8sClient, k8sClient.Scheme())
-		reconciler.MCPDialer = func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+		reconciler.MCPDialer = func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 			return nil, fmt.Errorf("intentional failure")
 		}
 
@@ -597,7 +599,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				receivedCtx = ctx
 				return nil, nil
 			},
@@ -640,7 +642,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				return nil, fmt.Errorf("connection refused")
 			},
 			APIReader: k8sClient,
@@ -714,7 +716,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				return nil, fmt.Errorf("connection refused")
 			},
 			APIReader: k8sClient,
@@ -762,7 +764,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				if failHandshake {
 					return nil, fmt.Errorf("connection refused")
 				}
@@ -813,7 +815,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				return nil, fmt.Errorf("POST %s: Unauthorized", url)
 			},
 			APIReader: k8sClient,
@@ -857,7 +859,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				return &mcpv1alpha1.MCPServerInfo{
 					Name:            "test-mcp-server",
 					Version:         "1.2.3",
@@ -920,7 +922,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				return &mcpv1alpha1.MCPServerInfo{
 					Name:            "carry-forward-server",
 					Version:         "2.0.0",
@@ -977,7 +979,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				return nil, fmt.Errorf("POST %s: Forbidden", url)
 			},
 			APIReader: k8sClient,
@@ -1226,5 +1228,298 @@ var _ = Describe("extractServerInfo", func() {
 		info := extractServerInfo(result)
 		Expect(info).NotTo(BeNil())
 		Expect(info.Capabilities).To(BeNil())
+	})
+})
+
+var _ = Describe("MCPServer Controller - TLS Handshake", func() {
+	const resourceName = "test-tls"
+
+	ctx := context.Background()
+
+	typeNamespacedName := types.NamespacedName{
+		Name:      resourceName,
+		Namespace: "default",
+	}
+
+	BeforeEach(func() {
+		resource := &mcpv1alpha1.MCPServer{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      resourceName,
+				Namespace: "default",
+			},
+			Spec: mcpv1alpha1.MCPServerSpec{
+				Source: mcpv1alpha1.Source{
+					Type: mcpv1alpha1.SourceTypeContainerImage,
+					ContainerImage: &mcpv1alpha1.ContainerImageSource{
+						Ref: "docker.io/library/test-image:latest",
+					},
+				},
+				Config: mcpv1alpha1.ServerConfig{
+					Port: 8080,
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		resource := &mcpv1alpha1.MCPServer{}
+		err := k8sClient.Get(ctx, typeNamespacedName, resource)
+		if err == nil {
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		}
+
+		deploy := &appsv1.Deployment{}
+		if err := k8sClient.Get(ctx, typeNamespacedName, deploy); err == nil {
+			Expect(k8sClient.Delete(ctx, deploy)).To(Succeed())
+		}
+
+		svc := &corev1.Service{}
+		if err := k8sClient.Get(ctx, typeNamespacedName, svc); err == nil {
+			Expect(k8sClient.Delete(ctx, svc)).To(Succeed())
+		}
+	})
+
+	It("should set ConfigurationInvalid when TLS CA Secret is missing", func() {
+		By("Updating MCPServer with TLS config referencing a nonexistent Secret")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Transport = &mcpv1alpha1.TransportConfig{
+			TLS: &mcpv1alpha1.TLSClientConfig{
+				Enabled: true,
+				CABundleSecret: &mcpv1alpha1.SecretReference{
+					Name: "nonexistent-ca",
+				},
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal(ReasonInvalid))
+		Expect(acceptedCondition.Message).To(ContainSubstring("TLS CA bundle Secret not found"))
+	})
+
+	It("should pass InsecureSkipVerify transport to the dialer", func() {
+		By("Updating MCPServer with InsecureSkipVerify TLS config")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Transport = &mcpv1alpha1.TransportConfig{
+			TLS: &mcpv1alpha1.TLSClientConfig{
+				Enabled:            true,
+				InsecureSkipVerify: true,
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		var capturedTransport *http.Transport
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(_ context.Context, _ string, transport *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
+				capturedTransport = transport
+				return &mcpv1alpha1.MCPServerInfo{Name: "test"}, nil
+			},
+			APIReader: k8sClient,
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Making deployment available and re-reconciling")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(capturedTransport).NotTo(BeNil())
+		Expect(capturedTransport.TLSClientConfig).NotTo(BeNil())
+		Expect(capturedTransport.TLSClientConfig.InsecureSkipVerify).To(BeTrue())
+	})
+
+	It("should apply TLSProfile to the handshake transport", func() {
+		By("Updating MCPServer with InsecureSkipVerify TLS config")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Transport = &mcpv1alpha1.TransportConfig{
+			TLS: &mcpv1alpha1.TLSClientConfig{
+				Enabled:            true,
+				InsecureSkipVerify: true,
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		var capturedTransport *http.Transport
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(_ context.Context, _ string, transport *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
+				capturedTransport = transport
+				return &mcpv1alpha1.MCPServerInfo{Name: "test"}, nil
+			},
+			APIReader: k8sClient,
+			TLSProfile: func(c *tls.Config) {
+				c.MinVersion = tls.VersionTLS13
+			},
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Making deployment available and re-reconciling")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(capturedTransport).NotTo(BeNil())
+		Expect(capturedTransport.TLSClientConfig).NotTo(BeNil())
+		Expect(capturedTransport.TLSClientConfig.MinVersion).To(Equal(uint16(tls.VersionTLS13)))
+	})
+
+	It("should set Ready=False when CA Secret has invalid PEM data", func() {
+		By("Creating a Secret with invalid PEM data")
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "bad-ca",
+				Namespace: "default",
+			},
+			Data: map[string][]byte{
+				"ca.crt": []byte("not-a-valid-pem"),
+			},
+		}
+		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+		By("Updating MCPServer with TLS config referencing the bad Secret")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Transport = &mcpv1alpha1.TransportConfig{
+			TLS: &mcpv1alpha1.TLSClientConfig{
+				Enabled:        true,
+				CABundleSecret: &mcpv1alpha1.SecretReference{Name: "bad-ca"},
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Making deployment available and re-reconciling")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+		Expect(readyCondition).NotTo(BeNil())
+		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(readyCondition.Message).To(ContainSubstring("TLS configuration error"))
+
+		By("Cleaning up Secret")
+		Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+	})
+
+	It("should pass nil transport when no TLS is configured", func() {
+		var capturedTransport *http.Transport
+		transportCaptured := false
+
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(_ context.Context, _ string, transport *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
+				capturedTransport = transport
+				transportCaptured = true
+				return &mcpv1alpha1.MCPServerInfo{Name: "test"}, nil
+			},
+			APIReader: k8sClient,
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Making deployment available and re-reconciling")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(transportCaptured).To(BeTrue())
+		Expect(capturedTransport).To(BeNil())
+
+		By("Verifying URL uses http:// scheme")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		Expect(mcpServer.Status.Address).NotTo(BeNil())
+		Expect(mcpServer.Status.Address.URL).To(HavePrefix("http://"))
 	})
 })
