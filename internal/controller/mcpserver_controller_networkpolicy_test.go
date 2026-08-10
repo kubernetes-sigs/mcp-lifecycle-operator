@@ -24,6 +24,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -620,6 +621,174 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 		By("Verifying port is still set")
 		Expect(netpol.Spec.Ingress[0].Ports).To(HaveLen(1))
 		Expect(netpol.Spec.Ingress[0].Ports[0].Port.IntValue()).To(Equal(8080))
+	})
+
+	It("should reject ingressFrom with invalid ipBlock CIDR during validation", func() {
+		mcpServer := newTestMCPServer("test-netpol-bad-cidr")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			IngressFrom: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR: "not-a-cidr",
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test-netpol-bad-cidr",
+				Namespace: "default",
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying Accepted condition is False with Invalid reason")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal("Invalid"))
+		Expect(acceptedCondition.Message).To(ContainSubstring("invalid ipBlock.cidr"))
+
+		By("Verifying no Deployment was created")
+		deployList := &appsv1.DeploymentList{}
+		Expect(k8sClient.List(ctx, deployList, client.InNamespace("default"),
+			client.MatchingLabels{"mcp-server": "test-netpol-bad-cidr"})).To(Succeed())
+		Expect(deployList.Items).To(BeEmpty())
+
+		By("Verifying no NetworkPolicy was created")
+		netpolList := &networkingv1.NetworkPolicyList{}
+		Expect(k8sClient.List(ctx, netpolList, client.InNamespace("default"),
+			client.MatchingLabels{"mcp-server": "test-netpol-bad-cidr"})).To(Succeed())
+		Expect(netpolList.Items).To(BeEmpty())
+	})
+
+	It("should reject ingressFrom with empty ipBlock CIDR during validation", func() {
+		mcpServer := newTestMCPServer("test-netpol-empty-cidr")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			IngressFrom: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR: "",
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test-netpol-empty-cidr",
+				Namespace: "default",
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying Accepted condition is False with Invalid reason")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal("Invalid"))
+		Expect(acceptedCondition.Message).To(ContainSubstring("ipBlock.cidr must not be empty"))
+	})
+
+	It("should reject ingressFrom with invalid ipBlock except CIDR", func() {
+		mcpServer := newTestMCPServer("test-netpol-bad-except")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			IngressFrom: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR:   "10.0.0.0/8",
+						Except: []string{"bad-except"},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test-netpol-bad-except",
+				Namespace: "default",
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying Accepted condition is False with Invalid reason")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal("Invalid"))
+		Expect(acceptedCondition.Message).To(ContainSubstring("invalid ipBlock.except[0]"))
+	})
+
+	It("should accept valid ingressFrom with ipBlock CIDR", func() {
+		mcpServer := newTestMCPServer("test-netpol-valid-cidr")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			IngressFrom: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR:   "10.0.0.0/8",
+						Except: []string{"10.1.0.0/16"},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		err := reconciler.reconcileNetworkPolicy(ctx, mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-valid-cidr",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying ingress From has the ipBlock")
+		Expect(netpol.Spec.Ingress[0].From).To(HaveLen(1))
+		Expect(netpol.Spec.Ingress[0].From[0].IPBlock).NotTo(BeNil())
+		Expect(netpol.Spec.Ingress[0].From[0].IPBlock.CIDR).To(Equal("10.0.0.0/8"))
 	})
 
 	It("should update NetworkPolicy when ingressFrom changes", func() {

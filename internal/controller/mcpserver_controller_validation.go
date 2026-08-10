@@ -19,8 +19,10 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -62,6 +64,15 @@ func (r *MCPServerReconciler) validateConfig(
 	for i, env := range mcpServer.Spec.Config.Env {
 		if err := r.validateEnvValueFrom(ctx, mcpServer, env, i); err != nil {
 			return err
+		}
+	}
+
+	// Validate network ingressFrom peers
+	if mcpServer.Spec.Network != nil {
+		for i, peer := range mcpServer.Spec.Network.IngressFrom {
+			if err := validateIngressFromPeer(peer, i); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -239,4 +250,31 @@ func classifyAPIError(resourceDesc string, namespace string, err error) error {
 		}
 	}
 	return fmt.Errorf("transient error validating %s: %w", resourceDesc, err)
+}
+
+// validateIngressFromPeer validates a single NetworkPolicyPeer entry.
+func validateIngressFromPeer(peer networkingv1.NetworkPolicyPeer, index int) *ValidationError {
+	if peer.IPBlock != nil {
+		if peer.IPBlock.CIDR == "" {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("network.ingressFrom[%d]: ipBlock.cidr must not be empty", index),
+			}
+		}
+		if _, _, err := net.ParseCIDR(peer.IPBlock.CIDR); err != nil {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("network.ingressFrom[%d]: invalid ipBlock.cidr %q: %v", index, peer.IPBlock.CIDR, err),
+			}
+		}
+		for j, except := range peer.IPBlock.Except {
+			if _, _, err := net.ParseCIDR(except); err != nil {
+				return &ValidationError{
+					Reason:  ReasonInvalid,
+					Message: fmt.Sprintf("network.ingressFrom[%d]: invalid ipBlock.except[%d] %q: %v", index, j, except, err),
+				}
+			}
+		}
+	}
+	return nil
 }
