@@ -753,6 +753,128 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 		Expect(acceptedCondition.Message).To(ContainSubstring("invalid ipBlock.except[0]"))
 	})
 
+	It("should reject ingressFrom with ipBlock combined with podSelector", func() {
+		mcpServer := newTestMCPServer("test-netpol-ipblock-podselector")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			IngressFrom: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR: "10.0.0.0/8",
+					},
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "test"},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test-netpol-ipblock-podselector",
+				Namespace: "default",
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying Accepted condition is False with Invalid reason")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal("Invalid"))
+		Expect(acceptedCondition.Message).To(ContainSubstring("ipBlock cannot be combined with podSelector or namespaceSelector"))
+	})
+
+	It("should reject ingressFrom with ipBlock except outside cidr", func() {
+		mcpServer := newTestMCPServer("test-netpol-except-outside")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			IngressFrom: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR:   "10.0.0.0/24",
+						Except: []string{"192.168.1.0/24"},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test-netpol-except-outside",
+				Namespace: "default",
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying Accepted condition is False with Invalid reason")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal("Invalid"))
+		Expect(acceptedCondition.Message).To(ContainSubstring("is not within cidr"))
+	})
+
+	It("should reject ingressFrom with except CIDR wider than parent", func() {
+		mcpServer := newTestMCPServer("test-netpol-except-wider")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			IngressFrom: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR:   "10.0.0.0/24",
+						Except: []string{"10.0.0.0/8"},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test-netpol-except-wider",
+				Namespace: "default",
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying Accepted condition is False with Invalid reason")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal("Invalid"))
+		Expect(acceptedCondition.Message).To(ContainSubstring("is not within cidr"))
+	})
+
 	It("should accept valid ingressFrom with ipBlock CIDR", func() {
 		mcpServer := newTestMCPServer("test-netpol-valid-cidr")
 		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{

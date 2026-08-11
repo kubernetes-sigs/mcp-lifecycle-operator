@@ -255,23 +255,39 @@ func classifyAPIError(resourceDesc string, namespace string, err error) error {
 // validateIngressFromPeer validates a single NetworkPolicyPeer entry.
 func validateIngressFromPeer(peer networkingv1.NetworkPolicyPeer, index int) *ValidationError {
 	if peer.IPBlock != nil {
+		if peer.PodSelector != nil || peer.NamespaceSelector != nil {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("network.ingressFrom[%d]: ipBlock cannot be combined with podSelector or namespaceSelector", index),
+			}
+		}
 		if peer.IPBlock.CIDR == "" {
 			return &ValidationError{
 				Reason:  ReasonInvalid,
 				Message: fmt.Sprintf("network.ingressFrom[%d]: ipBlock.cidr must not be empty", index),
 			}
 		}
-		if _, _, err := net.ParseCIDR(peer.IPBlock.CIDR); err != nil {
+		_, cidrNet, err := net.ParseCIDR(peer.IPBlock.CIDR)
+		if err != nil {
 			return &ValidationError{
 				Reason:  ReasonInvalid,
 				Message: fmt.Sprintf("network.ingressFrom[%d]: invalid ipBlock.cidr %q: %v", index, peer.IPBlock.CIDR, err),
 			}
 		}
+		parentOnes, parentBits := cidrNet.Mask.Size()
 		for j, except := range peer.IPBlock.Except {
-			if _, _, err := net.ParseCIDR(except); err != nil {
+			_, exceptNet, err := net.ParseCIDR(except)
+			if err != nil {
 				return &ValidationError{
 					Reason:  ReasonInvalid,
 					Message: fmt.Sprintf("network.ingressFrom[%d]: invalid ipBlock.except[%d] %q: %v", index, j, except, err),
+				}
+			}
+			exceptOnes, exceptBits := exceptNet.Mask.Size()
+			if parentBits != exceptBits || parentOnes > exceptOnes || !cidrNet.Contains(exceptNet.IP) {
+				return &ValidationError{
+					Reason:  ReasonInvalid,
+					Message: fmt.Sprintf("network.ingressFrom[%d]: ipBlock.except[%d] %q is not within cidr %q", index, j, except, peer.IPBlock.CIDR),
 				}
 			}
 		}
