@@ -76,7 +76,7 @@ func (r *MCPServerReconciler) validateReferencedConfigMap(
 	namespace, name, resourceDesc string,
 ) error {
 	cm := &corev1.ConfigMap{}
-	if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, cm); err != nil {
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, cm); err != nil {
 		return classifyAPIError(resourceDesc, namespace, err)
 	}
 	return nil
@@ -89,7 +89,7 @@ func (r *MCPServerReconciler) validateReferencedSecret(
 	namespace, name, resourceDesc string,
 ) error {
 	secret := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
 		return classifyAPIError(resourceDesc, namespace, err)
 	}
 	return nil

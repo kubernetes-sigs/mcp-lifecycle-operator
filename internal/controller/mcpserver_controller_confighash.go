@@ -71,10 +71,12 @@ func (r *MCPServerReconciler) computeConfigHash(
 	h := sha256.New()
 	dataWritten := false
 
+	// APIReader bypasses the cache to avoid starting a full structured informer
+	// for ConfigMaps/Secrets, which would negate the metadata-only watches.
 	sort.Strings(configMapNames)
 	for _, name := range configMapNames {
 		cm := &corev1.ConfigMap{}
-		if err := r.Get(ctx, client.ObjectKey{
+		if err := r.APIReader.Get(ctx, client.ObjectKey{
 			Name:      name,
 			Namespace: mcpServer.Namespace,
 		}, cm); err != nil {
@@ -106,7 +108,7 @@ func (r *MCPServerReconciler) computeConfigHash(
 	sort.Strings(secretNames)
 	for _, name := range secretNames {
 		secret := &corev1.Secret{}
-		if err := r.Get(ctx, client.ObjectKey{
+		if err := r.APIReader.Get(ctx, client.ObjectKey{
 			Name:      name,
 			Namespace: mcpServer.Namespace,
 		}, secret); err != nil {

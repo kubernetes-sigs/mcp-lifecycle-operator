@@ -1340,7 +1340,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			reconciler := &MCPServerReconciler{
 				Client:    fakeClient,
 				Scheme:    scheme,
-				APIReader: k8sClient,
+				APIReader: fakeClient,
 			}
 
 			mcpServer := &mcpv1alpha1.MCPServer{
@@ -1402,7 +1402,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			reconciler := &MCPServerReconciler{
 				Client:    fakeClient,
 				Scheme:    scheme,
-				APIReader: k8sClient,
+				APIReader: fakeClient,
 			}
 
 			mcpServer := &mcpv1alpha1.MCPServer{
@@ -1461,7 +1461,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			reconciler := &MCPServerReconciler{
 				Client:    fakeClient,
 				Scheme:    scheme,
-				APIReader: k8sClient,
+				APIReader: fakeClient,
 			}
 
 			mcpServer := &mcpv1alpha1.MCPServer{
@@ -1518,7 +1518,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			reconciler := &MCPServerReconciler{
 				Client:    fakeClient,
 				Scheme:    scheme,
-				APIReader: k8sClient,
+				APIReader: fakeClient,
 			}
 
 			mcpServer := &mcpv1alpha1.MCPServer{
@@ -1579,7 +1579,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			reconciler := &MCPServerReconciler{
 				Client:    fakeClient,
 				Scheme:    scheme,
-				APIReader: k8sClient,
+				APIReader: fakeClient,
 			}
 
 			mcpServer := &mcpv1alpha1.MCPServer{
@@ -1640,7 +1640,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			reconciler := &MCPServerReconciler{
 				Client:    fakeClient,
 				Scheme:    scheme,
-				APIReader: k8sClient,
+				APIReader: fakeClient,
 			}
 
 			mcpServer := &mcpv1alpha1.MCPServer{
@@ -1701,7 +1701,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			reconciler := &MCPServerReconciler{
 				Client:    fakeClient,
 				Scheme:    scheme,
-				APIReader: k8sClient,
+				APIReader: fakeClient,
 			}
 
 			mcpServer := &mcpv1alpha1.MCPServer{
