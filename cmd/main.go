@@ -41,6 +41,7 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
+	webhookpolicy "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -65,6 +66,11 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var enableWebhook bool
+	var imageAllowlist string
+	var requireImageDigest bool
+	var maxStorageMounts int
+	var requiredLabels string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -83,6 +89,21 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.BoolVar(&enableWebhook, "enable-webhook", false,
+		"If set, the validating admission webhook for MCPServer is registered. "+
+			"Requires TLS certificates to be available (e.g. via cert-manager).")
+	flag.StringVar(&imageAllowlist, "image-allowlist", "",
+		"Comma-separated list of allowed image registry prefixes for MCPServer validation webhook. "+
+			"Falls back to IMAGE_ALLOWLIST env var if not set. Empty means no restriction.")
+	flag.BoolVar(&requireImageDigest, "require-image-digest", false,
+		"If set, the validation webhook rejects MCPServer images that do not use digest references (@sha256:...). "+
+			"Falls back to REQUIRE_IMAGE_DIGEST env var if not set.")
+	flag.IntVar(&maxStorageMounts, "max-storage-mounts", -1,
+		"Maximum number of storage mounts allowed per MCPServer. "+
+			"Falls back to MAX_STORAGE_MOUNTS env var if not set. -1 means no limit.")
+	flag.StringVar(&requiredLabels, "required-labels", "",
+		"Comma-separated list of labels that must be present on MCPServer resources. "+
+			"Falls back to REQUIRED_LABELS env var if not set. Empty means no requirement.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -200,6 +221,13 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "MCPServer")
 		os.Exit(1)
 	}
+	if enableWebhook {
+		admissionPolicy := parseAdmissionFlags(imageAllowlist, requireImageDigest, maxStorageMounts, requiredLabels)
+		if err := mcpv1alpha1.SetupWebhookWithManager(mgr, admissionPolicy); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "MCPServer")
+			os.Exit(1)
+		}
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -216,4 +244,21 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func parseAdmissionFlags(imageAllowlist string, requireImageDigest bool, maxStorageMounts int, requiredLabels string) *webhookpolicy.AdmissionPolicy {
+	policy := webhookpolicy.ParseAdmissionPolicy(setupLog, webhookpolicy.PolicyFlags{
+		ImageAllowlist:     imageAllowlist,
+		RequireImageDigest: requireImageDigest,
+		MaxStorageMounts:   maxStorageMounts,
+		RequiredLabels:     requiredLabels,
+	})
+	if policy.HasActiveRules() {
+		setupLog.Info("Admission webhook policy configured",
+			"imageAllowlist", policy.ImageAllowlist,
+			"requireImageDigest", policy.RequireImageDigest,
+			"maxStorageMounts", policy.MaxStorageMounts,
+			"requiredLabels", policy.RequiredLabels)
+	}
+	return policy
 }
