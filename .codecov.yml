@@ -35,3 +35,4 @@ comment:
 ignore:
   - "**/zz_generated.*.go"
   - "**/applyconfiguration/**"
+  - "test/e2e/**"
