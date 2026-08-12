@@ -180,6 +180,7 @@ type MCPServerReconciler struct {
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -203,6 +204,14 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		logger.Error(err, "Failed to get MCPServer")
 		return ctrl.Result{}, err
+	}
+
+	// Skip reconciliation when the MCPServer or its namespace is being deleted
+	// to avoid error-level log spam from failed resource creation (see #300).
+	if skip, err := r.shouldSkipReconciliation(ctx, mcpServer, req.Namespace); err != nil {
+		return ctrl.Result{}, err
+	} else if skip {
+		return ctrl.Result{}, nil
 	}
 
 	logger.Info("Reconciling MCPServer", "name", mcpServer.Name, "namespace", mcpServer.Namespace)
@@ -436,6 +445,32 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// shouldSkipReconciliation returns true when the MCPServer is being deleted or
+// its namespace is terminating / already gone. This lets Reconcile return early
+// and avoid noisy errors from resource creation in a dying namespace (see #300).
+func (r *MCPServerReconciler) shouldSkipReconciliation(ctx context.Context, mcpServer *mcpv1alpha1.MCPServer, namespace string) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	if mcpServer.DeletionTimestamp != nil {
+		logger.Info("MCPServer is being deleted, skipping reconciliation")
+		return true, nil
+	}
+
+	ns := &corev1.Namespace{}
+	if err := r.Get(ctx, client.ObjectKey{Name: namespace}, ns); err != nil {
+		if apierrors.IsNotFound(err) {
+			logger.Info("Namespace not found, skipping reconciliation", "namespace", namespace)
+			return true, nil
+		}
+		return false, err
+	}
+	if ns.DeletionTimestamp != nil {
+		logger.Info("Namespace is terminating, skipping reconciliation", "namespace", namespace)
+		return true, nil
+	}
+	return false, nil
 }
 
 func (r *MCPServerReconciler) reconcilePermanentValidationError(
