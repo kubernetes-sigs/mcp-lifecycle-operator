@@ -47,7 +47,7 @@ const configHashAnnotation = "mcp.x-k8s.io/config-hash"
 // --- Spec Update Tests ---
 
 func TestImageUpdate(t *testing.T) {
-	digestRef := "quay.io/matzew/mcp-everything@sha256:537cdedad807bb56140caca9c332d3577b16e533584164bbc3f27abac7b5ba15"
+	imageRef := "quay.io/matzew/mcp-everything:2026.7.10"
 
 	feature := features.New("MCPServer image update").
 		WithLabel(category.Label, category.Lifecycle).
@@ -61,7 +61,7 @@ func TestImageUpdate(t *testing.T) {
 			r := cfg.Client().Resources()
 
 			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
-				s.Spec.Source.ContainerImage.Ref = digestRef
+				s.Spec.Source.ContainerImage.Ref = imageRef
 			})
 			t.Log("updated image to digest ref")
 
@@ -82,8 +82,8 @@ func TestImageUpdate(t *testing.T) {
 				t.Fatal("expected at least one container in Deployment pod template")
 			}
 			actualImage := dep.Spec.Template.Spec.Containers[0].Image
-			if actualImage != digestRef {
-				t.Fatalf("expected image %q, got %q", digestRef, actualImage)
+			if actualImage != imageRef {
+				t.Fatalf("expected image %q, got %q", imageRef, actualImage)
 			}
 
 			t.Logf("Deployment image updated to %s", actualImage)
