@@ -376,6 +376,7 @@ func TestServicePortDrift(t *testing.T) {
 }
 
 func TestServiceSelectorDrift(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer Service selector drift correction").
 		WithLabel("type", "reconciliation").
 		WithLabel("scenario", "drift-service-selector").
