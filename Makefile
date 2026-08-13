@@ -261,7 +261,7 @@ dir=$$(mktemp -d); \
 trap 'rm -rf "$$dir"' EXIT; \
 ln -s $(CURDIR)/$(1) $$dir/base && \
 printf 'resources:\n- base\n' > $$dir/kustomization.yaml && \
-cd $$dir && "$(KUSTOMIZE)" edit set image $(IMAGE_TAG_BASE)=$(2) && \
+cd $$dir && "$(KUSTOMIZE)" edit set image controller=$(2) && \
 "$(KUSTOMIZE)" build $$dir | "$(KUBECTL)" apply -f -
 endef
 

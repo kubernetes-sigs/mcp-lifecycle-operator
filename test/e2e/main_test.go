@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 	// registry with duplicate pulls on a cold node.
 	testenv.Setup(f.PrewarmImages(
 		f.DefaultMCPServerImage,
-		f.DefaultMCPServerImageDigest,
+		f.AlternateMCPServerImage,
 		f.BusyboxImage,
 	))
 

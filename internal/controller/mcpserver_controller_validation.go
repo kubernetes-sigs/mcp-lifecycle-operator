@@ -19,8 +19,10 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -65,6 +67,15 @@ func (r *MCPServerReconciler) validateConfig(
 		}
 	}
 
+	// Validate network ingressFrom peers
+	if mcpServer.Spec.Network != nil {
+		for i, peer := range mcpServer.Spec.Network.IngressFrom {
+			if err := validateIngressFromPeer(peer, i); err != nil {
+				return err
+			}
+		}
+	}
+
 	// All validation passed
 	return nil
 }
@@ -76,7 +87,7 @@ func (r *MCPServerReconciler) validateReferencedConfigMap(
 	namespace, name, resourceDesc string,
 ) error {
 	cm := &corev1.ConfigMap{}
-	if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, cm); err != nil {
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, cm); err != nil {
 		return classifyAPIError(resourceDesc, namespace, err)
 	}
 	return nil
@@ -89,7 +100,7 @@ func (r *MCPServerReconciler) validateReferencedSecret(
 	namespace, name, resourceDesc string,
 ) error {
 	secret := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
 		return classifyAPIError(resourceDesc, namespace, err)
 	}
 	return nil
@@ -239,4 +250,47 @@ func classifyAPIError(resourceDesc string, namespace string, err error) error {
 		}
 	}
 	return fmt.Errorf("transient error validating %s: %w", resourceDesc, err)
+}
+
+// validateIngressFromPeer validates a single NetworkPolicyPeer entry.
+func validateIngressFromPeer(peer networkingv1.NetworkPolicyPeer, index int) *ValidationError {
+	if peer.IPBlock != nil {
+		if peer.PodSelector != nil || peer.NamespaceSelector != nil {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("network.ingressFrom[%d]: ipBlock cannot be combined with podSelector or namespaceSelector", index),
+			}
+		}
+		if peer.IPBlock.CIDR == "" {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("network.ingressFrom[%d]: ipBlock.cidr must not be empty", index),
+			}
+		}
+		_, cidrNet, err := net.ParseCIDR(peer.IPBlock.CIDR)
+		if err != nil {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("network.ingressFrom[%d]: invalid ipBlock.cidr %q: %v", index, peer.IPBlock.CIDR, err),
+			}
+		}
+		parentOnes, parentBits := cidrNet.Mask.Size()
+		for j, except := range peer.IPBlock.Except {
+			_, exceptNet, err := net.ParseCIDR(except)
+			if err != nil {
+				return &ValidationError{
+					Reason:  ReasonInvalid,
+					Message: fmt.Sprintf("network.ingressFrom[%d]: invalid ipBlock.except[%d] %q: %v", index, j, except, err),
+				}
+			}
+			exceptOnes, exceptBits := exceptNet.Mask.Size()
+			if parentBits != exceptBits || parentOnes > exceptOnes || !cidrNet.Contains(exceptNet.IP) {
+				return &ValidationError{
+					Reason:  ReasonInvalid,
+					Message: fmt.Sprintf("network.ingressFrom[%d]: ipBlock.except[%d] %q is not within cidr %q", index, j, except, peer.IPBlock.CIDR),
+				}
+			}
+		}
+	}
+	return nil
 }

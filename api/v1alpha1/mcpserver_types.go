@@ -21,6 +21,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -333,6 +334,16 @@ type RuntimeConfig struct {
 	Health HealthConfig `json:"health,omitzero"`
 }
 
+// NetworkConfig defines network policies for the MCP server pod.
+type NetworkConfig struct {
+	// IngressFrom restricts which sources can reach the MCP server port.
+	// Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,
+	// namespaceSelector, ipBlock).
+	// When empty, any pod in the cluster can reach the MCP server (default).
+	// +optional
+	IngressFrom []networkingv1.NetworkPolicyPeer `json:"ingressFrom,omitempty"`
+}
+
 // MCPServerSpec defines the desired state of MCPServer.
 type MCPServerSpec struct {
 	// ExtraLabels are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
@@ -364,6 +375,10 @@ type MCPServerSpec struct {
 	// as opposed to how it is sourced, configured, or managed at runtime.
 	// +optional
 	MCP MCPConfig `json:"mcp,omitzero"`
+
+	// Network configures network policies for the MCP server pod.
+	// +optional
+	Network *NetworkConfig `json:"network,omitempty"`
 }
 
 // MCPConfig defines Model Context Protocol specific properties of the server.

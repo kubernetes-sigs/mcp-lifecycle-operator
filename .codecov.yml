@@ -37,4 +37,4 @@ ignore:
   - "**/applyconfiguration/**"
   # TODO: lift when sigs.k8s.io/e2e-framework supports fake client unit testing
   # See: https://github.com/kubernetes-sigs/e2e-framework/pull/590
-  - "test/e2e/framework/**"
+  - "test/e2e/**"

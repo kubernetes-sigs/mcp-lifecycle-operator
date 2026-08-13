@@ -48,7 +48,7 @@ const configHashAnnotation = "mcp.x-k8s.io/config-hash"
 
 func TestImageUpdate(t *testing.T) {
 	t.Parallel()
-	digestRef := f.DefaultMCPServerImageDigest
+	imageRef := f.AlternateMCPServerImage
 
 	feature := features.New("MCPServer image update").
 		WithLabel(category.Label, category.Lifecycle).
@@ -57,14 +57,19 @@ func TestImageUpdate(t *testing.T) {
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "img-update", true)
 		}).
-		Assess("update image to digest ref", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("update image to tag ref", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
+			oldImage := server.Spec.Source.ContainerImage.Ref
+			if oldImage == imageRef {
+				t.Fatalf("test misconfigured: initial image %q is the same as update target", oldImage)
+			}
+
 			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
-				s.Spec.Source.ContainerImage.Ref = digestRef
+				s.Spec.Source.ContainerImage.Ref = imageRef
 			})
-			t.Log("updated image to digest ref")
+			t.Logf("updated image from %s to %s", oldImage, imageRef)
 
 			return ctx
 		}).
@@ -73,6 +78,14 @@ func TestImageUpdate(t *testing.T) {
 			r := cfg.Client().Resources()
 
 			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
+
+			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
+				t.Fatalf("failed to re-fetch MCPServer: %v", err)
+			}
+			if server.Status.ObservedGeneration < server.Generation {
+				t.Fatalf("expected observedGeneration >= %d, got %d",
+					server.Generation, server.Status.ObservedGeneration)
+			}
 
 			dep := &appsv1.Deployment{}
 			if err := r.Get(ctx, server.Name, server.Namespace, dep); err != nil {
@@ -83,11 +96,12 @@ func TestImageUpdate(t *testing.T) {
 				t.Fatal("expected at least one container in Deployment pod template")
 			}
 			actualImage := dep.Spec.Template.Spec.Containers[0].Image
-			if actualImage != digestRef {
-				t.Fatalf("expected image %q, got %q", digestRef, actualImage)
+			if actualImage != imageRef {
+				t.Fatalf("expected image %q, got %q", imageRef, actualImage)
 			}
 
-			t.Logf("Deployment image updated to %s", actualImage)
+			t.Logf("Deployment image updated to %s (observedGeneration=%d)",
+				actualImage, server.Status.ObservedGeneration)
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {

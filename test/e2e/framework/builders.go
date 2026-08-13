@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	DefaultMCPServerImage       = "quay.io/matzew/mcp-everything:latest"
-	DefaultMCPServerImageDigest = "quay.io/matzew/mcp-everything@sha256:537cdedad807bb56140caca9c332d3577b16e533584164bbc3f27abac7b5ba15"
+	DefaultMCPServerImage       = "quay.io/matzew/mcp-everything:2026.7.10"
+	AlternateMCPServerImage = "quay.io/matzew/mcp-everything:2026.8.12"
 	BusyboxImage                = "docker.io/library/busybox:1.37"
 )
 

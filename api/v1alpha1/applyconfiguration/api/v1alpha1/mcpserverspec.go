@@ -43,6 +43,8 @@ type MCPServerSpecApplyConfiguration struct {
 	// This section describes the MCP server's protocol-level behavior,
 	// as opposed to how it is sourced, configured, or managed at runtime.
 	MCP *MCPConfigApplyConfiguration `json:"mcp,omitempty"`
+	// Network configures network policies for the MCP server pod.
+	Network *NetworkConfigApplyConfiguration `json:"network,omitempty"`
 }
 
 // MCPServerSpecApplyConfiguration constructs a declarative configuration of the MCPServerSpec type for use with
@@ -108,5 +110,13 @@ func (b *MCPServerSpecApplyConfiguration) WithRuntime(value *RuntimeConfigApplyC
 // If called multiple times, the MCP field is set to the value of the last call.
 func (b *MCPServerSpecApplyConfiguration) WithMCP(value *MCPConfigApplyConfiguration) *MCPServerSpecApplyConfiguration {
 	b.MCP = value
+	return b
+}
+
+// WithNetwork sets the Network field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Network field is set to the value of the last call.
+func (b *MCPServerSpecApplyConfiguration) WithNetwork(value *NetworkConfigApplyConfiguration) *MCPServerSpecApplyConfiguration {
+	b.Network = value
 	return b
 }

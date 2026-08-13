@@ -458,7 +458,7 @@ var _ = Describe("MCPServer Controller - Transient Validation Errors", func() {
 		transientReconciler := &MCPServerReconciler{
 			Client:    interceptedClient,
 			Scheme:    k8sClient.Scheme(),
-			APIReader: k8sClient,
+			APIReader: interceptedClient,
 		}
 
 		By("Reconciling with transient ConfigMap validation failure")
@@ -532,7 +532,7 @@ var _ = Describe("MCPServer Controller - Transient Validation Errors", func() {
 		transientReconciler := &MCPServerReconciler{
 			Client:    interceptedClient,
 			Scheme:    k8sClient.Scheme(),
-			APIReader: k8sClient,
+			APIReader: interceptedClient,
 		}
 
 		By("Reconciling with transient failure")

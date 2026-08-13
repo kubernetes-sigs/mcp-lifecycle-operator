@@ -57,6 +57,9 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 			logger.Error(err, "Failed to create NetworkPolicy")
 			return err
 		}
+		if mcpServer.Spec.Network == nil || len(mcpServer.Spec.Network.IngressFrom) == 0 {
+			logger.Info("NetworkPolicy created without ingress source restrictions", "name", netpol.Name)
+		}
 		return nil
 	} else if err != nil {
 		logger.Error(err, "Failed to get NetworkPolicy")
@@ -113,6 +116,18 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1alpha1.MCPServ
 	port := intstr.FromInt32(mcpServer.Spec.Config.Port)
 	protocol := corev1.ProtocolTCP
 
+	ingressRule := networkingv1.NetworkPolicyIngressRule{
+		Ports: []networkingv1.NetworkPolicyPort{
+			{
+				Port:     &port,
+				Protocol: &protocol,
+			},
+		},
+	}
+	if mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.IngressFrom) > 0 {
+		ingressRule.From = mcpServer.Spec.Network.DeepCopy().IngressFrom
+	}
+
 	return &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      mcpServer.Name,
@@ -128,14 +143,7 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1alpha1.MCPServ
 				networkingv1.PolicyTypeEgress,
 			},
 			Ingress: []networkingv1.NetworkPolicyIngressRule{
-				{
-					Ports: []networkingv1.NetworkPolicyPort{
-						{
-							Port:     &port,
-							Protocol: &protocol,
-						},
-					},
-				},
+				ingressRule,
 			},
 			Egress: []networkingv1.NetworkPolicyEgressRule{
 				{},
