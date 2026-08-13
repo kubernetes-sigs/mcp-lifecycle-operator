@@ -24,9 +24,9 @@ import (
 )
 
 const (
-	DefaultMCPServerImage       = "quay.io/matzew/mcp-everything:2026.7.10"
+	DefaultMCPServerImage   = "quay.io/matzew/mcp-everything:2026.7.10"
 	AlternateMCPServerImage = "quay.io/matzew/mcp-everything:2026.8.12"
-	BusyboxImage                = "docker.io/library/busybox:1.37"
+	BusyboxImage            = "docker.io/library/busybox:1.37"
 )
 
 // MCPServerOption configures an MCPServer for testing.
