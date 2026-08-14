@@ -35,7 +35,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 var _ = Describe("MCPServer Controller - Address URL", func() {
@@ -50,7 +50,7 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 		}
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -78,7 +78,7 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1alpha1.MCPServer{}
+			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 			Expect(mcpServer.Status.Address).NotTo(BeNil())
 			Expect(mcpServer.Status.Address.URL).To(Equal("http://test-address.default.svc.cluster.local:8080/mcp"))
@@ -105,7 +105,7 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1alpha1.MCPServer{}
+			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 			Expect(mcpServer.Status.Address).NotTo(BeNil())
 			Expect(mcpServer.Status.Address.URL).To(Equal("http://test-address.default.svc.cluster.local:3001/mcp"))
@@ -132,7 +132,7 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1alpha1.MCPServer{}
+			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 			Expect(mcpServer.Status.Address).NotTo(BeNil())
 			Expect(mcpServer.Status.Address.URL).To(Equal("http://test-address.default.svc.cluster.local:8080/sse"))
@@ -166,7 +166,7 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1alpha1.MCPServer{}
+			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 			Expect(mcpServer.Status.Address).NotTo(BeNil())
 			Expect(mcpServer.Status.Address.URL).To(Equal("http://test-address.default.svc.cluster.local:8080/mcp"))
@@ -186,7 +186,7 @@ var _ = Describe("MCPServer Controller - Service Update", func() {
 		}
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -214,7 +214,7 @@ var _ = Describe("MCPServer Controller - Service Update", func() {
 			Expect(svc.Spec.Ports[0].Port).To(Equal(int32(8080)))
 
 			By("Updating the port in the MCPServer spec")
-			mcpServer := &mcpv1alpha1.MCPServer{}
+			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 			mcpServer.Spec.Config.Port = 9090
 			Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
@@ -256,14 +256,14 @@ var _ = Describe("MCPServer Controller - reconcileService", func() {
 	})
 
 	AfterEach(func() {
-		resource := &mcpv1alpha1.MCPServer{}
+		resource := &mcpv1beta1.MCPServer{}
 		err := k8sClient.Get(ctx, typeNamespacedName, resource)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 	})
 
 	It("should create a service when none exists", func() {
-		mcpServer := &mcpv1alpha1.MCPServer{}
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 		reconciler := &MCPServerReconciler{
@@ -286,7 +286,7 @@ var _ = Describe("MCPServer Controller - reconcileService", func() {
 	})
 
 	It("should not error when service already exists", func() {
-		mcpServer := &mcpv1alpha1.MCPServer{}
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 		reconciler := &MCPServerReconciler{
@@ -300,7 +300,7 @@ var _ = Describe("MCPServer Controller - reconcileService", func() {
 	})
 
 	It("should restore a drifted selector without changing the ClusterIP", func() {
-		mcpServer := &mcpv1alpha1.MCPServer{}
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 		reconciler := &MCPServerReconciler{
@@ -347,7 +347,7 @@ var _ = Describe("MCPServer Controller - Stateless Service", func() {
 	}
 
 	AfterEach(func() {
-		resource := &mcpv1alpha1.MCPServer{}
+		resource := &mcpv1beta1.MCPServer{}
 		err := k8sClient.Get(ctx, typeNamespacedName, resource)
 		if err == nil {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -359,7 +359,7 @@ var _ = Describe("MCPServer Controller - Stateless Service", func() {
 		resource.Spec.MCP.Stateless = new(true)
 		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
-		mcpServer := &mcpv1alpha1.MCPServer{}
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 		reconciler := &MCPServerReconciler{
@@ -383,7 +383,7 @@ var _ = Describe("MCPServer Controller - Stateless Service", func() {
 		resource := newTestMCPServer(resourceName)
 		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
-		mcpServer := &mcpv1alpha1.MCPServer{}
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 		reconciler := &MCPServerReconciler{
@@ -408,7 +408,7 @@ var _ = Describe("MCPServer Controller - Stateless Service", func() {
 		resource.Spec.MCP.Stateless = new(false)
 		Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
-		mcpServer := &mcpv1alpha1.MCPServer{}
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 		reconciler := &MCPServerReconciler{
@@ -450,7 +450,7 @@ var _ = Describe("MCPServer Controller - Stateless Service", func() {
 		Expect(svc.Spec.SessionAffinity).To(Equal(corev1.ServiceAffinityClientIP))
 
 		By("Updating stateless to true")
-		mcpServer := &mcpv1alpha1.MCPServer{}
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 		mcpServer.Spec.MCP.Stateless = new(true)
 		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
@@ -488,7 +488,7 @@ var _ = Describe("MCPServer Controller - Stateless Service", func() {
 		Expect(svc.Spec.SessionAffinity).To(Equal(corev1.ServiceAffinityNone))
 
 		By("Updating stateless to false")
-		mcpServer := &mcpv1alpha1.MCPServer{}
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 		mcpServer.Spec.MCP.Stateless = new(false)
 		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
@@ -521,7 +521,7 @@ var _ = Describe("MCPServer Controller - Service Reconciliation Failures", func(
 	})
 
 	AfterEach(func() {
-		resource := &mcpv1alpha1.MCPServer{}
+		resource := &mcpv1beta1.MCPServer{}
 		err := k8sClient.Get(ctx, typeNamespacedName, resource)
 		if err == nil {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -556,7 +556,7 @@ var _ = Describe("MCPServer Controller - Service Reconciliation Failures", func(
 		Expect(err.Error()).To(ContainSubstring("simulated service creation failure"))
 
 		By("Verifying status is updated with ServiceUnavailable")
-		mcpServer := &mcpv1alpha1.MCPServer{}
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
@@ -613,7 +613,7 @@ var _ = Describe("MCPServer Controller - Service Reconciliation Failures", func(
 		}
 
 		By("Updating MCPServer spec to trigger service reconciliation")
-		mcpServer := &mcpv1alpha1.MCPServer{}
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 		mcpServer.Spec.Config.Port = 9090
 		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
@@ -660,7 +660,7 @@ var _ = Describe("MCPServer Controller - Service Reconcile Events", func() {
 	})
 
 	AfterEach(func() {
-		resource := &mcpv1alpha1.MCPServer{}
+		resource := &mcpv1beta1.MCPServer{}
 		err := k8sClient.Get(ctx, typeNamespacedName, resource)
 		if err == nil {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -755,7 +755,7 @@ var _ = Describe("MCPServer Controller - Server-Side Apply for Status", func() {
 	})
 
 	AfterEach(func() {
-		resource := &mcpv1alpha1.MCPServer{}
+		resource := &mcpv1beta1.MCPServer{}
 		err := k8sClient.Get(ctx, typeNamespacedName, resource)
 		if err == nil {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())

@@ -28,19 +28,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
-func newTestMCPServerForAudit(name string) *mcpv1alpha1.MCPServer {
-	return &mcpv1alpha1.MCPServer{
+func newTestMCPServerForAudit(name string) *mcpv1beta1.MCPServer {
+	return &mcpv1beta1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
 			Namespace:       "test-ns",
 			Generation:      3,
 			ResourceVersion: "12345",
 		},
-		Spec: mcpv1alpha1.MCPServerSpec{
-			Config: mcpv1alpha1.ServerConfig{
+		Spec: mcpv1beta1.MCPServerSpec{
+			Config: mcpv1beta1.ServerConfig{
 				Port: 8080,
 			},
 		},
@@ -74,7 +74,7 @@ func findAuditEntry(entries []logEntry, operation string) (logEntry, bool) {
 var _ = Describe("Audit Logging", func() {
 	It("should log HandshakeSuccess with server info fields", func() {
 		mcpServer := newTestMCPServerForAudit("test-server")
-		info := &mcpv1alpha1.MCPServerInfo{
+		info := &mcpv1beta1.MCPServerInfo{
 			Name:            "echo-server",
 			Version:         "1.2.0",
 			ProtocolVersion: "2026-07-28",

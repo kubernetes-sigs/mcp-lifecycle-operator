@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 // ValidationError represents a permanent configuration validation error.
@@ -47,7 +47,7 @@ func (e *ValidationError) Error() string {
 // Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
 func (r *MCPServerReconciler) validateConfig(
 	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 ) error {
 	// Validate storage mounts
 	for i, storage := range mcpServer.Spec.Config.Storage {
@@ -178,12 +178,12 @@ func (r *MCPServerReconciler) validateCABundleSecret(
 // Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
 func (r *MCPServerReconciler) validateStorageMount(
 	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
-	storage mcpv1alpha1.StorageMount,
+	mcpServer *mcpv1beta1.MCPServer,
+	storage mcpv1beta1.StorageMount,
 	index int,
 ) error {
 	switch storage.Source.Type {
-	case mcpv1alpha1.StorageTypeConfigMap:
+	case mcpv1beta1.StorageTypeConfigMap:
 		if storage.Source.ConfigMap == nil {
 			return &ValidationError{
 				Reason:  ReasonInvalid,
@@ -203,7 +203,7 @@ func (r *MCPServerReconciler) validateStorageMount(
 		return r.validateReferencedConfigMap(ctx, mcpServer.Namespace, storage.Source.ConfigMap.Name,
 			fmt.Sprintf("ConfigMap '%s'", storage.Source.ConfigMap.Name))
 
-	case mcpv1alpha1.StorageTypeSecret:
+	case mcpv1beta1.StorageTypeSecret:
 		if storage.Source.Secret == nil {
 			return &ValidationError{
 				Reason:  ReasonInvalid,
@@ -223,7 +223,7 @@ func (r *MCPServerReconciler) validateStorageMount(
 		return r.validateReferencedSecret(ctx, mcpServer.Namespace, storage.Source.Secret.SecretName,
 			fmt.Sprintf("Secret '%s'", storage.Source.Secret.SecretName))
 
-	case mcpv1alpha1.StorageTypeEmptyDir:
+	case mcpv1beta1.StorageTypeEmptyDir:
 		// Validate EmptyDir configuration is present
 		if storage.Source.EmptyDir == nil {
 			return &ValidationError{
@@ -246,7 +246,7 @@ func (r *MCPServerReconciler) validateStorageMount(
 // Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
 func (r *MCPServerReconciler) validateEnvFrom(
 	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 	envFrom corev1.EnvFromSource,
 	index int,
 ) error {
@@ -273,7 +273,7 @@ func (r *MCPServerReconciler) validateEnvFrom(
 // Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
 func (r *MCPServerReconciler) validateEnvValueFrom(
 	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 	env corev1.EnvVar,
 	index int,
 ) error {

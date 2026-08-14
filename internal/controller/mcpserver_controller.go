@@ -45,8 +45,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	acv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1/applyconfiguration/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	acv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1/applyconfiguration/api/v1beta1"
 )
 
 const (
@@ -166,7 +166,7 @@ type MCPServerReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
 	Recorder  events.EventRecorder
-	MCPDialer func(ctx context.Context, url string, transport *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) // nil = use real MCP handshake
+	MCPDialer func(ctx context.Context, url string, transport *http.Transport) (*mcpv1beta1.MCPServerInfo, error) // nil = use real MCP handshake
 	APIReader client.Reader
 	// TLSEnvVars holds TLS-related environment variables to propagate to every
 	// MCP server container. Populated at startup when PROPAGATE_TLS_ENV_VARS is set.
@@ -202,7 +202,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	logger := log.FromContext(ctx)
 
 	// Fetch the MCPServer instance
-	mcpServer := &mcpv1alpha1.MCPServer{}
+	mcpServer := &mcpv1beta1.MCPServer{}
 	if err := r.Get(ctx, req.NamespacedName, mcpServer); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("MCPServer resource not found, ignoring since object must be deleted")
@@ -289,7 +289,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			r.emitDeploymentReconcileFailed(mcpServer, readyCondition.Message)
 		}
 
-		status := acv1alpha1.MCPServerStatus().
+		status := acv1beta1.MCPServerStatus().
 			WithObservedGeneration(mcpServer.Generation).
 			WithServiceName(mcpServer.Name).
 			WithHandshakeRetryCount(0).
@@ -371,7 +371,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// If deployment-level readiness reports Available, verify the MCP endpoint.
-	var serverInfo *mcpv1alpha1.MCPServerInfo
+	var serverInfo *mcpv1beta1.MCPServerInfo
 	readyCondition, serverInfo = r.reconcileHandshake(ctx, mcpServer, mcpURL, readyCondition, tlsCABundleHash)
 
 	// Normal Event once per Ready transition to Available after a successful handshake.
@@ -383,7 +383,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	handshakeRetryCount := r.reconcileHandshakeEventsAndRetryCount(mcpServer, readyCondition)
 
-	status := acv1alpha1.MCPServerStatus().
+	status := acv1beta1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
 		WithDeploymentName(existingDeployment.Name).
 		WithServiceName(mcpServer.Name).
@@ -442,8 +442,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-func serverInfoToAC(info *mcpv1alpha1.MCPServerInfo) *acv1alpha1.MCPServerInfoApplyConfiguration {
-	si := acv1alpha1.MCPServerInfo()
+func serverInfoToAC(info *mcpv1beta1.MCPServerInfo) *acv1beta1.MCPServerInfoApplyConfiguration {
+	si := acv1beta1.MCPServerInfo()
 	if info.Name != "" {
 		si = si.WithName(info.Name)
 	}
@@ -457,7 +457,7 @@ func serverInfoToAC(info *mcpv1alpha1.MCPServerInfo) *acv1alpha1.MCPServerInfoAp
 		si = si.WithInstructions(info.Instructions)
 	}
 	if info.Capabilities != nil {
-		si = si.WithCapabilities(acv1alpha1.MCPServerCapabilities().
+		si = si.WithCapabilities(acv1beta1.MCPServerCapabilities().
 			WithTools(info.Capabilities.Tools).
 			WithResources(info.Capabilities.Resources).
 			WithPrompts(info.Capabilities.Prompts).
@@ -470,7 +470,7 @@ func serverInfoToAC(info *mcpv1alpha1.MCPServerInfo) *acv1alpha1.MCPServerInfoAp
 // shouldSkipReconciliation returns true when the MCPServer is being deleted or
 // its namespace is terminating / already gone. This lets Reconcile return early
 // and avoid noisy errors from resource creation in a dying namespace (see #300).
-func (r *MCPServerReconciler) shouldSkipReconciliation(ctx context.Context, mcpServer *mcpv1alpha1.MCPServer, namespace string) (bool, error) {
+func (r *MCPServerReconciler) shouldSkipReconciliation(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, namespace string) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	if mcpServer.DeletionTimestamp != nil {
@@ -495,7 +495,7 @@ func (r *MCPServerReconciler) shouldSkipReconciliation(ctx context.Context, mcpS
 
 func (r *MCPServerReconciler) reconcilePermanentValidationError(
 	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 	validationErr *ValidationError,
 ) error {
 	logger := log.FromContext(ctx)
@@ -529,7 +529,7 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 
 	prevAccepted := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAccepted)
 
-	status := acv1alpha1.MCPServerStatus().
+	status := acv1beta1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
 		WithServiceName(mcpServer.Name).
 		WithHandshakeRetryCount(0).
@@ -558,7 +558,7 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 	return nil
 }
 
-func (r *MCPServerReconciler) emitConfigurationInvalid(mcpServer *mcpv1alpha1.MCPServer, validationErr *ValidationError) {
+func (r *MCPServerReconciler) emitConfigurationInvalid(mcpServer *mcpv1beta1.MCPServer, validationErr *ValidationError) {
 	if r.Recorder == nil {
 		return
 	}
@@ -566,7 +566,7 @@ func (r *MCPServerReconciler) emitConfigurationInvalid(mcpServer *mcpv1alpha1.MC
 		"MCPServer %s: %s", mcpServer.Name, validationErr.Message)
 }
 
-func (r *MCPServerReconciler) emitConfigurationAccepted(mcpServer *mcpv1alpha1.MCPServer) {
+func (r *MCPServerReconciler) emitConfigurationAccepted(mcpServer *mcpv1beta1.MCPServer) {
 	if r.Recorder == nil {
 		return
 	}
@@ -574,7 +574,7 @@ func (r *MCPServerReconciler) emitConfigurationAccepted(mcpServer *mcpv1alpha1.M
 		"MCPServer %s configuration is valid; Accepted=True", mcpServer.Name)
 }
 
-func (r *MCPServerReconciler) emitServerReady(mcpServer *mcpv1alpha1.MCPServer) {
+func (r *MCPServerReconciler) emitServerReady(mcpServer *mcpv1beta1.MCPServer) {
 	if r.Recorder == nil {
 		return
 	}
@@ -582,7 +582,7 @@ func (r *MCPServerReconciler) emitServerReady(mcpServer *mcpv1alpha1.MCPServer) 
 }
 
 func (r *MCPServerReconciler) maybeEmitDeploymentUnavailableEvent(
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 	readyCondition metav1.Condition,
 ) {
 	if readyCondition.Status == metav1.ConditionFalse &&
@@ -593,17 +593,17 @@ func (r *MCPServerReconciler) maybeEmitDeploymentUnavailableEvent(
 }
 
 func withAddressWhenAvailable(
-	status *acv1alpha1.MCPServerStatusApplyConfiguration,
+	status *acv1beta1.MCPServerStatusApplyConfiguration,
 	readyCondition metav1.Condition,
 	mcpURL string,
-) *acv1alpha1.MCPServerStatusApplyConfiguration {
+) *acv1beta1.MCPServerStatusApplyConfiguration {
 	if readyCondition.Status == metav1.ConditionTrue && readyCondition.Reason == ReasonAvailable {
-		return status.WithAddress(acv1alpha1.MCPServerAddress().WithURL(mcpURL))
+		return status.WithAddress(acv1beta1.MCPServerAddress().WithURL(mcpURL))
 	}
 	return status
 }
 
-func (r *MCPServerReconciler) emitDeploymentReconcileFailed(mcpServer *mcpv1alpha1.MCPServer, message string) {
+func (r *MCPServerReconciler) emitDeploymentReconcileFailed(mcpServer *mcpv1beta1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -611,7 +611,7 @@ func (r *MCPServerReconciler) emitDeploymentReconcileFailed(mcpServer *mcpv1alph
 		"MCPServer %s: %s", mcpServer.Name, message)
 }
 
-func (r *MCPServerReconciler) emitServiceReconcileFailed(mcpServer *mcpv1alpha1.MCPServer, message string) {
+func (r *MCPServerReconciler) emitServiceReconcileFailed(mcpServer *mcpv1beta1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -624,12 +624,12 @@ type resourceFailureParams struct {
 	reason      string
 	resource    string
 	isDuplicate func([]metav1.Condition, string) bool
-	emitEvent   func(*mcpv1alpha1.MCPServer, string)
+	emitEvent   func(*mcpv1beta1.MCPServer, string)
 }
 
 func (r *MCPServerReconciler) handleResourceFailure(
 	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 	existingDeployment *appsv1.Deployment,
 	acceptedCondition metav1.Condition,
 	reconcileErr error,
@@ -659,7 +659,7 @@ func (r *MCPServerReconciler) handleResourceFailure(
 		params.emitEvent(mcpServer, readyCondition.Message)
 	}
 
-	status := acv1alpha1.MCPServerStatus().
+	status := acv1beta1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
 		WithDeploymentName(existingDeployment.Name).
 		WithServiceName(mcpServer.Name).
@@ -681,7 +681,7 @@ func (r *MCPServerReconciler) handleResourceFailure(
 	return ctrl.Result{}, reconcileErr
 }
 
-func (r *MCPServerReconciler) emitNetworkPolicyReconcileFailed(mcpServer *mcpv1alpha1.MCPServer, message string) {
+func (r *MCPServerReconciler) emitNetworkPolicyReconcileFailed(mcpServer *mcpv1beta1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -689,7 +689,7 @@ func (r *MCPServerReconciler) emitNetworkPolicyReconcileFailed(mcpServer *mcpv1a
 		"MCPServer %s: %s", mcpServer.Name, message)
 }
 
-func (r *MCPServerReconciler) emitMCPHandshakeFailed(mcpServer *mcpv1alpha1.MCPServer, message string) {
+func (r *MCPServerReconciler) emitMCPHandshakeFailed(mcpServer *mcpv1beta1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -697,7 +697,7 @@ func (r *MCPServerReconciler) emitMCPHandshakeFailed(mcpServer *mcpv1alpha1.MCPS
 		"MCP handshake failed for MCPServer %s: %s", mcpServer.Name, message)
 }
 
-func (r *MCPServerReconciler) emitMCPHandshakeRetriesExhausted(mcpServer *mcpv1alpha1.MCPServer, retryCount int32) {
+func (r *MCPServerReconciler) emitMCPHandshakeRetriesExhausted(mcpServer *mcpv1beta1.MCPServer, retryCount int32) {
 	if r.Recorder == nil {
 		return
 	}
@@ -706,7 +706,7 @@ func (r *MCPServerReconciler) emitMCPHandshakeRetriesExhausted(mcpServer *mcpv1a
 		mcpServer.Name, retryCount)
 }
 
-func capabilityChangeMessage(mcpServer *mcpv1alpha1.MCPServer, serverInfo *mcpv1alpha1.MCPServerInfo) string {
+func capabilityChangeMessage(mcpServer *mcpv1beta1.MCPServer, serverInfo *mcpv1beta1.MCPServerInfo) string {
 	if serverInfo == nil || mcpServer.Status.ServerInfo == nil {
 		return ""
 	}
@@ -716,7 +716,7 @@ func capabilityChangeMessage(mcpServer *mcpv1alpha1.MCPServer, serverInfo *mcpv1
 	return capabilityDiffMessage(mcpServer.Status.ServerInfo.Capabilities, serverInfo.Capabilities)
 }
 
-func (r *MCPServerReconciler) emitCapabilityChangeDetected(mcpServer *mcpv1alpha1.MCPServer, diff string) {
+func (r *MCPServerReconciler) emitCapabilityChangeDetected(mcpServer *mcpv1beta1.MCPServer, diff string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -726,11 +726,11 @@ func (r *MCPServerReconciler) emitCapabilityChangeDetected(mcpServer *mcpv1alpha
 
 func (r *MCPServerReconciler) applyStatus(
 	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
-	status *acv1alpha1.MCPServerStatusApplyConfiguration,
+	mcpServer *mcpv1beta1.MCPServer,
+	status *acv1beta1.MCPServerStatusApplyConfiguration,
 ) error {
 	return r.Status().Apply(ctx,
-		acv1alpha1.MCPServer(mcpServer.Name, mcpServer.Namespace).WithStatus(status),
+		acv1beta1.MCPServer(mcpServer.Name, mcpServer.Namespace).WithStatus(status),
 		client.FieldOwner(fieldManager),
 		client.ForceOwnership,
 	)
@@ -743,7 +743,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Register ConfigMap index for efficient lookups
 	if err := mgr.GetFieldIndexer().IndexField(
 		ctx,
-		&mcpv1alpha1.MCPServer{},
+		&mcpv1beta1.MCPServer{},
 		configMapIndexKey,
 		extractConfigMapNames,
 	); err != nil {
@@ -753,7 +753,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Register Secret index for efficient lookups
 	if err := mgr.GetFieldIndexer().IndexField(
 		ctx,
-		&mcpv1alpha1.MCPServer{},
+		&mcpv1beta1.MCPServer{},
 		secretIndexKey,
 		extractSecretNames,
 	); err != nil {
@@ -761,7 +761,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&mcpv1alpha1.MCPServer{}, builder.WithPredicates(predicate.Or(
+		For(&mcpv1beta1.MCPServer{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
 			predicate.AnnotationChangedPredicate{},
 			predicate.LabelChangedPredicate{},
