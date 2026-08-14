@@ -31,12 +31,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 func (r *MCPServerReconciler) reconcileNetworkPolicy(
 	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -116,7 +116,7 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 	return nil
 }
 
-func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1alpha1.MCPServer) *networkingv1.NetworkPolicy {
+func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1beta1.MCPServer) *networkingv1.NetworkPolicy {
 	labels := managedWorkloadLabels(mcpServer.Name)
 	port := intstr.FromInt32(mcpServer.Spec.Config.Port)
 	protocol := corev1.ProtocolTCP
@@ -157,7 +157,7 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1alpha1.MCPServ
 	}
 }
 
-func buildEgressRules(mcpServer *mcpv1alpha1.MCPServer) []networkingv1.NetworkPolicyEgressRule {
+func buildEgressRules(mcpServer *mcpv1beta1.MCPServer) []networkingv1.NetworkPolicyEgressRule {
 	hasEgressTo := mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.EgressTo) > 0
 	hasEgressPorts := mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.EgressPorts) > 0
 

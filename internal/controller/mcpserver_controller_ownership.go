@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 type OwnershipConflictError struct {
@@ -48,7 +48,7 @@ func IsOwnershipConflict(err error) bool {
 func (r *MCPServerReconciler) validateOwnership(
 	ctx context.Context,
 	obj client.Object,
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 ) error {
 	// Get the controller owner reference from the existing resource
 	controllerOwner := metav1.GetControllerOf(obj)
@@ -69,7 +69,7 @@ func (r *MCPServerReconciler) validateOwnership(
 	// This handles the case where the MCPServer was deleted and recreated
 	// with the same name, and we want to adopt the orphaned resources.
 	// We validate the API group but allow different versions to support upgrades.
-	if isSameGroupKind(controllerOwner, mcpv1alpha1.GroupVersion.Group, mcpv1alpha1.MCPServerKind) &&
+	if isSameGroupKind(controllerOwner, mcpv1beta1.GroupVersion.Group, mcpv1beta1.MCPServerKind) &&
 		controllerOwner.Name == mcpServer.Name &&
 		obj.GetNamespace() == mcpServer.Namespace {
 		// Owner is an MCPServer with same group/name/namespace but different UID

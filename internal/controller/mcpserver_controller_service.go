@@ -29,13 +29,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 // reconcileService creates or updates the Service for the MCPServer.
 func (r *MCPServerReconciler) reconcileService(
 	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -115,7 +115,7 @@ func (r *MCPServerReconciler) reconcileService(
 }
 
 // createService creates a Service for the MCPServer
-func (r *MCPServerReconciler) createService(mcpServer *mcpv1alpha1.MCPServer) *corev1.Service {
+func (r *MCPServerReconciler) createService(mcpServer *mcpv1beta1.MCPServer) *corev1.Service {
 	labels := managedWorkloadLabels(mcpServer.Name)
 
 	service := &corev1.Service{

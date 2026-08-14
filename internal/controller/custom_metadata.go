@@ -7,7 +7,7 @@ import (
 	"maps"
 	"strings"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -61,7 +61,7 @@ func mergeMaps(dst, src map[string]string) error {
 	return nil
 }
 
-func applyCustomObjectMetadata(mcpServer *mcpv1alpha1.MCPServer, obj client.Object) error {
+func applyCustomObjectMetadata(mcpServer *mcpv1beta1.MCPServer, obj client.Object) error {
 	annotations := obj.GetAnnotations()
 
 	currentLabels := make(map[string]string)
@@ -150,7 +150,7 @@ func applyCustomObjectMetadata(mcpServer *mcpv1alpha1.MCPServer, obj client.Obje
 	return nil
 }
 
-func applyCustomDeploymentMetadata(mcpServer *mcpv1alpha1.MCPServer, deployment *appsv1.Deployment) error {
+func applyCustomDeploymentMetadata(mcpServer *mcpv1beta1.MCPServer, deployment *appsv1.Deployment) error {
 	var oldLabels map[string]string
 	if v, ok := deployment.Annotations[managedExtraLabels]; ok {
 		_ = json.Unmarshal([]byte(v), &oldLabels)
@@ -198,15 +198,15 @@ func applyCustomDeploymentMetadata(mcpServer *mcpv1alpha1.MCPServer, deployment 
 	return nil
 }
 
-func applyCustomServiceMetadata(mcpServer *mcpv1alpha1.MCPServer, obj client.Object) error {
+func applyCustomServiceMetadata(mcpServer *mcpv1beta1.MCPServer, obj client.Object) error {
 	return applyCustomObjectMetadata(mcpServer, obj)
 }
 
-func applyCustomNetworkPolicyMetadata(mcpServer *mcpv1alpha1.MCPServer, obj client.Object) error {
+func applyCustomNetworkPolicyMetadata(mcpServer *mcpv1beta1.MCPServer, obj client.Object) error {
 	return applyCustomObjectMetadata(mcpServer, obj)
 }
 
-func objectLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, obj client.Object, extraLabelMaps ...map[string]string) bool {
+func objectLabelsChanged(mcpServer *mcpv1beta1.MCPServer, obj client.Object, extraLabelMaps ...map[string]string) bool {
 	effectiveLabels := filterReservedKeys(mcpServer.Spec.ExtraLabels)
 
 	var currentLabels map[string]string
@@ -251,7 +251,7 @@ func objectLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, obj client.Object, ex
 	return false
 }
 
-func objectAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, obj client.Object, extraAnnotationMaps ...map[string]string) bool {
+func objectAnnotationsChanged(mcpServer *mcpv1beta1.MCPServer, obj client.Object, extraAnnotationMaps ...map[string]string) bool {
 	effectiveAnnotations := filterReservedAnnotationKeys(mcpServer.Spec.ExtraAnnotations)
 
 	var currentAnnotations map[string]string
@@ -295,26 +295,26 @@ func objectAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, obj client.Objec
 	return false
 }
 
-func deploymentLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, deployment *appsv1.Deployment) bool {
+func deploymentLabelsChanged(mcpServer *mcpv1beta1.MCPServer, deployment *appsv1.Deployment) bool {
 	return objectLabelsChanged(mcpServer, deployment, deployment.Spec.Template.Labels)
 }
 
-func deploymentAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, deployment *appsv1.Deployment) bool {
+func deploymentAnnotationsChanged(mcpServer *mcpv1beta1.MCPServer, deployment *appsv1.Deployment) bool {
 	return objectAnnotationsChanged(mcpServer, deployment, deployment.Spec.Template.Annotations)
 }
 
-func serviceLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, obj client.Object) bool {
+func serviceLabelsChanged(mcpServer *mcpv1beta1.MCPServer, obj client.Object) bool {
 	return objectLabelsChanged(mcpServer, obj)
 }
 
-func serviceAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, obj client.Object) bool {
+func serviceAnnotationsChanged(mcpServer *mcpv1beta1.MCPServer, obj client.Object) bool {
 	return objectAnnotationsChanged(mcpServer, obj)
 }
 
-func networkPolicyLabelsChanged(mcpServer *mcpv1alpha1.MCPServer, obj client.Object) bool {
+func networkPolicyLabelsChanged(mcpServer *mcpv1beta1.MCPServer, obj client.Object) bool {
 	return objectLabelsChanged(mcpServer, obj)
 }
 
-func networkPolicyAnnotationsChanged(mcpServer *mcpv1alpha1.MCPServer, obj client.Object) bool {
+func networkPolicyAnnotationsChanged(mcpServer *mcpv1beta1.MCPServer, obj client.Object) bool {
 	return objectAnnotationsChanged(mcpServer, obj)
 }

@@ -30,18 +30,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 // reconcileHandshake performs the MCP handshake when the deployment is available,
 // skipping it when the endpoint was already verified for the current generation.
 func (r *MCPServerReconciler) reconcileHandshake(
 	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 	mcpURL string,
 	readyCondition metav1.Condition,
 	tlsCABundleHash string,
-) (metav1.Condition, *mcpv1alpha1.MCPServerInfo) {
+) (metav1.Condition, *mcpv1beta1.MCPServerInfo) {
 	logger := log.FromContext(ctx)
 
 	metricLabels := prometheus.Labels{
@@ -117,7 +117,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 			handshakeTotal.With(withResult(metricLabels, "auth_skip")).Inc()
 			logger.Info("MCP endpoint returned auth error, treating as reachable", "url", mcpURL, "error", err)
 			auditHandshakeAuthSkip(ctx, mcpServer, mcpURL, err)
-			return readyCondition, &mcpv1alpha1.MCPServerInfo{}
+			return readyCondition, &mcpv1beta1.MCPServerInfo{}
 		}
 		handshakeTotal.With(withResult(metricLabels, "failure")).Inc()
 		logger.Info("MCP endpoint handshake failed", "url", mcpURL, "error", err)
@@ -160,7 +160,7 @@ func withResult(labels prometheus.Labels, result string) prometheus.Labels {
 // It uses a dedicated context for the connection so that cancelling it tears
 // down the transport without sending an HTTP DELETE to the server (which some
 // MCP servers do not handle gracefully).
-func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string, httpTransport *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
+func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string, httpTransport *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
 	connCtx, connCancel := context.WithCancel(ctx)
 
 	mcpClient := mcp.NewClient(
@@ -200,11 +200,11 @@ func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string,
 }
 
 // extractServerInfo converts an MCP InitializeResult into our CRD type.
-func extractServerInfo(res *mcp.InitializeResult) *mcpv1alpha1.MCPServerInfo {
+func extractServerInfo(res *mcp.InitializeResult) *mcpv1beta1.MCPServerInfo {
 	if res == nil {
 		return nil
 	}
-	info := &mcpv1alpha1.MCPServerInfo{
+	info := &mcpv1beta1.MCPServerInfo{
 		ProtocolVersion: res.ProtocolVersion,
 		Instructions:    res.Instructions,
 	}
@@ -213,7 +213,7 @@ func extractServerInfo(res *mcp.InitializeResult) *mcpv1alpha1.MCPServerInfo {
 		info.Version = res.ServerInfo.Version
 	}
 	if res.Capabilities != nil {
-		info.Capabilities = &mcpv1alpha1.MCPServerCapabilities{
+		info.Capabilities = &mcpv1beta1.MCPServerCapabilities{
 			Tools:       res.Capabilities.Tools != nil,
 			Resources:   res.Capabilities.Resources != nil,
 			Prompts:     res.Capabilities.Prompts != nil,
@@ -240,8 +240,8 @@ func mcpHandshakeBackoff(retryCount int) time.Duration {
 // capabilityDiffMessage compares two MCPServerCapabilities and returns a
 // human-readable message describing the differences. Nil is treated as
 // all-false. Returns an empty string when nothing changed.
-func capabilityDiffMessage(old, new *mcpv1alpha1.MCPServerCapabilities) string {
-	var oldCaps, newCaps mcpv1alpha1.MCPServerCapabilities
+func capabilityDiffMessage(old, new *mcpv1beta1.MCPServerCapabilities) string {
+	var oldCaps, newCaps mcpv1beta1.MCPServerCapabilities
 	if old != nil {
 		oldCaps = *old
 	}
@@ -283,7 +283,7 @@ func isHTTPAuthError(err error) bool {
 
 // reconcileHandshakeEventsAndRetryCount emits handshake-related events and returns the updated retry count.
 func (r *MCPServerReconciler) reconcileHandshakeEventsAndRetryCount(
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 	readyCondition metav1.Condition,
 ) int32 {
 	if readyCondition.Reason != ReasonMCPEndpointUnavailable {

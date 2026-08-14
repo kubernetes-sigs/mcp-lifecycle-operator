@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -18,7 +18,7 @@ type want struct {
 }
 
 type extraMetaArgs struct {
-	mcp           *mcpv1alpha1.MCPServer
+	mcp           *mcpv1beta1.MCPServer
 	deployment    *appsv1.Deployment
 	service       *corev1.Service
 	networkPolicy *networkingv1.NetworkPolicy
@@ -272,8 +272,8 @@ func Test_applyCustomDeploymentMetadata(t *testing.T) {
 		{
 			name: "deployment without extra metadata",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				deployment: deployment(),
 			},
@@ -303,8 +303,8 @@ func Test_applyCustomDeploymentMetadata(t *testing.T) {
 		{
 			name: "deployment with extra annotations",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "finance",
 						},
@@ -345,8 +345,8 @@ func Test_applyCustomDeploymentMetadata(t *testing.T) {
 		{
 			name: "deployment with extra labels",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"kubernetes.io/managed-by": "mcp-lifecyle-operator",
 						},
@@ -385,8 +385,8 @@ func Test_applyCustomDeploymentMetadata(t *testing.T) {
 		{
 			name: "remove all custom labels on deployment",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				deployment: &appsv1.Deployment{
 					ObjectMeta: metav1.ObjectMeta{
@@ -442,8 +442,8 @@ func Test_applyCustomDeploymentMetadata(t *testing.T) {
 		{
 			name: "remove some custom labels on deployment",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 						},
@@ -510,8 +510,8 @@ func Test_applyCustomDeploymentMetadata(t *testing.T) {
 		{
 			name: "deployment with both extra labels and extra annotations",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"team": "platform",
 						},
@@ -558,8 +558,8 @@ func Test_applyCustomDeploymentMetadata(t *testing.T) {
 		{
 			name: "deployment with nil labels and annotations maps",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"team": "platform",
 						},
@@ -606,8 +606,8 @@ func Test_applyCustomDeploymentMetadata(t *testing.T) {
 		{
 			name: "reserved annotation keys in ExtraAnnotations are filtered out",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department":                             "finance",
 							"mcp.x-k8s.io/config-hash":               "malicious-hash",
@@ -695,8 +695,8 @@ func Test_applyCustomDeploymentMetadata_errors(t *testing.T) {
 		{
 			name: "corrupted JSON in managed labels annotation",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				deployment: &appsv1.Deployment{
 					ObjectMeta: metav1.ObjectMeta{
@@ -719,8 +719,8 @@ func Test_applyCustomDeploymentMetadata_errors(t *testing.T) {
 		{
 			name: "corrupted JSON in managed annotations annotation",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				deployment: &appsv1.Deployment{
 					ObjectMeta: metav1.ObjectMeta{
@@ -764,8 +764,8 @@ func Test_applyCustomServiceMetadata_errors(t *testing.T) {
 		{
 			name: "corrupted JSON in managed labels annotation",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				service: &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
@@ -781,8 +781,8 @@ func Test_applyCustomServiceMetadata_errors(t *testing.T) {
 		{
 			name: "corrupted JSON in managed annotations annotation",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				service: &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
@@ -819,8 +819,8 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 		{
 			name: "render service without extra metadata",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				service: &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
@@ -841,8 +841,8 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 		{
 			name: "render service with extra labels",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"kubernetes.io/managed-by": "mcp-lifecycle-operator",
 						},
@@ -871,8 +871,8 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 		{
 			name: "remove all custom labels on service",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				service: &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
@@ -898,8 +898,8 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 		{
 			name: "remove some custom labels on service",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 						},
@@ -933,8 +933,8 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 		{
 			name: "reserved keys in spec are not tracked or removed",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							LabelKeyApp:       "should-be-ignored",
 							LabelKeyMCPServer: "should-be-ignored",
@@ -965,8 +965,8 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 		{
 			name: "render service with both extra labels and extra annotations",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"team": "platform",
 						},
@@ -1000,8 +1000,8 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 		{
 			name: "render service with nil labels and annotations maps",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"team": "platform",
 						},
@@ -1030,8 +1030,8 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 		{
 			name: "render service with extra annotations",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "finance",
 						},
@@ -1060,8 +1060,8 @@ func Test_applyCustomServiceMetadata(t *testing.T) {
 		{
 			name: "reserved annotation keys in ExtraAnnotations are filtered out",
 			args: extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"cost-center":                            "engineering",
 							"mcp.x-k8s.io/config-hash":               "malicious-hash",
@@ -1140,8 +1140,8 @@ func Test_deploymentLabelsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 						},
@@ -1175,8 +1175,8 @@ func Test_deploymentLabelsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 			},
 			want: true,
@@ -1206,8 +1206,8 @@ func Test_deploymentLabelsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 						},
@@ -1239,8 +1239,8 @@ func Test_deploymentLabelsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 			},
 			want: true,
@@ -1269,8 +1269,8 @@ func Test_deploymentLabelsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "engineering",
 						},
@@ -1302,8 +1302,8 @@ func Test_deploymentLabelsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 						},
@@ -1335,8 +1335,8 @@ func Test_deploymentLabelsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 						},
@@ -1384,8 +1384,8 @@ func Test_deploymentAnnotationsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "procurement",
 						},
@@ -1421,8 +1421,8 @@ func Test_deploymentAnnotationsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 			},
 			want: true,
@@ -1454,8 +1454,8 @@ func Test_deploymentAnnotationsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "procurement",
 						},
@@ -1487,8 +1487,8 @@ func Test_deploymentAnnotationsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 			},
 			want: true,
@@ -1519,8 +1519,8 @@ func Test_deploymentAnnotationsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "engineering",
 						},
@@ -1554,8 +1554,8 @@ func Test_deploymentAnnotationsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "procurement",
 						},
@@ -1587,8 +1587,8 @@ func Test_deploymentAnnotationsChanged(t *testing.T) {
 						},
 					},
 				},
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "procurement",
 						},
@@ -1618,8 +1618,8 @@ func Test_serviceLabelsChanged(t *testing.T) {
 		{
 			name: "no custom metadata provided",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{},
 					},
 				},
@@ -1636,8 +1636,8 @@ func Test_serviceLabelsChanged(t *testing.T) {
 		{
 			name: "custom metadata matches .spec.extraLabels",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 						},
@@ -1660,8 +1660,8 @@ func Test_serviceLabelsChanged(t *testing.T) {
 		{
 			name: "service missing custom labels defined in .spec.extraLabels",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 							"env":        "production",
@@ -1685,8 +1685,8 @@ func Test_serviceLabelsChanged(t *testing.T) {
 		{
 			name: "corrupted JSON in managed labels annotation forces update",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				service: &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
@@ -1704,8 +1704,8 @@ func Test_serviceLabelsChanged(t *testing.T) {
 		{
 			name: "label tracked but missing from service.Labels",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 						},
@@ -1727,8 +1727,8 @@ func Test_serviceLabelsChanged(t *testing.T) {
 		{
 			name: "spec labels changed from tracked labels",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "engineering",
 						},
@@ -1751,8 +1751,8 @@ func Test_serviceLabelsChanged(t *testing.T) {
 		{
 			name: "all spec labels removed but tracked labels exist",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				service: &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
@@ -1789,8 +1789,8 @@ func Test_serviceAnnotationsChanged(t *testing.T) {
 		{
 			name: "no custom metadata provided",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						// ExtraAnnotations: map[string]string{},
 					},
 				},
@@ -1807,8 +1807,8 @@ func Test_serviceAnnotationsChanged(t *testing.T) {
 		{
 			name: "custom metadata matches .spec.extraAnnotations",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "procurement",
 						},
@@ -1831,8 +1831,8 @@ func Test_serviceAnnotationsChanged(t *testing.T) {
 		{
 			name: "service missing custom labels defined in .spec.extraLabels",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "procurement",
 							"env":        "production",
@@ -1856,8 +1856,8 @@ func Test_serviceAnnotationsChanged(t *testing.T) {
 		{
 			name: "corrupted JSON in managed annotations annotation forces update",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				service: &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
@@ -1875,8 +1875,8 @@ func Test_serviceAnnotationsChanged(t *testing.T) {
 		{
 			name: "annotation tracked but missing from service.Annotations",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "procurement",
 						},
@@ -1898,8 +1898,8 @@ func Test_serviceAnnotationsChanged(t *testing.T) {
 		{
 			name: "spec annotations changed from tracked annotations",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "engineering",
 						},
@@ -1922,8 +1922,8 @@ func Test_serviceAnnotationsChanged(t *testing.T) {
 		{
 			name: "all spec annotations removed but tracked annotations exist",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				service: &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
@@ -1960,8 +1960,8 @@ func Test_networkPolicyLabelsChanged(t *testing.T) {
 		{
 			name: "no custom metadata provided",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{},
 					},
 				},
@@ -1978,8 +1978,8 @@ func Test_networkPolicyLabelsChanged(t *testing.T) {
 		{
 			name: "custom metadata matches .spec.extraLabels",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 						},
@@ -2002,8 +2002,8 @@ func Test_networkPolicyLabelsChanged(t *testing.T) {
 		{
 			name: "networkpolicy missing custom labels defined in .spec.extraLabels",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 							"env":        "production",
@@ -2027,8 +2027,8 @@ func Test_networkPolicyLabelsChanged(t *testing.T) {
 		{
 			name: "corrupted JSON in managed labels annotation forces update",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				networkPolicy: &networkingv1.NetworkPolicy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -2046,8 +2046,8 @@ func Test_networkPolicyLabelsChanged(t *testing.T) {
 		{
 			name: "label tracked but missing from networkpolicy.Labels",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "procurement",
 						},
@@ -2069,8 +2069,8 @@ func Test_networkPolicyLabelsChanged(t *testing.T) {
 		{
 			name: "spec labels changed from tracked labels",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraLabels: map[string]string{
 							"department": "engineering",
 						},
@@ -2093,8 +2093,8 @@ func Test_networkPolicyLabelsChanged(t *testing.T) {
 		{
 			name: "all spec labels removed but tracked labels exist",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				networkPolicy: &networkingv1.NetworkPolicy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -2131,8 +2131,8 @@ func Test_networkPolicyAnnotationsChanged(t *testing.T) {
 		{
 			name: "no custom metadata provided",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				networkPolicy: &networkingv1.NetworkPolicy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -2147,8 +2147,8 @@ func Test_networkPolicyAnnotationsChanged(t *testing.T) {
 		{
 			name: "custom metadata matches .spec.extraAnnotations",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "procurement",
 						},
@@ -2171,8 +2171,8 @@ func Test_networkPolicyAnnotationsChanged(t *testing.T) {
 		{
 			name: "networkpolicy missing custom annotations defined in .spec.extraAnnotations",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "procurement",
 							"env":        "production",
@@ -2196,8 +2196,8 @@ func Test_networkPolicyAnnotationsChanged(t *testing.T) {
 		{
 			name: "corrupted JSON in managed annotations annotation forces update",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				networkPolicy: &networkingv1.NetworkPolicy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -2215,8 +2215,8 @@ func Test_networkPolicyAnnotationsChanged(t *testing.T) {
 		{
 			name: "annotation tracked but missing from networkpolicy.Annotations",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "procurement",
 						},
@@ -2238,8 +2238,8 @@ func Test_networkPolicyAnnotationsChanged(t *testing.T) {
 		{
 			name: "spec annotations changed from tracked annotations",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{
 						ExtraAnnotations: map[string]string{
 							"department": "engineering",
 						},
@@ -2262,8 +2262,8 @@ func Test_networkPolicyAnnotationsChanged(t *testing.T) {
 		{
 			name: "all spec annotations removed but tracked annotations exist",
 			args: &extraMetaArgs{
-				mcp: &mcpv1alpha1.MCPServer{
-					Spec: mcpv1alpha1.MCPServerSpec{},
+				mcp: &mcpv1beta1.MCPServer{
+					Spec: mcpv1beta1.MCPServerSpec{},
 				},
 				networkPolicy: &networkingv1.NetworkPolicy{
 					ObjectMeta: metav1.ObjectMeta{
