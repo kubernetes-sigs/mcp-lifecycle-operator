@@ -521,7 +521,7 @@ var _ = Describe("MCPServer Metrics", func() {
 		collected := drainEvents(reconciler.Recorder.(*events.FakeRecorder).Events)
 		var capEvent string
 		for _, ev := range collected {
-			if strings.Contains(ev, ReasonCapabilityChanged) {
+			if strings.Contains(ev, EventReasonCapabilityChanged) {
 				capEvent = ev
 			}
 		}

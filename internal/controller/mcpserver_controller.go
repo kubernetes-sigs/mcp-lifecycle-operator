@@ -89,7 +89,7 @@ const (
 
 // Event-only reasons (not used as condition reasons).
 const (
-	ReasonCapabilityChanged = "CapabilityChanged"
+	EventReasonCapabilityChanged = "CapabilityChanged"
 )
 
 // Container waiting reasons from Kubernetes pod status.
@@ -642,7 +642,7 @@ func (r *MCPServerReconciler) emitCapabilityChangeDetected(mcpServer *mcpv1alpha
 	if r.Recorder == nil {
 		return
 	}
-	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonCapabilityChanged, eventActionCapabilityChangeDetected,
+	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, EventReasonCapabilityChanged, eventActionCapabilityChangeDetected,
 		"MCP server capabilities changed: %s", diff)
 }
 
