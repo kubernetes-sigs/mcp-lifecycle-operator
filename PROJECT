@@ -18,4 +18,16 @@ resources:
   kind: MCPServer
   path: github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: x-k8s.io
+  group: mcp
+  kind: MCPServer
+  path: github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1
+  version: v1beta1
+  webhooks:
+    conversion: true
+    webhookVersion: v1
 version: "3"
