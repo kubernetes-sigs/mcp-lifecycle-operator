@@ -82,8 +82,8 @@ func TestImageUpdate(t *testing.T) {
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
 				t.Fatalf("failed to re-fetch MCPServer: %v", err)
 			}
-			if server.Status.ObservedGeneration < server.Generation {
-				t.Fatalf("expected observedGeneration >= %d, got %d",
+			if server.Status.ObservedGeneration != server.Generation {
+				t.Fatalf("expected observedGeneration == %d, got %d",
 					server.Generation, server.Status.ObservedGeneration)
 			}
 
