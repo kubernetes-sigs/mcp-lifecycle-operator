@@ -40,27 +40,34 @@ func urlScheme(mcpServer *mcpv1alpha1.MCPServer) string {
 	return "http"
 }
 
-func buildTLSTransport(ctx context.Context, c client.Client, namespace string, tlsConfig *mcpv1alpha1.TLSClientConfig) (*http.Transport, error) {
+func cloneDefaultTransport() *http.Transport {
+	return http.DefaultTransport.(*http.Transport).Clone()
+}
+
+func buildTLSTransport(ctx context.Context, reader client.Reader, namespace string, tlsConfig *mcpv1alpha1.TLSClientConfig) (*http.Transport, error) {
 	if tlsConfig == nil || !tlsConfig.Enabled {
 		return nil, nil
 	}
 
+	transport := cloneDefaultTransport()
+
 	if tlsConfig.InsecureSkipVerify {
-		return &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, //nolint:gosec // user-requested via spec
-			},
-		}, nil
+		transport.TLSClientConfig = &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true, //nolint:gosec // user-requested via spec
+		}
+		return transport, nil
 	}
 
 	if tlsConfig.CABundleSecret == nil {
-		return &http.Transport{
-			TLSClientConfig: &tls.Config{},
-		}, nil
+		transport.TLSClientConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
+		return transport, nil
 	}
 
 	secret := &corev1.Secret{}
-	if err := c.Get(ctx, client.ObjectKey{
+	if err := reader.Get(ctx, client.ObjectKey{
 		Name:      tlsConfig.CABundleSecret.Name,
 		Namespace: namespace,
 	}, secret); err != nil {
@@ -72,18 +79,14 @@ func buildTLSTransport(ctx context.Context, c client.Client, namespace string, t
 		return nil, fmt.Errorf("secret %q does not contain key %q", tlsConfig.CABundleSecret.Name, caBundleKey)
 	}
 
-	pool, err := x509.SystemCertPool()
-	if err != nil {
-		pool = x509.NewCertPool()
-	}
-
+	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(caPEM) {
 		return nil, fmt.Errorf("secret %q key %q contains no valid PEM certificates", tlsConfig.CABundleSecret.Name, caBundleKey)
 	}
 
-	return &http.Transport{
-		TLSClientConfig: &tls.Config{
-			RootCAs: pool,
-		},
-	}, nil
+	transport.TLSClientConfig = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    pool,
+	}
+	return transport, nil
 }

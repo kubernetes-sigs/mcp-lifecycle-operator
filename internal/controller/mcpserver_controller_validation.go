@@ -76,17 +76,26 @@ func (r *MCPServerReconciler) validateConfig(
 		}
 	}
 
-	// Validate TLS CA bundle Secret
+	// Validate TLS configuration
 	if mcpServer.Spec.Transport != nil &&
 		mcpServer.Spec.Transport.TLS != nil &&
-		mcpServer.Spec.Transport.TLS.CABundleSecret != nil {
-		if err := r.validateReferencedSecret(
-			ctx,
-			mcpServer.Namespace,
-			mcpServer.Spec.Transport.TLS.CABundleSecret.Name,
-			"TLS CA bundle Secret",
-		); err != nil {
-			return err
+		mcpServer.Spec.Transport.TLS.Enabled {
+		tlsCfg := mcpServer.Spec.Transport.TLS
+		if tlsCfg.InsecureSkipVerify && tlsCfg.CABundleSecret != nil {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: "insecureSkipVerify and caBundleSecret are mutually exclusive",
+			}
+		}
+		if tlsCfg.CABundleSecret != nil {
+			if err := r.validateReferencedSecret(
+				ctx,
+				mcpServer.Namespace,
+				tlsCfg.CABundleSecret.Name,
+				"TLS CA bundle Secret",
+			); err != nil {
+				return err
+			}
 		}
 	}
 

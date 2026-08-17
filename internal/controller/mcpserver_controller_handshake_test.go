@@ -1308,7 +1308,7 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(acceptedCondition.Message).To(ContainSubstring("TLS CA bundle Secret not found"))
 	})
 
-	It("should pass InsecureSkipVerify transport to the dialer", func() {
+	It("should pass InsecureSkipVerify transport to the dialer with https URL", func() {
 		By("Updating MCPServer with InsecureSkipVerify TLS config")
 		mcpServer := &mcpv1alpha1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
@@ -1321,11 +1321,13 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
 
 		var capturedTransport *http.Transport
+		var capturedURL string
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(_ context.Context, _ string, transport *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
+			MCPDialer: func(_ context.Context, url string, transport *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
 				capturedTransport = transport
+				capturedURL = url
 				return &mcpv1alpha1.MCPServerInfo{Name: "test"}, nil
 			},
 			APIReader: k8sClient,
@@ -1358,6 +1360,7 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(capturedTransport).NotTo(BeNil())
 		Expect(capturedTransport.TLSClientConfig).NotTo(BeNil())
 		Expect(capturedTransport.TLSClientConfig.InsecureSkipVerify).To(BeTrue())
+		Expect(capturedURL).To(HavePrefix("https://"))
 	})
 
 	It("should apply TLSProfile to the handshake transport", func() {
@@ -1521,5 +1524,45 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 		Expect(mcpServer.Status.Address).NotTo(BeNil())
 		Expect(mcpServer.Status.Address.URL).To(HavePrefix("http://"))
+	})
+
+	It("should reject insecureSkipVerify combined with caBundleSecret", func() {
+		By("Creating a CA Secret")
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "conflict-ca",
+				Namespace: "default",
+			},
+			Data: map[string][]byte{"ca.crt": []byte("dummy")},
+		}
+		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+		By("Updating MCPServer with both insecureSkipVerify and caBundleSecret")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Transport = &mcpv1alpha1.TransportConfig{
+			TLS: &mcpv1alpha1.TLSClientConfig{
+				Enabled:            true,
+				InsecureSkipVerify: true,
+				CABundleSecret:     &mcpv1alpha1.SecretReference{Name: "conflict-ca"},
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal(ReasonInvalid))
+		Expect(acceptedCondition.Message).To(ContainSubstring("mutually exclusive"))
+
+		By("Cleaning up Secret")
+		Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
 	})
 })

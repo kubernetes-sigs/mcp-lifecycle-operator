@@ -70,7 +70,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	var tlsTransport *http.Transport
 	if mcpServer.Spec.Transport != nil && mcpServer.Spec.Transport.TLS != nil {
 		var tlsErr error
-		tlsTransport, tlsErr = buildTLSTransport(ctx, r.Client, mcpServer.Namespace, mcpServer.Spec.Transport.TLS)
+		tlsTransport, tlsErr = buildTLSTransport(ctx, r.APIReader, mcpServer.Namespace, mcpServer.Spec.Transport.TLS)
 		if tlsErr != nil {
 			handshakeTotal.With(withResult(metricLabels, "failure")).Inc()
 			logger.Info("Failed to build TLS transport for handshake", "error", tlsErr)
@@ -84,8 +84,12 @@ func (r *MCPServerReconciler) reconcileHandshake(
 			preserveLastTransitionTime(&cond, mcpServer.Status.Conditions)
 			return cond, nil
 		}
-		if tlsTransport != nil && r.TLSProfile != nil {
+		if tlsTransport != nil && tlsTransport.TLSClientConfig != nil && r.TLSProfile != nil {
+			floor := tlsTransport.TLSClientConfig.MinVersion
 			r.TLSProfile(tlsTransport.TLSClientConfig)
+			if tlsTransport.TLSClientConfig.MinVersion < floor {
+				tlsTransport.TLSClientConfig.MinVersion = floor
+			}
 		}
 	}
 

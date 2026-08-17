@@ -62,7 +62,7 @@ func (r *MCPServerReconciler) computeConfigHash(
 	mcpServer *mcpv1alpha1.MCPServer,
 ) (string, error) {
 	configMapNames := extractConfigMapNames(mcpServer)
-	secretNames := extractSecretNames(mcpServer)
+	secretNames := extractPodSecretNames(mcpServer)
 
 	if len(configMapNames) == 0 && len(secretNames) == 0 {
 		return "", nil
@@ -227,16 +227,37 @@ func extractConfigMapNames(obj client.Object) []string {
 	return configMaps
 }
 
-// extractSecretNames is an index extractor that returns all Secret names
-// referenced by an MCPServer. Used for efficient Secret watch lookups.
-// This returns both required and optional Secret references, matching Kubernetes
-// semantics where optional resources are still used when available.
+// extractSecretNames returns all Secret names referenced by an MCPServer,
+// including pod-mounted secrets and the TLS CA bundle. Used as the field
+// index extractor for Secret watch lookups.
 func extractSecretNames(obj client.Object) []string {
+	secrets := extractPodSecretNames(obj)
+	seen := make(map[string]bool, len(secrets))
+	for _, s := range secrets {
+		seen[s] = true
+	}
+
+	mcpServer := obj.(*mcpv1alpha1.MCPServer)
+	if mcpServer.Spec.Transport != nil &&
+		mcpServer.Spec.Transport.TLS != nil &&
+		mcpServer.Spec.Transport.TLS.CABundleSecret != nil {
+		name := mcpServer.Spec.Transport.TLS.CABundleSecret.Name
+		if !seen[name] {
+			secrets = append(secrets, name)
+		}
+	}
+
+	return secrets
+}
+
+// extractPodSecretNames returns Secret names that the pod actually mounts
+// or references via env. Used for the deployment config hash so that CA
+// bundle rotation (an operator-only concern) does not roll pods.
+func extractPodSecretNames(obj client.Object) []string {
 	mcpServer := obj.(*mcpv1alpha1.MCPServer)
 	var secrets []string
 	seen := make(map[string]bool)
 
-	// Extract from storage mounts
 	for _, storage := range mcpServer.Spec.Config.Storage {
 		if storage.Source.Type == mcpv1alpha1.StorageTypeSecret &&
 			storage.Source.Secret != nil {
@@ -248,7 +269,6 @@ func extractSecretNames(obj client.Object) []string {
 		}
 	}
 
-	// Extract from envFrom
 	for _, envFrom := range mcpServer.Spec.Config.EnvFrom {
 		if envFrom.SecretRef != nil {
 			name := envFrom.SecretRef.Name
@@ -259,7 +279,6 @@ func extractSecretNames(obj client.Object) []string {
 		}
 	}
 
-	// Extract from env valueFrom
 	for _, env := range mcpServer.Spec.Config.Env {
 		if env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
 			name := env.ValueFrom.SecretKeyRef.Name
@@ -267,17 +286,6 @@ func extractSecretNames(obj client.Object) []string {
 				secrets = append(secrets, name)
 				seen[name] = true
 			}
-		}
-	}
-
-	// Extract TLS CA bundle Secret
-	if mcpServer.Spec.Transport != nil &&
-		mcpServer.Spec.Transport.TLS != nil &&
-		mcpServer.Spec.Transport.TLS.CABundleSecret != nil {
-		name := mcpServer.Spec.Transport.TLS.CABundleSecret.Name
-		if !seen[name] {
-			secrets = append(secrets, name)
-			seen[name] = true
 		}
 	}
 

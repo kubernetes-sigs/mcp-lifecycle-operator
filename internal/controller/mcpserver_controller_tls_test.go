@@ -21,13 +21,15 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
-	"testing"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,12 +38,9 @@ import (
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 )
 
-func generateSelfSignedCAPEM(t *testing.T) []byte {
-	t.Helper()
+func generateSelfSignedCAPEM() ([]byte, *x509.Certificate) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("generating key: %v", err)
-	}
+	Expect(err).NotTo(HaveOccurred())
 	tmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{CommonName: "test-ca"},
@@ -51,151 +50,181 @@ func generateSelfSignedCAPEM(t *testing.T) []byte {
 		BasicConstraintsValid: true,
 	}
 	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatalf("creating certificate: %v", err)
-	}
-	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	Expect(err).NotTo(HaveOccurred())
+	cert, err := x509.ParseCertificate(certDER)
+	Expect(err).NotTo(HaveOccurred())
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	return pemBytes, cert
 }
 
-func TestBuildTLSTransport_InsecureSkipVerify(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1.AddToScheme(scheme)
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+var _ = Describe("buildTLSTransport", func() {
+	var (
+		scheme *runtime.Scheme
+	)
 
-	transport, err := buildTLSTransport(context.Background(), c, "default", &mcpv1alpha1.TLSClientConfig{
-		Enabled:            true,
-		InsecureSkipVerify: true,
+	BeforeEach(func() {
+		scheme = runtime.NewScheme()
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if transport == nil || transport.TLSClientConfig == nil {
-		t.Fatal("expected non-nil transport with TLS config")
-	}
-	if !transport.TLSClientConfig.InsecureSkipVerify {
-		t.Error("expected InsecureSkipVerify to be true")
-	}
-}
 
-func TestBuildTLSTransport_WithCABundle(t *testing.T) {
-	caPEM := generateSelfSignedCAPEM(t)
-
-	scheme := runtime.NewScheme()
-	_ = corev1.AddToScheme(scheme)
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "my-ca", Namespace: "test-ns"},
-		Data:       map[string][]byte{"ca.crt": caPEM},
-	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
-
-	transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
-		Enabled:        true,
-		CABundleSecret: &mcpv1alpha1.SecretReference{Name: "my-ca"},
+	It("should return nil transport when config is nil", func() {
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+		transport, err := buildTLSTransport(context.Background(), c, "test-ns", nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(transport).To(BeNil())
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if transport == nil || transport.TLSClientConfig == nil {
-		t.Fatal("expected non-nil transport with TLS config")
-	}
-	if transport.TLSClientConfig.RootCAs == nil {
-		t.Error("expected RootCAs pool to be populated")
-	}
-}
 
-func TestBuildTLSTransport_MissingSecret(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1.AddToScheme(scheme)
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-	_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
-		Enabled:        true,
-		CABundleSecret: &mcpv1alpha1.SecretReference{Name: "nonexistent"},
+	It("should return nil transport when Enabled is false", func() {
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+			Enabled:            false,
+			InsecureSkipVerify: true,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(transport).To(BeNil())
 	})
-	if err == nil {
-		t.Fatal("expected error for missing Secret")
-	}
-}
 
-func TestBuildTLSTransport_MissingCACrtKey(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1.AddToScheme(scheme)
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "bad-secret", Namespace: "test-ns"},
-		Data:       map[string][]byte{"wrong-key": []byte("data")},
-	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
-
-	_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
-		Enabled:        true,
-		CABundleSecret: &mcpv1alpha1.SecretReference{Name: "bad-secret"},
+	It("should set InsecureSkipVerify with TLS 1.2 minimum", func() {
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+		transport, err := buildTLSTransport(context.Background(), c, "default", &mcpv1alpha1.TLSClientConfig{
+			Enabled:            true,
+			InsecureSkipVerify: true,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(transport).NotTo(BeNil())
+		Expect(transport.TLSClientConfig).NotTo(BeNil())
+		Expect(transport.TLSClientConfig.InsecureSkipVerify).To(BeTrue())
+		Expect(transport.TLSClientConfig.MinVersion).To(Equal(uint16(tls.VersionTLS12)))
 	})
-	if err == nil {
-		t.Fatal("expected error for missing ca.crt key")
-	}
-}
 
-func TestBuildTLSTransport_InvalidPEM(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1.AddToScheme(scheme)
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "bad-pem", Namespace: "test-ns"},
-		Data:       map[string][]byte{"ca.crt": []byte("not-a-valid-pem")},
-	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
-
-	_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
-		Enabled:        true,
-		CABundleSecret: &mcpv1alpha1.SecretReference{Name: "bad-pem"},
+	It("should use system CAs when no CABundleSecret is set", func() {
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+			Enabled: true,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(transport).NotTo(BeNil())
+		Expect(transport.TLSClientConfig.MinVersion).To(Equal(uint16(tls.VersionTLS12)))
 	})
-	if err == nil {
-		t.Fatal("expected error for invalid PEM")
-	}
-}
 
-func TestBuildTLSTransport_SystemCAs(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1.AddToScheme(scheme)
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	It("should load CA bundle and verify the cert is in the pool", func() {
+		caPEM, expectedCert := generateSelfSignedCAPEM()
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "my-ca", Namespace: "test-ns"},
+			Data:       map[string][]byte{"ca.crt": caPEM},
+		}
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 
-	transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
-		Enabled: true,
+		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+			Enabled:        true,
+			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "my-ca"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(transport).NotTo(BeNil())
+		Expect(transport.TLSClientConfig).NotTo(BeNil())
+		Expect(transport.TLSClientConfig.RootCAs).NotTo(BeNil())
+		Expect(transport.TLSClientConfig.MinVersion).To(Equal(uint16(tls.VersionTLS12)))
+
+		subjects := transport.TLSClientConfig.RootCAs.Subjects() //nolint:staticcheck // x509.CertPool.Subjects is the only way to inspect pool contents
+		found := false
+		for _, s := range subjects {
+			if string(s) == string(expectedCert.RawSubject) {
+				found = true
+				break
+			}
+		}
+		Expect(found).To(BeTrue(), "expected CA certificate to be present in the pool")
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if transport == nil {
-		t.Fatal("expected non-nil transport")
-	}
-}
 
-func TestBuildTLSTransport_NilConfig(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1.AddToScheme(scheme)
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	It("should not include system CAs when CA bundle is set", func() {
+		caPEM, _ := generateSelfSignedCAPEM()
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "my-ca", Namespace: "test-ns"},
+			Data:       map[string][]byte{"ca.crt": caPEM},
+		}
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 
-	transport, err := buildTLSTransport(context.Background(), c, "test-ns", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if transport != nil {
-		t.Error("expected nil transport for nil config")
-	}
-}
-
-func TestBuildTLSTransport_EnabledFalse(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1.AddToScheme(scheme)
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-	transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
-		Enabled:            false,
-		InsecureSkipVerify: true,
+		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+			Enabled:        true,
+			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "my-ca"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		subjects := transport.TLSClientConfig.RootCAs.Subjects() //nolint:staticcheck // x509.CertPool.Subjects is the only way to inspect pool contents
+		Expect(subjects).To(HaveLen(1), "pool should contain only the supplied CA, not system CAs")
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if transport != nil {
-		t.Error("expected nil transport when Enabled is false")
-	}
-}
+
+	It("should error when Secret is missing", func() {
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+		_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+			Enabled:        true,
+			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "nonexistent"},
+		})
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should error when ca.crt key is missing from Secret", func() {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "bad-secret", Namespace: "test-ns"},
+			Data:       map[string][]byte{"wrong-key": []byte("data")},
+		}
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
+		_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+			Enabled:        true,
+			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "bad-secret"},
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("ca.crt"))
+	})
+
+	It("should error when PEM data is invalid", func() {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "bad-pem", Namespace: "test-ns"},
+			Data:       map[string][]byte{"ca.crt": []byte("not-a-valid-pem")},
+		}
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
+		_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+			Enabled:        true,
+			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "bad-pem"},
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("no valid PEM"))
+	})
+
+	It("should clone http.DefaultTransport preserving proxy and timeout settings", func() {
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+			Enabled: true,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(transport.Proxy).NotTo(BeNil(), "cloned transport should preserve Proxy from DefaultTransport")
+	})
+})
+
+var _ = Describe("urlScheme", func() {
+	It("should return http when no transport config", func() {
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(urlScheme(mcpServer)).To(Equal("http"))
+	})
+
+	It("should return http when TLS is not enabled", func() {
+		mcpServer := &mcpv1alpha1.MCPServer{
+			Spec: mcpv1alpha1.MCPServerSpec{
+				Transport: &mcpv1alpha1.TransportConfig{
+					TLS: &mcpv1alpha1.TLSClientConfig{Enabled: false},
+				},
+			},
+		}
+		Expect(urlScheme(mcpServer)).To(Equal("http"))
+	})
+
+	It("should return https when TLS is enabled", func() {
+		mcpServer := &mcpv1alpha1.MCPServer{
+			Spec: mcpv1alpha1.MCPServerSpec{
+				Transport: &mcpv1alpha1.TransportConfig{
+					TLS: &mcpv1alpha1.TLSClientConfig{Enabled: true},
+				},
+			},
+		}
+		Expect(urlScheme(mcpServer)).To(Equal("https"))
+	})
+})
