@@ -440,6 +440,11 @@ func TestRecoveryFromImagePullFailure(t *testing.T) {
 			return ctx
 		}).
 		Assess("update to valid image and recover", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			// Setup used an intentionally invalid image, so SetupMCPServer's
+			// built-in check never saw f.DefaultMCPServerImage; check here
+			// since this step is what actually switches to it.
+			f.SkipIfImageUnsupported(ctx, t, cfg, f.DefaultMCPServerImage)
+
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 

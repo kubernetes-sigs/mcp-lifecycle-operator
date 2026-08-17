@@ -67,6 +67,9 @@ func SetupMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config, name
 	r := cfg.Client().Resources()
 
 	server := NewMCPServer(name, ns, opts...)
+	if server.Spec.Source.ContainerImage != nil {
+		SkipIfImageUnsupported(ctx, t, cfg, server.Spec.Source.ContainerImage.Ref)
+	}
 	if err := r.Create(ctx, server); err != nil {
 		t.Fatalf("failed to create MCPServer: %v", err)
 	}
