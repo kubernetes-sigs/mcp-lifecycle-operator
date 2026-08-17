@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -25,7 +26,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -55,6 +59,7 @@ var _ = Describe("MCPServer Controller - Namespace Termination", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
+
 			Expect(result.RequeueAfter).To(BeZero())
 
 			By("Verifying no Deployment was created")
@@ -102,6 +107,7 @@ var _ = Describe("MCPServer Controller - Namespace Termination", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
+
 			Expect(result.RequeueAfter).To(BeZero())
 
 			By("Verifying no Deployment was created")
@@ -113,6 +119,62 @@ var _ = Describe("MCPServer Controller - Namespace Termination", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: namespaceName}, ns)).To(Succeed())
 			ns.Finalizers = nil
 			Expect(k8sClient.Update(ctx, ns)).To(Succeed())
+		})
+	})
+
+	Context("When the namespace lookup fails or is missing", func() {
+		var wrappedClient client.WithWatch
+
+		BeforeEach(func() {
+			var err error
+			wrappedClient, err = client.NewWithWatch(cfg, client.Options{Scheme: runtime.NewScheme()})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should skip reconciliation when namespace is not found", func() {
+			interceptedClient := interceptor.NewClient(wrappedClient, interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, ok := obj.(*corev1.Namespace); ok {
+						return errors.NewNotFound(corev1.Resource("namespaces"), key.Name)
+					}
+					return k8sClient.Get(ctx, key, obj, opts...)
+				},
+			})
+
+			By("Creating an MCPServer in the default namespace")
+			resource := newTestMCPServer("test-ns-gone")
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(ctx, resource) }()
+
+			reconciler := &MCPServerReconciler{Client: interceptedClient, Scheme: k8sClient.Scheme(), APIReader: interceptedClient}
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: "test-ns-gone", Namespace: "default"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+		})
+
+		It("should return error when namespace lookup has a transient failure", func() {
+			interceptedClient := interceptor.NewClient(wrappedClient, interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, ok := obj.(*corev1.Namespace); ok {
+						return fmt.Errorf("transient API error")
+					}
+					return k8sClient.Get(ctx, key, obj, opts...)
+				},
+			})
+
+			By("Creating an MCPServer in the default namespace")
+			resource := newTestMCPServer("test-ns-err")
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(ctx, resource) }()
+
+			reconciler := &MCPServerReconciler{Client: interceptedClient, Scheme: k8sClient.Scheme(), APIReader: interceptedClient}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: "test-ns-err", Namespace: "default"},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("transient API error"))
 		})
 	})
 })

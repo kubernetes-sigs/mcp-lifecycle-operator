@@ -8,17 +8,12 @@ rules:
   - ""
   resources:
   - configmaps
+  - namespaces
   - secrets
   verbs:
   - get
   - list
   - watch
-- apiGroups:
-  - ""
-  resources:
-  - namespaces
-  verbs:
-  - get
 - apiGroups:
   - ""
   resources:
