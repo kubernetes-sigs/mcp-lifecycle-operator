@@ -156,8 +156,10 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1alpha1.MCPServ
 
 func hasIngressSourceRestriction(netpol *networkingv1.NetworkPolicy) bool {
 	for _, rule := range netpol.Spec.Ingress {
-		if len(rule.From) > 0 {
-			return true
+		for _, peer := range rule.From {
+			if peer.PodSelector != nil || peer.NamespaceSelector != nil || peer.IPBlock != nil {
+				return true
+			}
 		}
 	}
 	return false
