@@ -2,11 +2,13 @@
 
 approvers:
   - aliok
-  - ArangoGutierrez
   - matzew
   - mikebrow
   - mrunalp
   - soltysh
   - jaideepr97
   - Cali0707
+
+emeritus_approvers:
+  - ArangoGutierrez
 
