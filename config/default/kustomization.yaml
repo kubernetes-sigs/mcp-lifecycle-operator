@@ -51,11 +51,8 @@ patches:
 #  target:
 #    kind: Deployment
 
-# [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
-# crd/kustomization.yaml
-#- path: manager_webhook_patch.yaml
-#  target:
-#    kind: Deployment
+# [WEBHOOK] To enable the admission webhook, use the config/default-with-webhook overlay:
+#   kustomize build config/default-with-webhook | kubectl apply -f -
 
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
 # Uncomment the following replacements to add the cert-manager CA injection annotations
