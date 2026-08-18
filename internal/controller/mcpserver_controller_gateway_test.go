@@ -21,14 +21,18 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 )
+
+const testGatewayURL = "https://gateway.example.com/mcp"
 
 var _ = Describe("MCPServer Controller - Gateway", func() {
 	ctx := context.Background()
@@ -253,7 +257,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 				Message:            "HTTPRoute created",
 				LastTransitionTime: metav1.Now(),
 			})
-			binding.Status.URL = "https://gateway.example.com/mcp"
+			binding.Status.URL = testGatewayURL
 			Expect(k8sClient.Status().Update(ctx, binding)).To(Succeed())
 
 			status := reconciler.reconcileGatewayCondition(ctx, mcpServer)
@@ -261,7 +265,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			Expect(status.condition.Type).To(Equal(ConditionTypeGatewayRegistered))
 			Expect(status.condition.Status).To(Equal(metav1.ConditionTrue))
 			Expect(status.condition.Reason).To(Equal(ReasonGatewayRegistered))
-			Expect(status.gatewayAddress).To(Equal("https://gateway.example.com/mcp"))
+			Expect(status.gatewayAddress).To(Equal(testGatewayURL))
 			Expect(status.bindingStatus).NotTo(BeNil())
 			Expect(status.bindingStatus.Name).To(Equal(gatewayBindingName(resourceName)))
 		})
@@ -335,7 +339,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 				Message:            "HTTPRoute created",
 				LastTransitionTime: metav1.Now(),
 			})
-			binding.Status.URL = "https://gateway.example.com/mcp"
+			binding.Status.URL = testGatewayURL
 			Expect(k8sClient.Status().Update(ctx, binding)).To(Succeed())
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -347,11 +351,81 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			Expect(mcpServer.Status.Address).NotTo(BeNil())
-			Expect(mcpServer.Status.Address.URL).To(Equal("https://gateway.example.com/mcp"))
+			Expect(mcpServer.Status.Address.URL).To(Equal(testGatewayURL))
 
 			gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered)
 			Expect(gwCond).NotTo(BeNil())
 			Expect(gwCond.Status).To(Equal(metav1.ConditionTrue))
+		})
+
+		It("should preserve gateway status when deployment reconciliation fails", func() {
+			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+
+			By("establishing gateway status via successful reconcile")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			binding := &mcpv1alpha1.MCPGatewayBinding{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{
+				Name:      gatewayBindingName(resourceName),
+				Namespace: "default",
+			}, binding)).To(Succeed())
+
+			meta.SetStatusCondition(&binding.Status.Conditions, metav1.Condition{
+				Type:               ConditionTypeRegistered,
+				Status:             metav1.ConditionTrue,
+				Reason:             ReasonGatewayRegistered,
+				Message:            "HTTPRoute created",
+				LastTransitionTime: metav1.Now(),
+			})
+			binding.Status.URL = testGatewayURL
+			Expect(k8sClient.Status().Update(ctx, binding)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered)
+			Expect(gwCond).NotTo(BeNil())
+			Expect(gwCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(mcpServer.Status.GatewayBinding).NotTo(BeNil())
+
+			By("triggering a deployment ownership conflict")
+			dep := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{
+				Name: resourceName, Namespace: "default",
+			}, dep)).To(Succeed())
+			dep.OwnerReferences = []metav1.OwnerReference{
+				{
+					APIVersion:         "v1",
+					Kind:               "ConfigMap",
+					Name:               "foreign-owner",
+					UID:                "foreign-uid",
+					Controller:         ptr.To(true), //nolint:modernize // new(bool) yields false, not true
+					BlockOwnerDeletion: ptr.To(true), //nolint:modernize // new(bool) yields false, not true
+				},
+			}
+			Expect(k8sClient.Update(ctx, dep)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying gateway status survived the deployment failure")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+			gwCond = meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered)
+			Expect(gwCond).NotTo(BeNil(), "GatewayRegistered condition should be preserved after deployment failure")
+			Expect(gwCond.Status).To(Equal(metav1.ConditionTrue))
+
+			Expect(mcpServer.Status.GatewayBinding).NotTo(BeNil(), "GatewayBinding status should be preserved after deployment failure")
+			Expect(mcpServer.Status.GatewayBinding.Provider).To(Equal("httproute"))
 		})
 	})
 
@@ -455,13 +529,13 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 					ObservedGeneration: 1,
 					LastTransitionTime: metav1.Now(),
 				},
-				gatewayAddress: "https://gateway.example.com/mcp",
+				gatewayAddress: testGatewayURL,
 			}
 
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
 			_, url := reconciler.applyGatewayStatus(mcpServer, gwStatus, readyCondition, "http://svc:8080/mcp")
 
-			Expect(url).To(Equal("https://gateway.example.com/mcp"))
+			Expect(url).To(Equal(testGatewayURL))
 		})
 	})
 

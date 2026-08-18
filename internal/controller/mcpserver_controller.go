@@ -294,16 +294,29 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			r.emitDeploymentReconcileFailed(mcpServer, readyCondition.Message)
 		}
 
+		conditions := []*v1ac.ConditionApplyConfiguration{
+			conditionToAC(acceptedCondition),
+			conditionToAC(readyCondition),
+		}
+		if gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered); gwCond != nil {
+			conditions = append(conditions, conditionToAC(*gwCond))
+		}
+
 		status := acv1alpha1.MCPServerStatus().
 			WithObservedGeneration(mcpServer.Generation).
 			WithServiceName(mcpServer.Name).
 			WithHandshakeRetryCount(0).
 			WithReplicas(mcpServer.Status.Replicas).
 			WithReadyReplicas(mcpServer.Status.ReadyReplicas).
-			WithConditions(
-				conditionToAC(acceptedCondition),
-				conditionToAC(readyCondition),
+			WithConditions(conditions...)
+
+		if mcpServer.Status.GatewayBinding != nil {
+			status.WithGatewayBinding(
+				acv1alpha1.GatewayBindingStatus().
+					WithName(mcpServer.Status.GatewayBinding.Name).
+					WithProvider(mcpServer.Status.GatewayBinding.Provider),
 			)
+		}
 
 		if statusErr := r.applyStatus(ctx, mcpServer, status); statusErr != nil {
 			logger.Error(statusErr, "Failed to update MCPServer status")
