@@ -68,6 +68,13 @@ rules:
 - apiGroups:
   - mcp.x-k8s.io
   resources:
+  - mcpgatewaybindings/finalizers
+  - mcpservers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - mcp.x-k8s.io
+  resources:
   - mcpgatewaybindings/status
   - mcpservers/status
   verbs:
@@ -84,12 +91,6 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - mcp.x-k8s.io
-  resources:
-  - mcpservers/finalizers
-  verbs:
-  - update
 - apiGroups:
   - networking.k8s.io
   resources:
