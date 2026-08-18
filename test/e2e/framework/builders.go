@@ -88,6 +88,13 @@ func WithPodSecurityContext(psc *corev1.PodSecurityContext) MCPServerOption {
 	}
 }
 
+// WithTransport sets the MCPServer transport configuration.
+func WithTransport(transport *mcpv1alpha1.TransportConfig) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.Transport = transport
+	}
+}
+
 // WithExtraLabels sets custom labels on the MCPServer.
 func WithExtraLabels(labels map[string]string) MCPServerOption {
 	return func(s *mcpv1alpha1.MCPServer) {
