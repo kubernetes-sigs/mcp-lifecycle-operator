@@ -215,6 +215,22 @@ func TestValidateImageAllowlist(t *testing.T) {
 		p := &AdmissionPolicy{ImageAllowlist: []string{"ghcr.io/trusted/server"}}
 		assert.Nil(t, p.ValidateImageAllowlist("ghcr.io/trusted/server"))
 	})
+
+	t.Run("host-only prefix rejects alternate port", func(t *testing.T) {
+		p := &AdmissionPolicy{ImageAllowlist: []string{"ghcr.io"}}
+		err := p.ValidateImageAllowlist("ghcr.io:5000/untrusted/image:latest")
+		require.NotNil(t, err, "host-only prefix must not allow alternate registry port")
+	})
+
+	t.Run("host-only prefix allows sub-path", func(t *testing.T) {
+		p := &AdmissionPolicy{ImageAllowlist: []string{"ghcr.io"}}
+		assert.Nil(t, p.ValidateImageAllowlist("ghcr.io/trusted/server:v1"))
+	})
+
+	t.Run("prefix with path allows tag boundary", func(t *testing.T) {
+		p := &AdmissionPolicy{ImageAllowlist: []string{"ghcr.io/trusted"}}
+		assert.Nil(t, p.ValidateImageAllowlist("ghcr.io/trusted:v1"))
+	})
 }
 
 func TestValidateImageDigest(t *testing.T) {

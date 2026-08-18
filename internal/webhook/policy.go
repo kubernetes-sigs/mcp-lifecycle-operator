@@ -118,7 +118,12 @@ func (p *AdmissionPolicy) ValidateImageAllowlist(imageRef string) *field.Error {
 				return nil
 			}
 			next := imageRef[len(prefix)]
-			if next == '/' || next == ':' || next == '@' {
+			if next == '/' || next == '@' {
+				return nil
+			}
+			// Allow ':' only as a tag separator (after a path component),
+			// not as a port separator (e.g. ghcr.io:5000/...).
+			if next == ':' && strings.Contains(prefix, "/") {
 				return nil
 			}
 			if strings.HasSuffix(prefix, "/") {

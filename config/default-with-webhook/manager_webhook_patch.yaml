@@ -9,6 +9,8 @@ spec:
       containers:
       - name: manager
         args:
+        - --leader-elect
+        - --health-probe-bind-address=:8081
         - --enable-webhook
         ports:
         - containerPort: 9443
