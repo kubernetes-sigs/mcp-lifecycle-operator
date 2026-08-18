@@ -1,0 +1,22 @@
+# Optional Grafana dashboard provisioning for environments that use the
+# Grafana Helm chart sidecar (label grafana_dashboard: "1").
+#
+# Apply from a repository checkout:
+#   kubectl apply -k config/grafana/
+#
+# Note: the grafana_folder annotation is honored only when the Grafana chart sets
+#   sidecar.dashboards.folderAnnotation: grafana_folder
+#   sidecar.dashboards.provider.foldersFromFilesStructure: true
+# Without those values, dashboards are still imported but may land in the default folder.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+configMapGenerator:
+  - name: grafana-dashboard-mcp-lifecycle-operator
+    files:
+      - mcp-lifecycle-operator.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: MCP Lifecycle Operator
