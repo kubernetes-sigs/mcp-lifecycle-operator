@@ -226,7 +226,8 @@ func (r *MCPServerReconciler) reconcileGatewayCondition(
 
 	registered := meta.FindStatusCondition(binding.Status.Conditions, ConditionTypeRegistered)
 	if registered == nil || registered.Status != metav1.ConditionTrue {
-		msg := "Waiting for gateway integration controller to register binding"
+		msg := fmt.Sprintf("Waiting for gateway integration controller to register binding; "+
+			"if this persists, verify that a controller for provider %q is running", binding.Spec.Provider)
 		if registered != nil {
 			msg = registered.Message
 		}
