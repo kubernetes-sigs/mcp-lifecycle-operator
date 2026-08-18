@@ -281,7 +281,7 @@ func (r *MCPGatewayBindingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&mcpv1alpha1.MCPServer{},
 			handler.EnqueueRequestsFromMapFunc(r.findBindingsForMCPServer),
-			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
 		Named("mcpgatewaybinding-httproute").
 		Complete(r)
