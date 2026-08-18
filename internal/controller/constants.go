@@ -35,10 +35,6 @@ const (
 	ReconcilePhaseGatewayBinding = "gatewaybinding"
 )
 
-// ProviderHTTPRoute is the provider name for the reference Gateway API HTTPRoute
-// integration controller.
-const ProviderHTTPRoute = "httproute"
-
 // Gateway integration condition types and reasons.
 const (
 	ConditionTypeRegistered        = "Registered"

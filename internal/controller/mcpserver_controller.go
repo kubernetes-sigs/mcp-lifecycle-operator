@@ -53,9 +53,9 @@ import (
 const (
 	fieldManager = "mcpserver-controller"
 
-	// defaultMCPPath is the default HTTP path for MCP endpoints, matching the
+	// DefaultMCPPath is the default HTTP path for MCP endpoints, matching the
 	// kubebuilder default on ServerConfig.Path.
-	defaultMCPPath = "/mcp"
+	DefaultMCPPath = "/mcp"
 
 	// mcpClientName is the client name sent during MCP handshake.
 	mcpClientName = "mcp-lifecycle-operator"
@@ -256,7 +256,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		"Configuration is valid",
 		mcpServer.Generation,
 	)
-	preserveLastTransitionTime(&acceptedCondition, mcpServer.Status.Conditions)
+	PreserveLastTransitionTime(&acceptedCondition, mcpServer.Status.Conditions)
 
 	// Record Accepted condition metric
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
@@ -285,7 +285,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			fmt.Sprintf("Failed to reconcile Deployment: %v", err),
 			mcpServer.Generation,
 		)
-		preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
+		PreserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
 
 		recordCondition(mcpServer.Name, mcpServer.Namespace,
 			readyCondition.Type, string(readyCondition.Status), readyCondition.Reason)
@@ -377,7 +377,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Build status
 	path := mcpServer.Spec.Config.Path
 	if path == "" {
-		path = defaultMCPPath
+		path = DefaultMCPPath
 	}
 
 	mcpURL := fmt.Sprintf("%s://%s.%s.svc.cluster.local:%d%s",
@@ -531,7 +531,7 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 		validationErr.Message,
 		mcpServer.Generation,
 	)
-	preserveLastTransitionTime(&acceptedCondition, mcpServer.Status.Conditions)
+	PreserveLastTransitionTime(&acceptedCondition, mcpServer.Status.Conditions)
 
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		acceptedCondition.Type, string(acceptedCondition.Status), acceptedCondition.Reason)
@@ -549,7 +549,7 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 		"Configuration must be fixed before server can start",
 		mcpServer.Generation,
 	)
-	preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
+	PreserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
 
 	prevAccepted := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAccepted)
 
@@ -664,7 +664,7 @@ func (r *MCPServerReconciler) handleResourceFailure(
 		fmt.Sprintf("Failed to reconcile %s: %v", params.resource, reconcileErr),
 		mcpServer.Generation,
 	)
-	preserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
+	PreserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
 
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		readyCondition.Type, string(readyCondition.Status), readyCondition.Reason)

@@ -131,7 +131,7 @@ func (r *MCPServerReconciler) applyGatewayStatus(
 	readyCondition metav1.Condition,
 	mcpURL string,
 ) (metav1.Condition, string) {
-	preserveLastTransitionTime(&gwStatus.condition, mcpServer.Status.Conditions)
+	PreserveLastTransitionTime(&gwStatus.condition, mcpServer.Status.Conditions)
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		gwStatus.condition.Type, string(gwStatus.condition.Status), gwStatus.condition.Reason)
 

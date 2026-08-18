@@ -130,7 +130,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 			mcpServer.Generation,
 		)
 		if existingReady == nil || existingReady.Status != metav1.ConditionTrue {
-			preserveLastTransitionTime(&cond, mcpServer.Status.Conditions)
+			PreserveLastTransitionTime(&cond, mcpServer.Status.Conditions)
 		}
 		return cond, nil
 	}

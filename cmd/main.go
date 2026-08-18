@@ -43,6 +43,7 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
+	httprouteprovider "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/httproute"
 	webhookpolicy "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
@@ -232,11 +233,11 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "MCPServer")
 		os.Exit(1)
 	}
-	if err := (&controller.MCPGatewayBindingReconciler{
+	if err := (&httprouteprovider.Reconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "MCPGatewayBinding")
+		setupLog.Error(err, "unable to create controller", "controller", "MCPGatewayBinding-httproute")
 		os.Exit(1)
 	}
 	if enableWebhook {

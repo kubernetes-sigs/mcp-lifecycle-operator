@@ -393,7 +393,7 @@ func newReadyCondition(
 	existingConditions []metav1.Condition,
 ) metav1.Condition {
 	c := newCondition(ConditionTypeReady, status, reason, message, generation)
-	preserveLastTransitionTime(&c, existingConditions)
+	PreserveLastTransitionTime(&c, existingConditions)
 	return c
 }
 
@@ -407,9 +407,9 @@ func conditionToAC(condition metav1.Condition) *v1ac.ConditionApplyConfiguration
 		WithLastTransitionTime(condition.LastTransitionTime)
 }
 
-// preserveLastTransitionTime keeps the existing LastTransitionTime when the
+// PreserveLastTransitionTime keeps the existing LastTransitionTime when the
 // condition status has not changed, so that timestamps reflect actual transitions.
-func preserveLastTransitionTime(condition *metav1.Condition, existingConditions []metav1.Condition) {
+func PreserveLastTransitionTime(condition *metav1.Condition, existingConditions []metav1.Condition) {
 	if existing := meta.FindStatusCondition(existingConditions, condition.Type); existing != nil && existing.Status == condition.Status {
 		condition.LastTransitionTime = existing.LastTransitionTime
 	}
