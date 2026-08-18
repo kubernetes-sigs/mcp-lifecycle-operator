@@ -169,9 +169,10 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	err := r.Get(ctx, client.ObjectKey{Name: httpRoute.Name, Namespace: httpRoute.Namespace}, existing)
 	if apierrors.IsNotFound(err) {
 		logger.Info("Creating HTTPRoute", "name", httpRoute.Name)
-		if err := r.Create(ctx, httpRoute); err != nil {
-			return ctrl.Result{}, r.setNotRegistered(ctx, binding,
-				fmt.Sprintf("Failed to create HTTPRoute: %v", err))
+		if createErr := r.Create(ctx, httpRoute); createErr != nil {
+			_ = r.setNotRegistered(ctx, binding,
+				fmt.Sprintf("Failed to create HTTPRoute: %v", createErr))
+			return ctrl.Result{}, createErr
 		}
 	} else if err != nil {
 		return ctrl.Result{}, err
@@ -182,9 +183,10 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if !equality.Semantic.DeepEqual(existing.Spec, httpRoute.Spec) {
 			logger.Info("Updating HTTPRoute", "name", httpRoute.Name)
 			existing.Spec = httpRoute.Spec
-			if err := r.Update(ctx, existing); err != nil {
-				return ctrl.Result{}, r.setNotRegistered(ctx, binding,
-					fmt.Sprintf("Failed to update HTTPRoute: %v", err))
+			if updateErr := r.Update(ctx, existing); updateErr != nil {
+				_ = r.setNotRegistered(ctx, binding,
+					fmt.Sprintf("Failed to update HTTPRoute: %v", updateErr))
+				return ctrl.Result{}, updateErr
 			}
 		}
 	}
