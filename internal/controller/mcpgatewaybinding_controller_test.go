@@ -393,4 +393,94 @@ var _ = Describe("MCPGatewayBinding Controller (httproute)", func() {
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
 		Expect(registered.Message).To(ContainSubstring("configRef is required"))
 	})
+
+	Describe("findBindingsForConfigMap", func() {
+		It("should return requests for bindings referencing the ConfigMap", func() {
+			createBinding(ProviderHTTPRoute)
+
+			r := newReconciler()
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      configMapName,
+					Namespace: "default",
+				},
+			}
+			requests := r.findBindingsForConfigMap(ctx, cm)
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0].Name).To(Equal(bindingName))
+		})
+
+		It("should not return bindings for unrelated ConfigMaps", func() {
+			createBinding(ProviderHTTPRoute)
+
+			r := newReconciler()
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "unrelated-cm",
+					Namespace: "default",
+				},
+			}
+			requests := r.findBindingsForConfigMap(ctx, cm)
+			Expect(requests).To(BeEmpty())
+		})
+
+		It("should not return bindings with non-httproute provider", func() {
+			createBinding("custom-vendor")
+
+			r := newReconciler()
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      configMapName,
+					Namespace: "default",
+				},
+			}
+			requests := r.findBindingsForConfigMap(ctx, cm)
+			Expect(requests).To(BeEmpty())
+		})
+	})
+
+	Describe("findBindingsForMCPServer", func() {
+		It("should return requests for bindings referencing the MCPServer", func() {
+			createBinding(ProviderHTTPRoute)
+
+			r := newReconciler()
+			server := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      mcpServerName,
+					Namespace: "default",
+				},
+			}
+			requests := r.findBindingsForMCPServer(ctx, server)
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0].Name).To(Equal(bindingName))
+		})
+
+		It("should not return bindings for unrelated MCPServers", func() {
+			createBinding(ProviderHTTPRoute)
+
+			r := newReconciler()
+			server := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "other-server",
+					Namespace: "default",
+				},
+			}
+			requests := r.findBindingsForMCPServer(ctx, server)
+			Expect(requests).To(BeEmpty())
+		})
+
+		It("should not return bindings with non-httproute provider", func() {
+			createBinding("custom-vendor")
+
+			r := newReconciler()
+			server := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      mcpServerName,
+					Namespace: "default",
+				},
+			}
+			requests := r.findBindingsForMCPServer(ctx, server)
+			Expect(requests).To(BeEmpty())
+		})
+	})
 })
