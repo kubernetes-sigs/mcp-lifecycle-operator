@@ -79,6 +79,105 @@ var _ = Describe("MCPServer Controller - reconcileDeployment", func() {
 		Expect(deployment.Name).To(Equal(resourceName))
 	})
 
+	It("should persist image pull settings through reconciliation", func() {
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Source.ContainerImage.Ref = "docker.io/library/test-image:v1"
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("updating image pull settings on the MCPServer")
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Source.ContainerImage.PullPolicy = corev1.PullAlways
+		mcpServer.Spec.Source.ContainerImage.ImagePullSecrets = []corev1.LocalObjectReference{
+			{Name: "registry-credentials"},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		By("reconciling the updated MCPServer")
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+		Expect(err).NotTo(HaveOccurred())
+
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+		Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
+		Expect(deployment.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullAlways))
+		Expect(deployment.Spec.Template.Spec.ImagePullSecrets).To(Equal([]corev1.LocalObjectReference{
+			{Name: "registry-credentials"},
+		}))
+	})
+
+	It("should propagate image pull policy and image pull secrets", func() {
+		mcpServer := newTestMCPServer("test-image-pull-settings")
+		mcpServer.Spec.Source.ContainerImage.PullPolicy = corev1.PullIfNotPresent
+		mcpServer.Spec.Source.ContainerImage.ImagePullSecrets = []corev1.LocalObjectReference{
+			{Name: "registry-credentials"},
+		}
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		deployment, err := reconciler.createDeployment(mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
+		Expect(deployment.Spec.Template.Spec.ImagePullSecrets).To(Equal([]corev1.LocalObjectReference{
+			{Name: "registry-credentials"},
+		}))
+	})
+
+	It("should preserve Kubernetes defaults when image pull settings are omitted", func() {
+		mcpServer := newTestMCPServer("test-image-pull-defaults")
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		deployment, err := reconciler.createDeployment(mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(deployment.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(BeEmpty())
+		Expect(deployment.Spec.Template.Spec.ImagePullSecrets).To(BeEmpty())
+	})
+
+	It("should detect image pull policy and image pull secret changes and removals", func() {
+		mcpServer := newTestMCPServer("test-image-pull-drift")
+		mcpServer.Spec.Source.ContainerImage.Ref = "docker.io/library/test-image:v1"
+		mcpServer.Spec.Source.ContainerImage.PullPolicy = corev1.PullAlways
+		mcpServer.Spec.Source.ContainerImage.ImagePullSecrets = []corev1.LocalObjectReference{
+			{Name: "registry-credentials"},
+		}
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+		existing, err := reconciler.createDeployment(mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+
+		mcpServer.Spec.Source.ContainerImage.PullPolicy = corev1.PullIfNotPresent
+		mcpServer.Spec.Source.ContainerImage.ImagePullSecrets = []corev1.LocalObjectReference{
+			{Name: "new-registry-credentials"},
+		}
+		desired, err := reconciler.createDeployment(mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(deploymentNeedsUpdate(mcpServer, existing, desired, false)).To(BeTrue())
+
+		mcpServer.Spec.Source.ContainerImage.PullPolicy = ""
+		mcpServer.Spec.Source.ContainerImage.ImagePullSecrets = nil
+		desired, err = reconciler.createDeployment(mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(deploymentNeedsUpdate(mcpServer, existing, desired, false)).To(BeTrue())
+	})
+
 	It("should return existing deployment without error on second call", func() {
 		mcpServer := &mcpv1alpha1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
@@ -260,6 +359,27 @@ var _ = Describe("MCPServer Controller - reconcileDeployment", func() {
 		Expect(deployment).NotTo(BeNil())
 		Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
 		Expect(deployment.Spec.Template.Spec.Containers[0].Image).To(Equal("docker.io/library/test-image:latest"))
+	})
+})
+
+var _ = Describe("Kubernetes image pull policy defaulting", func() {
+	It("should match Kubernetes defaults for supported image references", func() {
+		testCases := []struct {
+			image  string
+			policy corev1.PullPolicy
+		}{
+			{image: "docker.io/library/test-image:latest", policy: corev1.PullAlways},
+			{image: "docker.io/library/test-image", policy: corev1.PullAlways},
+			{image: "registry.example.com/team/test-image:v1", policy: corev1.PullIfNotPresent},
+			{image: "registry.example.com/team/test-image@sha256:0123456789abcdef", policy: corev1.PullIfNotPresent},
+			{image: "registry.example.com:5000/team/test-image", policy: corev1.PullAlways},
+			{image: "registry.example.com:5000/team/test-image:v1", policy: corev1.PullIfNotPresent},
+		}
+
+		for _, testCase := range testCases {
+			By("checking " + testCase.image)
+			Expect(defaultImagePullPolicy(testCase.image)).To(Equal(testCase.policy))
+		}
 	})
 })
 

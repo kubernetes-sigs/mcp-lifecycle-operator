@@ -884,6 +884,31 @@ var _ = Describe("MCPServer Validation", func() {
 				ContainSubstring("minLength"),
 			))
 		})
+
+		It("should reject an invalid image pull policy", func() {
+			mcpServer := &MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invalid-pull-policy",
+					Namespace: namespace.Name,
+				},
+				Spec: MCPServerSpec{
+					Source: Source{
+						Type: SourceTypeContainerImage,
+						ContainerImage: &ContainerImageSource{
+							Ref:        "docker.io/library/test-image:v1",
+							PullPolicy: "Invalid",
+						},
+					},
+					Config: ServerConfig{
+						Port: 8080,
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+			Expect(err.Error()).To(ContainSubstring("pullPolicy"))
+		})
 	})
 
 	Context("Multiple storage mounts", func() {

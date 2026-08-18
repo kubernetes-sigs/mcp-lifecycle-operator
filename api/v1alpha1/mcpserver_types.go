@@ -61,9 +61,20 @@ type ContainerImageSource struct {
 	// NOTE: the validation rules above are taken from
 	// https://github.com/operator-framework/operator-controller/blob/475e1341d0aa045c4fcb6a93a1ffeb2d16484ca7/api/v1/clustercatalog_types.go#L275-L321
 
-	// Future fields could include:
-	//   - ImagePullSecrets
-	//   - PullPolicy
+	// PullPolicy controls when the kubelet pulls the MCP server image.
+	// When omitted, Kubernetes applies its native default based on the image reference.
+	// +optional
+	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
+	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
+
+	// ImagePullSecrets references Secrets in the MCPServer namespace that contain
+	// credentials for pulling the MCP server image from a private registry.
+	// The operator passes these references to the managed Pod and does not read
+	// or copy Secret data.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }
 
 // Source defines where the MCP server's container image (or other source types in the future) is located.

@@ -18,6 +18,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	v1 "k8s.io/api/core/v1"
+)
+
 // ContainerImageSourceApplyConfiguration represents a declarative configuration of the ContainerImageSource type for use
 // with apply.
 //
@@ -31,6 +35,14 @@ type ContainerImageSourceApplyConfiguration struct {
 	// - custom-registry.io/my-mcp-server:1.2.3
 	// - custom-registry.io/my-mcp-server@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 	Ref *string `json:"ref,omitempty"`
+	// PullPolicy controls when the kubelet pulls the MCP server image.
+	// When omitted, Kubernetes applies its native default based on the image reference.
+	PullPolicy *v1.PullPolicy `json:"pullPolicy,omitempty"`
+	// ImagePullSecrets references Secrets in the MCPServer namespace that contain
+	// credentials for pulling the MCP server image from a private registry.
+	// The operator passes these references to the managed Pod and does not read
+	// or copy Secret data.
+	ImagePullSecrets []v1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }
 
 // ContainerImageSourceApplyConfiguration constructs a declarative configuration of the ContainerImageSource type for use with
@@ -44,5 +56,23 @@ func ContainerImageSource() *ContainerImageSourceApplyConfiguration {
 // If called multiple times, the Ref field is set to the value of the last call.
 func (b *ContainerImageSourceApplyConfiguration) WithRef(value string) *ContainerImageSourceApplyConfiguration {
 	b.Ref = &value
+	return b
+}
+
+// WithPullPolicy sets the PullPolicy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PullPolicy field is set to the value of the last call.
+func (b *ContainerImageSourceApplyConfiguration) WithPullPolicy(value v1.PullPolicy) *ContainerImageSourceApplyConfiguration {
+	b.PullPolicy = &value
+	return b
+}
+
+// WithImagePullSecrets adds the given value to the ImagePullSecrets field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the ImagePullSecrets field.
+func (b *ContainerImageSourceApplyConfiguration) WithImagePullSecrets(values ...v1.LocalObjectReference) *ContainerImageSourceApplyConfiguration {
+	for i := range values {
+		b.ImagePullSecrets = append(b.ImagePullSecrets, values[i])
+	}
 	return b
 }
