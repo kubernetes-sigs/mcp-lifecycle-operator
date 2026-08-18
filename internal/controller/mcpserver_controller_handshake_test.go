@@ -1418,7 +1418,63 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(capturedTransport.TLSClientConfig.MinVersion).To(Equal(uint16(tls.VersionTLS13)))
 	})
 
-	It("should set Ready=False when CA Secret has invalid PEM data", func() {
+	It("should not allow TLSProfile to lower MinVersion below TLS 1.2", func() {
+		By("Updating MCPServer with InsecureSkipVerify TLS config")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Transport = &mcpv1alpha1.TransportConfig{
+			TLS: &mcpv1alpha1.TLSClientConfig{
+				Enabled:            true,
+				InsecureSkipVerify: true,
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		var capturedTransport *http.Transport
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(_ context.Context, _ string, transport *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
+				capturedTransport = transport
+				return &mcpv1alpha1.MCPServerInfo{Name: "test"}, nil
+			},
+			APIReader: k8sClient,
+			TLSProfile: func(c *tls.Config) {
+				c.MinVersion = tls.VersionTLS10
+			},
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Making deployment available and re-reconciling")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(capturedTransport).NotTo(BeNil())
+		Expect(capturedTransport.TLSClientConfig).NotTo(BeNil())
+		Expect(capturedTransport.TLSClientConfig.MinVersion).To(Equal(uint16(tls.VersionTLS12)),
+			"TLS 1.2 floor must not be lowered by TLSProfile")
+	})
+
+	It("should set Accepted=False when CA Secret has invalid PEM data", func() {
 		By("Creating a Secret with invalid PEM data")
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1448,30 +1504,94 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		By("Making deployment available and re-reconciling")
-		deployment := &appsv1.Deployment{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{
-			Name: resourceName, Namespace: "default",
-		}, deployment)).To(Succeed())
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal(ReasonInvalid))
+		Expect(acceptedCondition.Message).To(ContainSubstring("no valid PEM certificates"))
 
-		deployment.Status.Replicas = 1
-		deployment.Status.ReadyReplicas = 1
-		deployment.Status.Conditions = []appsv1.DeploymentCondition{
-			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
-			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		By("Cleaning up Secret")
+		Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+	})
+
+	It("should set Accepted=False when CA Secret is missing ca.crt key", func() {
+		By("Creating a Secret without the ca.crt key")
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "no-cacrt",
+				Namespace: "default",
+			},
+			Data: map[string][]byte{
+				"tls.crt": []byte("some-data"),
+			},
 		}
-		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+		By("Updating MCPServer with TLS config referencing the Secret")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Transport = &mcpv1alpha1.TransportConfig{
+			TLS: &mcpv1alpha1.TLSClientConfig{
+				Enabled:        true,
+				CABundleSecret: &mcpv1alpha1.SecretReference{Name: "no-cacrt"},
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
 			NamespacedName: typeNamespacedName,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-		Expect(readyCondition.Message).To(ContainSubstring("TLS configuration error"))
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal(ReasonInvalid))
+		Expect(acceptedCondition.Message).To(ContainSubstring("ca.crt"))
+
+		By("Cleaning up Secret")
+		Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+	})
+
+	It("should set Accepted=False when CA Secret contains non-certificate PEM", func() {
+		By("Creating a Secret with a private key PEM instead of a certificate")
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "privkey-ca",
+				Namespace: "default",
+			},
+			Data: map[string][]byte{
+				"ca.crt": []byte("-----BEGIN PRIVATE KEY-----\nYWJj\n-----END PRIVATE KEY-----\n"),
+			},
+		}
+		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+		By("Updating MCPServer with TLS config referencing the Secret")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Transport = &mcpv1alpha1.TransportConfig{
+			TLS: &mcpv1alpha1.TLSClientConfig{
+				Enabled:        true,
+				CABundleSecret: &mcpv1alpha1.SecretReference{Name: "privkey-ca"},
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal(ReasonInvalid))
+		Expect(acceptedCondition.Message).To(ContainSubstring("no valid PEM certificates"))
 
 		By("Cleaning up Secret")
 		Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
