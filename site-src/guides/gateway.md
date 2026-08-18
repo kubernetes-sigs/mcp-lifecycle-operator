@@ -144,6 +144,19 @@ data:
 | `gateway-namespace` | Yes      | Namespace where the Gateway resource lives          |
 | `hostname`          | No       | Hostname to set on the HTTPRoute for routing        |
 
+!!! warning "Cross-namespace routing"
+    When the Gateway lives in a different namespace than the MCPServer (as in this example), the Gateway must explicitly allow cross-namespace routes. By default, Gateway API sets `allowedRoutes.namespaces.from: Same`, which rejects routes from other namespaces. Configure the Gateway listener to accept routes from the MCPServer's namespace:
+
+    ```yaml
+    listeners:
+      - name: http
+        port: 80
+        protocol: HTTP
+        allowedRoutes:
+          namespaces:
+            from: All  # or use Selector to restrict to specific namespaces
+    ```
+
 ### What It Creates
 
 For each registered binding, the controller creates an HTTPRoute that:
