@@ -45,6 +45,12 @@ type MCPServerStatusApplyConfiguration struct {
 	// failures for the current generation. Reset to 0 on success, spec change,
 	// or when reconciliation does not reach the handshake phase.
 	HandshakeRetryCount *int32 `json:"handshakeRetryCount,omitempty"`
+	// TLSCABundleHash is a SHA-256 hash of the CA bundle Secret content at the
+	// time of the last successful handshake. When the CA bundle Secret changes,
+	// this hash changes and forces handshake re-verification even though the
+	// MCPServer generation has not changed. Empty when TLS is disabled or no
+	// CA bundle is configured.
+	TLSCABundleHash *string `json:"tlsCABundleHash,omitempty"`
 	// Replicas is the total number of desired pods targeted by the owned Deployment.
 	Replicas *int32 `json:"replicas,omitempty"`
 	// ReadyReplicas is the number of pods targeted by the owned Deployment with a Ready condition.
@@ -123,6 +129,14 @@ func (b *MCPServerStatusApplyConfiguration) WithServerInfo(value *MCPServerInfoA
 // If called multiple times, the HandshakeRetryCount field is set to the value of the last call.
 func (b *MCPServerStatusApplyConfiguration) WithHandshakeRetryCount(value int32) *MCPServerStatusApplyConfiguration {
 	b.HandshakeRetryCount = &value
+	return b
+}
+
+// WithTLSCABundleHash sets the TLSCABundleHash field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the TLSCABundleHash field is set to the value of the last call.
+func (b *MCPServerStatusApplyConfiguration) WithTLSCABundleHash(value string) *MCPServerStatusApplyConfiguration {
+	b.TLSCABundleHash = &value
 	return b
 }
 

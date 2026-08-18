@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -89,4 +90,23 @@ func buildTLSTransport(ctx context.Context, reader client.Reader, namespace stri
 		RootCAs:    pool,
 	}
 	return transport, nil
+}
+
+func computeTLSCABundleHash(ctx context.Context, reader client.Reader, namespace string, tlsConfig *mcpv1alpha1.TLSClientConfig) string {
+	if tlsConfig == nil || !tlsConfig.Enabled || tlsConfig.InsecureSkipVerify || tlsConfig.CABundleSecret == nil {
+		return ""
+	}
+	secret := &corev1.Secret{}
+	if err := reader.Get(ctx, client.ObjectKey{
+		Name:      tlsConfig.CABundleSecret.Name,
+		Namespace: namespace,
+	}, secret); err != nil {
+		return ""
+	}
+	caPEM, ok := secret.Data[caBundleKey]
+	if !ok {
+		return ""
+	}
+	h := sha256.Sum256(caPEM)
+	return fmt.Sprintf("%x", h[:])
 }

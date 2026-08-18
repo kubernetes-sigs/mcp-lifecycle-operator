@@ -38,6 +38,11 @@ import (
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 )
 
+func generateSelfSignedCAPEMOnly() []byte {
+	pem, _ := generateSelfSignedCAPEM()
+	return pem
+}
+
 var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 	const resourceName = "test-handshake"
 
@@ -1684,5 +1689,105 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 
 		By("Cleaning up Secret")
 		Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+	})
+
+	It("should re-run handshake when CA bundle Secret content changes", func() {
+		By("Creating a CA bundle Secret with valid PEM")
+		originalPEM := generateSelfSignedCAPEMOnly()
+		caSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rotation-ca",
+				Namespace: "default",
+			},
+			Data: map[string][]byte{"ca.crt": originalPEM},
+		}
+		Expect(k8sClient.Create(ctx, caSecret)).To(Succeed())
+
+		By("Updating MCPServer with TLS caBundleSecret config")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Transport = &mcpv1alpha1.TransportConfig{
+			TLS: &mcpv1alpha1.TLSClientConfig{
+				Enabled:        true,
+				CABundleSecret: &mcpv1alpha1.SecretReference{Name: "rotation-ca"},
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		dialCount := 0
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(_ context.Context, _ string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
+				dialCount++
+				return &mcpv1alpha1.MCPServerInfo{Name: "test"}, nil
+			},
+			APIReader: k8sClient,
+		}
+
+		By("Initial reconciliation creates deployment")
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Making deployment available")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		By("Reconciling to establish Ready=True with handshake")
+		dialCount = 0
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dialCount).To(Equal(1))
+
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+		Expect(readyCondition).NotTo(BeNil())
+		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+		originalHash := mcpServer.Status.TLSCABundleHash
+		Expect(originalHash).NotTo(BeEmpty())
+
+		By("Reconciling again without changes - handshake should be skipped")
+		dialCount = 0
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dialCount).To(Equal(0))
+
+		By("Rotating the CA bundle Secret content")
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: "rotation-ca", Namespace: "default",
+		}, caSecret)).To(Succeed())
+		rotatedPEM := generateSelfSignedCAPEMOnly()
+		caSecret.Data["ca.crt"] = rotatedPEM
+		Expect(k8sClient.Update(ctx, caSecret)).To(Succeed())
+
+		By("Reconciling after rotation - handshake must re-run (hash changed)")
+		dialCount = 0
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dialCount).To(Equal(1))
+
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		Expect(mcpServer.Status.TLSCABundleHash).NotTo(Equal(originalHash))
+
+		By("Cleaning up Secret")
+		Expect(k8sClient.Delete(ctx, caSecret)).To(Succeed())
 	})
 })

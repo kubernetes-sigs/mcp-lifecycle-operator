@@ -527,6 +527,14 @@ type MCPServerStatus struct {
 	// +optional
 	HandshakeRetryCount int32 `json:"handshakeRetryCount,omitempty"`
 
+	// TLSCABundleHash is a SHA-256 hash of the CA bundle Secret content at the
+	// time of the last successful handshake. When the CA bundle Secret changes,
+	// this hash changes and forces handshake re-verification even though the
+	// MCPServer generation has not changed. Empty when TLS is disabled or no
+	// CA bundle is configured.
+	// +optional
+	TLSCABundleHash string `json:"tlsCABundleHash,omitempty"`
+
 	// Replicas is the total number of desired pods targeted by the owned Deployment.
 	// +optional
 	Replicas int32 `json:"replicas,omitempty"`
