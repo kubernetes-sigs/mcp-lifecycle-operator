@@ -56,7 +56,7 @@ func (r *MCPServerReconciler) reconcileGatewayBinding(
 
 	if mcpServer.Spec.Gateway == nil {
 		if err == nil {
-			if ownerErr := r.validateOwnership(existing, mcpServer); ownerErr != nil {
+			if ownerErr := r.validateOwnership(ctx, existing, mcpServer); ownerErr != nil {
 				return ownerErr
 			}
 			logger.Info("Deleting MCPGatewayBinding (gateway removed from spec)", "name", bindingName)
@@ -91,7 +91,7 @@ func (r *MCPServerReconciler) reconcileGatewayBinding(
 		return err
 	}
 
-	if ownerErr := r.validateOwnership(existing, mcpServer); ownerErr != nil {
+	if ownerErr := r.validateOwnership(ctx, existing, mcpServer); ownerErr != nil {
 		return ownerErr
 	}
 
