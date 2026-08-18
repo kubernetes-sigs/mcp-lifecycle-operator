@@ -74,6 +74,7 @@ type ContainerImageSource struct {
 	// +optional
 	// +listType=map
 	// +listMapKey=name
+	// +kubebuilder:validation:XValidation:rule="self.all(secret, secret.name != '')",message="imagePullSecrets names must not be empty"
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }
 

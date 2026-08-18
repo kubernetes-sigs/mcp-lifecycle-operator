@@ -381,6 +381,29 @@ var _ = Describe("Kubernetes image pull policy defaulting", func() {
 			Expect(defaultImagePullPolicy(testCase.image)).To(Equal(testCase.policy))
 		}
 	})
+
+	It("should not report drift for omitted policies that match Kubernetes defaults", func() {
+		existing := corev1.Container{
+			Image:           "registry.example.com/team/test-image:v1",
+			ImagePullPolicy: corev1.PullIfNotPresent,
+		}
+		desired := corev1.Container{Image: existing.Image}
+		Expect(imagePullPolicyNeedsUpdate(existing, desired)).To(BeFalse())
+
+		existing.ImagePullPolicy = ""
+		Expect(imagePullPolicyNeedsUpdate(existing, desired)).To(BeFalse())
+
+		existing.ImagePullPolicy = corev1.PullAlways
+		desired.ImagePullPolicy = corev1.PullAlways
+		Expect(imagePullPolicyNeedsUpdate(existing, desired)).To(BeFalse())
+	})
+
+	It("should compare image pull Secret references without nil-empty drift", func() {
+		secret := corev1.LocalObjectReference{Name: "registry-credentials"}
+		Expect(sameImagePullSecrets(nil, []corev1.LocalObjectReference{})).To(BeTrue())
+		Expect(sameImagePullSecrets([]corev1.LocalObjectReference{secret}, []corev1.LocalObjectReference{secret})).To(BeTrue())
+		Expect(sameImagePullSecrets([]corev1.LocalObjectReference{secret}, nil)).To(BeFalse())
+	})
 })
 
 var _ = Describe("MCPServer Controller - Deployment Reconciliation Failures", func() {

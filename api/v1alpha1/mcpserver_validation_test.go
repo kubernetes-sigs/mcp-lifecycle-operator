@@ -909,6 +909,33 @@ var _ = Describe("MCPServer Validation", func() {
 			Expect(apierrors.IsInvalid(err)).To(BeTrue())
 			Expect(err.Error()).To(ContainSubstring("pullPolicy"))
 		})
+
+		It("should reject image pull secrets with an empty name", func() {
+			mcpServer := &MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invalid-image-pull-secret",
+					Namespace: namespace.Name,
+				},
+				Spec: MCPServerSpec{
+					Source: Source{
+						Type: SourceTypeContainerImage,
+						ContainerImage: &ContainerImageSource{
+							Ref: "docker.io/library/test-image:v1",
+							ImagePullSecrets: []corev1.LocalObjectReference{
+								{Name: ""},
+							},
+						},
+					},
+					Config: ServerConfig{
+						Port: 8080,
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, mcpServer)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+			Expect(err.Error()).To(ContainSubstring("imagePullSecrets"))
+		})
 	})
 
 	Context("Multiple storage mounts", func() {

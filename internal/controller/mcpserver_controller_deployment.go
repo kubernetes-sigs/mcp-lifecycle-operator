@@ -188,6 +188,8 @@ func imagePullPolicyNeedsUpdate(existing, desired corev1.Container) bool {
 	return existing.ImagePullPolicy != defaultImagePullPolicy(desired.Image)
 }
 
+// defaultImagePullPolicy returns the policy Kubernetes applies when the
+// MCPServer does not specify one explicitly.
 func defaultImagePullPolicy(image string) corev1.PullPolicy {
 	if strings.Contains(image, "@") {
 		return corev1.PullIfNotPresent
@@ -201,6 +203,8 @@ func defaultImagePullPolicy(image string) corev1.PullPolicy {
 	return corev1.PullIfNotPresent
 }
 
+// sameImagePullSecrets reports whether two image pull Secret references are
+// equivalent, treating nil and empty lists as the same default state.
 func sameImagePullSecrets(existing, desired []corev1.LocalObjectReference) bool {
 	if len(existing) == 0 && len(desired) == 0 {
 		return true

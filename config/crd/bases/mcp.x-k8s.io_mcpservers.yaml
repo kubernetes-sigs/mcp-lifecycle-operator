@@ -1660,6 +1660,9 @@ spec:
                         x-kubernetes-list-map-keys:
                         - name
                         x-kubernetes-list-type: map
+                        x-kubernetes-validations:
+                        - message: imagePullSecrets names must not be empty
+                          rule: self.all(secret, secret.name != '')
                       pullPolicy:
                         description: |-
                           PullPolicy controls when the kubelet pulls the MCP server image.
