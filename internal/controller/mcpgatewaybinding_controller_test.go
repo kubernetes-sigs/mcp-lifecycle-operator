@@ -32,6 +32,29 @@ import (
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 )
 
+func setHTTPRouteAccepted(ctx context.Context, route *gatewayv1.HTTPRoute) {
+	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(route), route)).To(Succeed())
+	route.Status = gatewayv1.HTTPRouteStatus{
+		RouteStatus: gatewayv1.RouteStatus{
+			Parents: []gatewayv1.RouteParentStatus{
+				{
+					ParentRef:      route.Spec.ParentRefs[0],
+					ControllerName: "gateway.example.com/controller",
+					Conditions: []metav1.Condition{
+						{
+							Type:               string(gatewayv1.RouteConditionAccepted),
+							Status:             metav1.ConditionTrue,
+							Reason:             "Accepted",
+							LastTransitionTime: metav1.Now(),
+						},
+					},
+				},
+			},
+		},
+	}
+	Expect(k8sClient.Status().Update(ctx, route)).To(Succeed())
+}
+
 var _ = Describe("MCPGatewayBinding Controller (httproute)", func() {
 	ctx := context.Background()
 
@@ -100,7 +123,7 @@ var _ = Describe("MCPGatewayBinding Controller (httproute)", func() {
 		createBinding(ProviderHTTPRoute)
 
 		r := newReconciler()
-		_, err := r.Reconcile(ctx, reconcile.Request{
+		result, err := r.Reconcile(ctx, reconcile.Request{
 			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -118,16 +141,32 @@ var _ = Describe("MCPGatewayBinding Controller (httproute)", func() {
 		Expect(route.Spec.Rules[0].BackendRefs[0].Port).NotTo(BeNil())
 		Expect(*route.Spec.Rules[0].BackendRefs[0].Port).To(Equal(gatewayv1.PortNumber(8080)))
 
-		binding := &mcpv1alpha1.MCPGatewayBinding{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
-		registered := meta.FindStatusCondition(binding.Status.Conditions, ConditionTypeRegistered)
-		Expect(registered).NotTo(BeNil())
-		Expect(registered.Status).To(Equal(metav1.ConditionTrue))
-
 		ownerRef := metav1.GetControllerOf(route)
 		Expect(ownerRef).NotTo(BeNil())
 		Expect(ownerRef.Name).To(Equal(bindingName))
 		Expect(ownerRef.Kind).To(Equal(mcpv1alpha1.MCPGatewayBindingKind))
+
+		By("initially setting Registered=False until gateway accepts the route")
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+		Expect(registered.Reason).To(Equal(reasonRouteNotAccepted))
+		Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+
+		By("setting Registered=True once the gateway accepts the route")
+		setHTTPRouteAccepted(ctx, route)
+
+		_, err = r.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		registered = meta.FindStatusCondition(binding.Status.Conditions, ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionTrue))
 	})
 
 	It("should ignore bindings with non-httproute provider", func() {
@@ -238,6 +277,13 @@ var _ = Describe("MCPGatewayBinding Controller (httproute)", func() {
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
 		Expect(route.Spec.Hostnames).To(HaveLen(1))
 		Expect(string(route.Spec.Hostnames[0])).To(Equal("mcp.example.com"))
+
+		setHTTPRouteAccepted(ctx, route)
+
+		_, err = r.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+		})
+		Expect(err).NotTo(HaveOccurred())
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{}
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -44,6 +45,8 @@ const (
 	configKeyGatewayName      = "gateway-name"
 	configKeyGatewayNamespace = "gateway-namespace"
 	configKeyHostname         = "hostname"
+
+	reasonRouteNotAccepted = "RouteNotAccepted"
 )
 
 // MCPGatewayBindingReconciler reconciles MCPGatewayBinding resources with
@@ -191,13 +194,24 @@ func (r *MCPGatewayBindingReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 	}
 
+	route := &gatewayv1.HTTPRoute{}
+	if err := r.Get(ctx, client.ObjectKey{Name: httpRoute.Name, Namespace: httpRoute.Namespace}, route); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if !isHTTPRouteAccepted(route) {
+		statusErr := r.updateBindingStatus(ctx, binding, metav1.ConditionFalse,
+			reasonRouteNotAccepted, "Waiting for gateway to accept HTTPRoute", "")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, statusErr
+	}
+
 	url := ""
 	if hostname, ok := configMap.Data[configKeyHostname]; ok && hostname != "" {
 		url = fmt.Sprintf("http://%s%s", hostname, path)
 	}
 
 	return ctrl.Result{}, r.updateBindingStatus(ctx, binding, metav1.ConditionTrue,
-		ReasonGatewayRegistered, "HTTPRoute created", url)
+		ReasonGatewayRegistered, "HTTPRoute accepted by gateway", url)
 }
 
 func (r *MCPGatewayBindingReconciler) setNotRegistered(
@@ -270,6 +284,18 @@ func (r *MCPGatewayBindingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		Named("mcpgatewaybinding-httproute").
 		Complete(r)
+}
+
+func isHTTPRouteAccepted(route *gatewayv1.HTTPRoute) bool {
+	for _, parent := range route.Status.Parents {
+		for _, cond := range parent.Conditions {
+			if cond.Type == string(gatewayv1.RouteConditionAccepted) &&
+				cond.Status == metav1.ConditionTrue {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (r *MCPGatewayBindingReconciler) findBindingsForConfigMap(ctx context.Context, obj client.Object) []ctrl.Request {
