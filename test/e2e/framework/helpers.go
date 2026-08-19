@@ -31,6 +31,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"sigs.k8s.io/e2e-framework/klient/k8s"
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
@@ -359,6 +360,57 @@ func CreateGatewayConfigMap(ctx context.Context, t *testing.T, cfg *envconf.Conf
 		t.Fatalf("failed to create gateway ConfigMap: %v", err)
 	}
 	t.Logf("created gateway ConfigMap %s/%s", namespace, name)
+}
+
+// EnsureGateway creates a GatewayClass, namespace, and Gateway resource if they don't
+// already exist. The Gateway allows routes from all namespaces so that HTTPRoutes
+// created in per-test namespaces are accepted by the gateway controller.
+func EnsureGateway(ctx context.Context, t *testing.T, cfg *envconf.Config,
+	name, namespace, gatewayClassName string) {
+	t.Helper()
+	r := cfg.Client().Resources()
+
+	gc := &gatewayv1.GatewayClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: gatewayClassName,
+		},
+		Spec: gatewayv1.GatewayClassSpec{
+			ControllerName: "gateway.envoyproxy.io/gatewayclass-controller",
+		},
+	}
+	if err := r.Create(ctx, gc); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("failed to create GatewayClass %s: %v", gatewayClassName, err)
+	}
+
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
+	if err := r.Create(ctx, ns); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("failed to create namespace %s: %v", namespace, err)
+	}
+
+	fromAll := gatewayv1.NamespacesFromAll
+	gw := &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: gatewayv1.GatewaySpec{
+			GatewayClassName: gatewayv1.ObjectName(gatewayClassName),
+			Listeners: []gatewayv1.Listener{{
+				Name:     "http",
+				Protocol: gatewayv1.HTTPProtocolType,
+				Port:     80,
+				AllowedRoutes: &gatewayv1.AllowedRoutes{
+					Namespaces: &gatewayv1.RouteNamespaces{
+						From: &fromAll,
+					},
+				},
+			}},
+		},
+	}
+	if err := r.Create(ctx, gw); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("failed to create Gateway %s/%s: %v", namespace, name, err)
+	}
+	t.Logf("ensured Gateway %s/%s (class=%s)", namespace, name, gatewayClassName)
 }
 
 // WaitForBindingRegistered polls until the MCPGatewayBinding's Registered condition
