@@ -7,7 +7,7 @@ spec:
   source:
     type: ContainerImage
     containerImage:
-      ref: quay.io/matzew/mcp-everything:2026.7.10
+      ref: quay.io/matzew/mcp-everything@sha256:537cdedad807bb56140caca9c332d3577b16e533584164bbc3f27abac7b5ba15
   config:
     port: 3001
     path: /mcp

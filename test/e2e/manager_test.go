@@ -44,6 +44,7 @@ import (
 )
 
 func TestManagerPodRunning(t *testing.T) {
+	t.Parallel()
 	feature := features.New("Manager pod is running").
 		WithLabel(category.Label, category.Observability).
 		WithLabel(speed.Label, speed.Fast).
@@ -59,6 +60,7 @@ func TestManagerPodRunning(t *testing.T) {
 }
 
 func TestMetricsEndpoint(t *testing.T) {
+	t.Parallel()
 	const metricsRoleBinding = "mcp-lifecycle-operator-metrics-binding"
 
 	feature := features.New("Metrics endpoint serves data").

@@ -110,6 +110,8 @@ var (
 		[]string{"name", "namespace"},
 	)
 
+	// capabilityChangesTotal counts MCP server capability changes detected between generations.
+	// Labels: name, namespace.
 	capabilityChangesTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: metricsNamespace,

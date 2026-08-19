@@ -41,6 +41,7 @@ import (
 // --- Storage Tests ---
 
 func TestStorageConfigMap(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer with ConfigMap storage").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Fast).
@@ -113,6 +114,7 @@ func TestStorageConfigMap(t *testing.T) {
 }
 
 func TestStorageSecret(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer with Secret storage").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Fast).
@@ -185,6 +187,7 @@ func TestStorageSecret(t *testing.T) {
 }
 
 func TestStorageEmptyDir(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer with EmptyDir storage").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Fast).
@@ -247,6 +250,7 @@ func TestStorageEmptyDir(t *testing.T) {
 }
 
 func TestStorageRecursiveReadOnly(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer with RecursiveReadOnly storage").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Fast).
@@ -314,6 +318,7 @@ func TestStorageRecursiveReadOnly(t *testing.T) {
 }
 
 func TestStorageMultipleMounts(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer with multiple storage mounts").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Fast).
@@ -417,6 +422,7 @@ func TestStorageMultipleMounts(t *testing.T) {
 // --- Port Configuration Tests ---
 
 func TestCustomPort(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer with custom non-default port").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Fast).
@@ -488,6 +494,7 @@ func TestCustomPort(t *testing.T) {
 }
 
 func TestSamePortDifferentNamespaces(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServers with same port in different namespaces").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Slow).
@@ -571,6 +578,7 @@ func TestSamePortDifferentNamespaces(t *testing.T) {
 // --- Security Context Tests ---
 
 func TestDefaultSecurityContext(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer with default security context").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Moderate).
@@ -620,6 +628,7 @@ func TestDefaultSecurityContext(t *testing.T) {
 }
 
 func TestCustomSecurityContext(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer with custom security context").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Fast).
@@ -677,6 +686,7 @@ func TestCustomSecurityContext(t *testing.T) {
 }
 
 func TestPodSecurityContext(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer with pod security context").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Fast).
@@ -720,6 +730,7 @@ func TestPodSecurityContext(t *testing.T) {
 // --- Custom Metadata Tests ---
 
 func TestCustomLabelsAndAnnotations(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer with custom labels and annotations").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Fast).
@@ -795,6 +806,7 @@ func TestCustomLabelsAndAnnotations(t *testing.T) {
 }
 
 func TestReservedLabelFiltering(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer reserved label filtering").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Fast).
@@ -839,6 +851,7 @@ func TestReservedLabelFiltering(t *testing.T) {
 }
 
 func TestCustomMetadataUpdate(t *testing.T) {
+	t.Parallel()
 	feature := features.New("MCPServer custom metadata update").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Moderate).

@@ -20,13 +20,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	netpath "path"
 	"testing"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -34,6 +37,7 @@ import (
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
 	"sigs.k8s.io/e2e-framework/klient/wait"
 	"sigs.k8s.io/e2e-framework/klient/wait/conditions"
+	"sigs.k8s.io/e2e-framework/pkg/env"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
@@ -166,4 +170,117 @@ func ServiceProxyHTTPClient(t *testing.T, cfg *envconf.Config,
 		netpath.Clean("/"+path),
 	)
 	return httpClient, base.String()
+}
+
+// PrewarmImages returns an env.Func that pulls the given images on every node
+// before tests start. Uses a DaemonSet per image so multi-node clusters are
+// fully warmed. This prevents parallel tests from thundering-herd the registry
+// with concurrent pulls of the same image.
+func PrewarmImages(images ...string) env.Func {
+	const prewarmNs = "e2e-prewarm"
+	return func(ctx context.Context, cfg *envconf.Config) (context.Context, error) {
+		r := cfg.Client().Resources()
+
+		nsObj := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: prewarmNs}}
+		if err := r.Delete(ctx, nsObj); err == nil {
+			_ = wait.For(
+				conditions.New(r).ResourceDeleted(nsObj),
+				wait.WithTimeout(1*time.Minute),
+				wait.WithContext(ctx),
+			)
+		}
+		if err := r.Create(ctx, nsObj); err != nil {
+			return ctx, fmt.Errorf("creating prewarm namespace: %w", err)
+		}
+		defer cleanupPrewarmNamespace(ctx, r, nsObj)
+
+		log.Printf("pre-warming %d images on all nodes...", len(images))
+		for i, img := range images {
+			ds := prewarmDaemonSet(fmt.Sprintf("prewarm-%d", i), prewarmNs, img)
+			if err := r.Create(ctx, ds); err != nil {
+				return ctx, fmt.Errorf("creating prewarm DaemonSet for %s: %w", img, err)
+			}
+		}
+
+		for i, img := range images {
+			ds := &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fmt.Sprintf("prewarm-%d", i),
+					Namespace: prewarmNs,
+				},
+			}
+			err := wait.For(
+				conditions.New(r).ResourceMatch(ds, func(obj k8s.Object) bool {
+					d := obj.(*appsv1.DaemonSet)
+					return d.Status.DesiredNumberScheduled > 0 &&
+						d.Status.NumberReady == d.Status.DesiredNumberScheduled
+				}),
+				wait.WithTimeout(5*time.Minute),
+				wait.WithInterval(2*time.Second),
+				wait.WithContext(ctx),
+			)
+			if err != nil {
+				// Collect pod and container status details for better error message
+				dsName := fmt.Sprintf("prewarm-%d", i)
+				nsResources := cfg.Client().Resources(prewarmNs)
+				var pods corev1.PodList
+				if listErr := nsResources.List(ctx, &pods, resources.WithLabelSelector("app="+dsName)); listErr == nil {
+					var details string
+					for _, pod := range pods.Items {
+						for _, cs := range pod.Status.ContainerStatuses {
+							if cs.State.Waiting != nil {
+								details += fmt.Sprintf("pod %s container %s: %s (%s); ", pod.Name, cs.Name, cs.State.Waiting.Reason, cs.State.Waiting.Message)
+							} else if cs.State.Terminated != nil {
+								details += fmt.Sprintf("pod %s container %s: %s (exit code %d); ", pod.Name, cs.Name, cs.State.Terminated.Reason, cs.State.Terminated.ExitCode)
+							}
+						}
+					}
+					if details != "" {
+						return ctx, fmt.Errorf("prewarm image %s: %s: %w", img, details, err)
+					}
+				}
+				return ctx, fmt.Errorf("prewarm image %s: %w", img, err)
+			}
+			log.Printf("  pulled %s", img)
+		}
+
+		return ctx, nil
+	}
+}
+
+func cleanupPrewarmNamespace(ctx context.Context, r *resources.Resources, nsObj *corev1.Namespace) {
+	if err := r.Delete(ctx, nsObj); err != nil {
+		log.Printf("failed to delete prewarm namespace: %v", err)
+		return
+	}
+	if err := wait.For(
+		conditions.New(r).ResourceDeleted(nsObj),
+		wait.WithTimeout(1*time.Minute),
+		wait.WithContext(ctx),
+	); err != nil {
+		log.Printf("timed out waiting for prewarm namespace deletion: %v", err)
+	}
+}
+
+func prewarmDaemonSet(name, namespace, image string) *appsv1.DaemonSet {
+	labels := map[string]string{"app": name}
+	return &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Name:    "pull",
+						Image:   image,
+						Command: []string{"sleep", "infinity"},
+					}},
+				},
+			},
+		},
+	}
 }

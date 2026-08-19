@@ -17,10 +17,12 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -44,14 +46,14 @@ func IsOwnershipConflict(err error) bool {
 // Returns an error if the resource has a controller owner that is not the given MCPServer,
 // or if the resource has no controller owner (preventing silent adoption of unowned resources).
 func (r *MCPServerReconciler) validateOwnership(
+	ctx context.Context,
 	obj client.Object,
 	mcpServer *mcpv1alpha1.MCPServer,
 ) error {
 	// Get the controller owner reference from the existing resource
 	controllerOwner := metav1.GetControllerOf(obj)
 	if controllerOwner == nil {
-		// No controller owner - reject to prevent silent adoption
-		// User must delete the existing resource or choose a different name for their MCPServer
+		auditOwnershipViolation(ctx, mcpServer, obj.GetName(), gvkKind(obj, r.Scheme), "<none>")
 		return &OwnershipConflictError{Message: fmt.Sprintf("resource %s/%s exists but has no controller owner; "+
 			"delete the resource first or choose a different name for the MCPServer",
 			obj.GetNamespace(), obj.GetName())}
@@ -77,6 +79,7 @@ func (r *MCPServerReconciler) validateOwnership(
 	}
 
 	// Resource is owned by a different controller
+	auditOwnershipViolation(ctx, mcpServer, obj.GetName(), controllerOwner.Kind, controllerOwner.Name)
 	return &OwnershipConflictError{Message: fmt.Sprintf("resource %s/%s is owned by %s/%s (UID: %s), cannot be managed by MCPServer %s/%s (UID: %s)",
 		obj.GetNamespace(), obj.GetName(),
 		controllerOwner.Kind, controllerOwner.Name, controllerOwner.UID,
@@ -96,4 +99,12 @@ func isSameGroupKind(ownerRef *metav1.OwnerReference, expectedGroup, expectedKin
 	}
 
 	return ownerGV.Group == expectedGroup
+}
+
+func gvkKind(obj client.Object, scheme *runtime.Scheme) string {
+	gvks, _, err := scheme.ObjectKinds(obj)
+	if err != nil || len(gvks) == 0 {
+		return "<unknown>"
+	}
+	return gvks[0].Kind
 }

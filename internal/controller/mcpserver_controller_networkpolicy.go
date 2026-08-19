@@ -60,13 +60,14 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 		if mcpServer.Spec.Network == nil || len(mcpServer.Spec.Network.IngressFrom) == 0 {
 			logger.Info("NetworkPolicy created without ingress source restrictions", "name", netpol.Name)
 		}
+		auditNetworkPolicyCreated(ctx, mcpServer, netpol.Name, hasIngressSourceRestriction(netpol))
 		return nil
 	} else if err != nil {
 		logger.Error(err, "Failed to get NetworkPolicy")
 		return err
 	}
 
-	if err := r.validateOwnership(existingNetpol, mcpServer); err != nil {
+	if err := r.validateOwnership(ctx, existingNetpol, mcpServer); err != nil {
 		logger.Error(err, "NetworkPolicy ownership validation failed")
 		return err
 	}
@@ -104,6 +105,7 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 			logger.Error(err, "Failed to update NetworkPolicy")
 			return err
 		}
+		auditNetworkPolicyUpdated(ctx, mcpServer, existingNetpol.Name)
 	} else {
 		logger.Info("NetworkPolicy already exists and is up to date", "name", netpol.Name)
 	}
@@ -150,4 +152,15 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1alpha1.MCPServ
 			},
 		},
 	}
+}
+
+func hasIngressSourceRestriction(netpol *networkingv1.NetworkPolicy) bool {
+	for _, rule := range netpol.Spec.Ingress {
+		for _, peer := range rule.From {
+			if peer.PodSelector != nil || peer.NamespaceSelector != nil || peer.IPBlock != nil {
+				return true
+			}
+		}
+	}
+	return false
 }

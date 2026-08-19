@@ -23,6 +23,12 @@ import (
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 )
 
+const (
+	DefaultMCPServerImage   = "quay.io/matzew/mcp-everything@sha256:537cdedad807bb56140caca9c332d3577b16e533584164bbc3f27abac7b5ba15" // :2026.7.10
+	AlternateMCPServerImage = "quay.io/matzew/mcp-everything@sha256:d93b35b4f0d2f9b9d4c7b49aecfbebd73ce1933b18e03875698bca9615c178f8" // :2026.8.13
+	BusyboxImage            = "docker.io/library/busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0"     // :1.37
+)
+
 // MCPServerOption configures an MCPServer for testing.
 type MCPServerOption func(*mcpv1alpha1.MCPServer)
 
@@ -104,7 +110,7 @@ func WithReplicas(n int32) MCPServerOption {
 }
 
 // NewMCPServer creates an MCPServer with sensible defaults for e2e tests.
-// Defaults: image=quay.io/matzew/mcp-everything:latest, port=3001.
+// Defaults: image=DefaultMCPServerImage, port=3001.
 func NewMCPServer(name, namespace string, opts ...MCPServerOption) *mcpv1alpha1.MCPServer {
 	server := &mcpv1alpha1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
@@ -115,7 +121,7 @@ func NewMCPServer(name, namespace string, opts ...MCPServerOption) *mcpv1alpha1.
 			Source: mcpv1alpha1.Source{
 				Type: mcpv1alpha1.SourceTypeContainerImage,
 				ContainerImage: &mcpv1alpha1.ContainerImageSource{
-					Ref: "quay.io/matzew/mcp-everything:latest",
+					Ref: DefaultMCPServerImage,
 				},
 			},
 			Config: mcpv1alpha1.ServerConfig{

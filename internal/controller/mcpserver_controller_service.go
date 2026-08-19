@@ -63,7 +63,7 @@ func (r *MCPServerReconciler) reconcileService(
 	}
 
 	// Validate ownership before updating
-	if err := r.validateOwnership(existingService, mcpServer); err != nil {
+	if err := r.validateOwnership(ctx, existingService, mcpServer); err != nil {
 		logger.Error(err, "Service ownership validation failed")
 		return err
 	}

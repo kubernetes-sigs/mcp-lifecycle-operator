@@ -79,7 +79,7 @@ func (r *MCPServerReconciler) reconcileDeployment(
 	}
 
 	// Validate ownership before updating
-	if err := r.validateOwnership(existingDeployment, mcpServer); err != nil {
+	if err := r.validateOwnership(ctx, existingDeployment, mcpServer); err != nil {
 		logger.Error(err, "Deployment ownership validation failed")
 		return nil, err
 	}
