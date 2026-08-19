@@ -217,6 +217,11 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 		t.Fatalf("ConvertTo failed: %v", err)
 	}
 
+	// Verify v1beta1 has Available + Verified instead of Ready
+	if len(hub.Status.Conditions) != 2 {
+		t.Fatalf("expected 2 conditions in hub (Available, Verified), got %d", len(hub.Status.Conditions))
+	}
+
 	roundTripped := &MCPServer{}
 	if err := roundTripped.ConvertFrom(hub); err != nil {
 		t.Fatalf("ConvertFrom failed: %v", err)
@@ -224,6 +229,41 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 
 	if diff := cmp.Diff(original, roundTripped); diff != "" {
 		t.Errorf("round-trip mismatch (-original +roundTripped):\n%s", diff)
+	}
+}
+
+func TestConversion_HandshakeRetryCountPreserved(t *testing.T) {
+	original := &MCPServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "retry-test",
+			Namespace: "default",
+		},
+		Spec: MCPServerSpec{
+			Source: Source{Type: SourceTypeContainerImage, ContainerImage: &ContainerImageSource{Ref: "test:v1"}},
+			Config: ServerConfig{Port: 8080},
+		},
+		Status: MCPServerStatus{
+			HandshakeRetryCount: 5, //nolint:staticcheck // testing deprecated field round-trip
+		},
+	}
+
+	hub := &v1beta1.MCPServer{}
+	if err := original.ConvertTo(hub); err != nil {
+		t.Fatalf("ConvertTo failed: %v", err)
+	}
+
+	if hub.Status.HandshakeRetryCount != 5 { //nolint:staticcheck // testing deprecated field round-trip
+		t.Errorf("expected HandshakeRetryCount=5 in hub, got %d", hub.Status.HandshakeRetryCount) //nolint:staticcheck // testing deprecated field round-trip
+	}
+
+	roundTripped := &MCPServer{}
+	if err := roundTripped.ConvertFrom(hub); err != nil {
+		t.Fatalf("ConvertFrom failed: %v", err)
+	}
+
+	if roundTripped.Status.HandshakeRetryCount != 5 {
+		t.Errorf("expected HandshakeRetryCount=5 after round-trip, got %d",
+			roundTripped.Status.HandshakeRetryCount)
 	}
 }
 
@@ -315,7 +355,7 @@ func TestConversionRoundTrip_ServerInfoWithNilCapabilities(t *testing.T) {
 	}
 }
 
-func TestConversionRoundTrip_HubToSpoke(t *testing.T) {
+func TestConversionRoundTrip_HubToSpoke_NoConditions(t *testing.T) {
 	hub := &v1beta1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "from-hub",
@@ -358,6 +398,164 @@ func TestConversionRoundTrip_HubToSpoke(t *testing.T) {
 
 	if diff := cmp.Diff(hub, hubRoundTripped); diff != "" {
 		t.Errorf("hub round-trip mismatch (-original +roundTripped):\n%s", diff)
+	}
+}
+
+func TestConversionRoundTrip_HubToSpoke_WithConditions(t *testing.T) {
+	hub := &v1beta1.MCPServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "from-hub-conds",
+			Namespace: "test-ns",
+		},
+		Spec: v1beta1.MCPServerSpec{
+			Source: v1beta1.Source{
+				Type:           v1beta1.SourceTypeContainerImage,
+				ContainerImage: &v1beta1.ContainerImageSource{Ref: "test:v1"},
+			},
+			Config: v1beta1.ServerConfig{Port: 8080},
+		},
+		Status: v1beta1.MCPServerStatus{
+			ObservedGeneration: 3,
+			Conditions: []metav1.Condition{
+				{
+					Type:               "Accepted",
+					Status:             metav1.ConditionTrue,
+					Reason:             "Valid",
+					ObservedGeneration: 3,
+				},
+				{
+					Type:               "Available",
+					Status:             metav1.ConditionTrue,
+					Reason:             "Available",
+					Message:            "Workload is running",
+					ObservedGeneration: 3,
+				},
+				{
+					Type:               "Verified",
+					Status:             metav1.ConditionTrue,
+					Reason:             "Verified",
+					Message:            "MCP handshake succeeded",
+					ObservedGeneration: 3,
+				},
+			},
+		},
+	}
+
+	spoke := &MCPServer{}
+	if err := spoke.ConvertFrom(hub); err != nil {
+		t.Fatalf("ConvertFrom failed: %v", err)
+	}
+
+	// v1alpha1 should have Accepted + Ready (merged from Available+Verified)
+	if len(spoke.Status.Conditions) != 2 {
+		t.Fatalf("expected 2 conditions in spoke (Accepted, Ready), got %d", len(spoke.Status.Conditions))
+	}
+
+	hubRoundTripped := &v1beta1.MCPServer{}
+	if err := spoke.ConvertTo(hubRoundTripped); err != nil {
+		t.Fatalf("ConvertTo failed: %v", err)
+	}
+
+	if diff := cmp.Diff(hub, hubRoundTripped); diff != "" {
+		t.Errorf("hub round-trip mismatch (-original +roundTripped):\n%s", diff)
+	}
+}
+
+func TestConversion_ReadyConditionSplit(t *testing.T) {
+	tests := []struct {
+		name           string
+		readyCondition metav1.Condition
+		wantAvailable  metav1.ConditionStatus
+		wantVerified   metav1.ConditionStatus
+	}{
+		{
+			name: "Available maps to Available=True, Verified=True",
+			readyCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionTrue,
+				Reason: "Available",
+			},
+			wantAvailable: metav1.ConditionTrue,
+			wantVerified:  metav1.ConditionTrue,
+		},
+		{
+			name: "MCPEndpointUnavailable maps to Available=True, Verified=False",
+			readyCondition: metav1.Condition{
+				Type:    "Ready",
+				Status:  metav1.ConditionFalse,
+				Reason:  "MCPEndpointUnavailable",
+				Message: "connection refused",
+			},
+			wantAvailable: metav1.ConditionTrue,
+			wantVerified:  metav1.ConditionFalse,
+		},
+		{
+			name: "DeploymentUnavailable maps to Available=False, Verified=Unknown",
+			readyCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionFalse,
+				Reason: "DeploymentUnavailable",
+			},
+			wantAvailable: metav1.ConditionFalse,
+			wantVerified:  metav1.ConditionUnknown,
+		},
+		{
+			name: "Initializing maps to Available=Unknown, Verified=Unknown",
+			readyCondition: metav1.Condition{
+				Type:   "Ready",
+				Status: metav1.ConditionUnknown,
+				Reason: "Initializing",
+			},
+			wantAvailable: metav1.ConditionUnknown,
+			wantVerified:  metav1.ConditionUnknown,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := &MCPServer{
+				ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+				Spec: MCPServerSpec{
+					Source: Source{Type: SourceTypeContainerImage, ContainerImage: &ContainerImageSource{Ref: "test:v1"}},
+					Config: ServerConfig{Port: 8080},
+				},
+				Status: MCPServerStatus{
+					Conditions: []metav1.Condition{tt.readyCondition},
+				},
+			}
+
+			hub := &v1beta1.MCPServer{}
+			if err := original.ConvertTo(hub); err != nil {
+				t.Fatalf("ConvertTo failed: %v", err)
+			}
+
+			if len(hub.Status.Conditions) != 2 {
+				t.Fatalf("expected 2 conditions (Available, Verified), got %d", len(hub.Status.Conditions))
+			}
+
+			var gotAvailable, gotVerified *metav1.Condition
+			for i := range hub.Status.Conditions {
+				switch hub.Status.Conditions[i].Type {
+				case "Available":
+					gotAvailable = &hub.Status.Conditions[i]
+				case "Verified":
+					gotVerified = &hub.Status.Conditions[i]
+				}
+			}
+
+			if gotAvailable == nil {
+				t.Fatal("missing Available condition")
+			}
+			if gotVerified == nil {
+				t.Fatal("missing Verified condition")
+			}
+			if gotAvailable.Status != tt.wantAvailable {
+				t.Errorf("Available.Status = %v, want %v", gotAvailable.Status, tt.wantAvailable)
+			}
+			if gotVerified.Status != tt.wantVerified {
+				t.Errorf("Verified.Status = %v, want %v", gotVerified.Status, tt.wantVerified)
+			}
+		})
 	}
 }
 

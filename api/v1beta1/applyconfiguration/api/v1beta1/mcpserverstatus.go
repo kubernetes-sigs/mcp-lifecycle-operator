@@ -44,6 +44,9 @@ type MCPServerStatusApplyConfiguration struct {
 	// HandshakeRetryCount tracks the number of consecutive MCP handshake
 	// failures for the current generation. Reset to 0 on success, spec change,
 	// or when reconciliation does not reach the handshake phase.
+	//
+	// Deprecated: this field will be moved to controller-internal state in a
+	// future release. Do not rely on it for automation.
 	HandshakeRetryCount *int32 `json:"handshakeRetryCount,omitempty"`
 	// Replicas is the total number of desired pods targeted by the owned Deployment.
 	Replicas *int32 `json:"replicas,omitempty"`
@@ -52,22 +55,29 @@ type MCPServerStatusApplyConfiguration struct {
 	// Conditions represent the latest available observations of the MCPServer's state.
 	//
 	// Standard condition types:
-	// - "Accepted": Configuration is valid and all referenced resources exist
-	// - "Ready": MCP server is operational and ready to serve requests
 	//
-	// The "Accepted" condition validates configuration before creating resources.
-	// Reasons: Valid (True), Invalid (False with details in message)
+	// - "Accepted": Configuration is valid and all referenced resources exist.
+	// Reasons: Valid (True), Invalid (False with details in message).
 	//
-	// The "Ready" condition indicates overall server readiness.
-	// Status=True means at least one instance is healthy and serving requests.
+	// - "Available": Workload is running and dependent resources (Deployment,
+	// Service, NetworkPolicy) are reconciled.
 	// Reasons:
-	// - Available: Server is ready (Status=True)
-	// - ConfigurationInvalid: Accepted=False, cannot proceed
-	// - DeploymentUnavailable: No healthy instances (all deployment/pod issues)
+	// - Available: At least one replica is ready (Status=True)
+	// - DeploymentUnavailable: No healthy instances
+	// - ServiceUnavailable: Service could not be reconciled
+	// - NetworkPolicyUnavailable: NetworkPolicy could not be reconciled
 	// - ScaledToZero: Deployment scaled to 0 replicas
 	// - Initializing: Waiting for initial status
+	// - ConfigurationInvalid: Accepted=False, cannot proceed
 	//
-	// Note: Specific failure details (ImagePullBackOff, OOMKilled, CrashLoop, etc.)
+	// - "Verified": MCP endpoint completed the protocol handshake.
+	// Reasons:
+	// - Verified: Handshake succeeded (Status=True)
+	// - NotVerified: Handshake has not been attempted yet (Status=Unknown)
+	// - EndpointUnavailable: Handshake failed (Status=False)
+	// - AuthSkipped: Endpoint returned 401/403, treated as reachable
+	//
+	// Specific failure details (ImagePullBackOff, OOMKilled, CrashLoop, etc.)
 	// are included in the condition message, not the reason.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }

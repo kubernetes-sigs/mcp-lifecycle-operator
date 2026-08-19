@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/conversion"
 
 	v1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
@@ -41,16 +43,16 @@ func (src *MCPServer) ConvertTo(dstRaw conversion.Hub) error {
 	dst.Spec.MCP = convertMCPConfigTo(src.Spec.MCP)
 	dst.Spec.Network = convertNetworkConfigTo(src.Spec.Network)
 
-	// Status - direct field copy
+	// Status
 	dst.Status.ObservedGeneration = src.Status.ObservedGeneration
 	dst.Status.DeploymentName = src.Status.DeploymentName
 	dst.Status.ServiceName = src.Status.ServiceName
 	dst.Status.Address = convertAddressTo(src.Status.Address)
 	dst.Status.ServerInfo = convertServerInfoTo(src.Status.ServerInfo)
-	dst.Status.HandshakeRetryCount = src.Status.HandshakeRetryCount
+	dst.Status.HandshakeRetryCount = src.Status.HandshakeRetryCount //nolint:staticcheck // deprecated field must be preserved for round-trip conversion
 	dst.Status.Replicas = src.Status.Replicas
 	dst.Status.ReadyReplicas = src.Status.ReadyReplicas
-	dst.Status.Conditions = src.Status.Conditions
+	dst.Status.Conditions = convertConditionsTo(src.Status.Conditions)
 
 	return nil
 }
@@ -72,16 +74,16 @@ func (dst *MCPServer) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Spec.MCP = convertMCPConfigFrom(src.Spec.MCP)
 	dst.Spec.Network = convertNetworkConfigFrom(src.Spec.Network)
 
-	// Status - direct field copy
+	// Status
 	dst.Status.ObservedGeneration = src.Status.ObservedGeneration
 	dst.Status.DeploymentName = src.Status.DeploymentName
 	dst.Status.ServiceName = src.Status.ServiceName
 	dst.Status.Address = convertAddressFrom(src.Status.Address)
 	dst.Status.ServerInfo = convertServerInfoFrom(src.Status.ServerInfo)
-	dst.Status.HandshakeRetryCount = src.Status.HandshakeRetryCount
+	dst.Status.HandshakeRetryCount = src.Status.HandshakeRetryCount //nolint:staticcheck // deprecated field must be preserved for round-trip conversion
 	dst.Status.Replicas = src.Status.Replicas
 	dst.Status.ReadyReplicas = src.Status.ReadyReplicas
-	dst.Status.Conditions = src.Status.Conditions
+	dst.Status.Conditions = convertConditionsFrom(src.Status.Conditions)
 
 	return nil
 }
@@ -302,4 +304,190 @@ func convertServerInfoFrom(in *v1beta1.MCPServerInfo) *MCPServerInfo {
 		}
 	}
 	return out
+}
+
+// Condition type constants for v1beta1.
+const (
+	conditionTypeAvailable = "Available"
+	conditionTypeVerified  = "Verified"
+	conditionTypeReady     = "Ready"
+	conditionTypeAccepted  = "Accepted"
+)
+
+// v1alpha1 Ready reasons that map to v1beta1 Verified.
+var handshakeReasons = map[string]bool{
+	"MCPEndpointUnavailable": true,
+}
+
+// convertConditionsTo splits the v1alpha1 Ready condition into v1beta1
+// Available + Verified conditions. The Accepted condition passes through.
+func convertConditionsTo(conditions []metav1.Condition) []metav1.Condition {
+	var out []metav1.Condition
+	for _, c := range conditions {
+		switch c.Type {
+		case conditionTypeAccepted:
+			out = append(out, c)
+		case conditionTypeReady:
+			out = append(out, splitReadyToAvailableAndVerified(c)...)
+		default:
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// splitReadyToAvailableAndVerified converts a single v1alpha1 Ready condition
+// into the two v1beta1 conditions it encodes.
+func splitReadyToAvailableAndVerified(ready metav1.Condition) []metav1.Condition {
+	if handshakeReasons[ready.Reason] {
+		// Handshake failure: workload was available (otherwise we wouldn't
+		// have attempted the handshake), but verification failed.
+		return []metav1.Condition{
+			{
+				Type:               conditionTypeAvailable,
+				Status:             metav1.ConditionTrue,
+				Reason:             "Available",
+				Message:            "Workload is running",
+				ObservedGeneration: ready.ObservedGeneration,
+				LastTransitionTime: ready.LastTransitionTime,
+			},
+			{
+				Type:               conditionTypeVerified,
+				Status:             ready.Status,
+				Reason:             "EndpointUnavailable",
+				Message:            ready.Message,
+				ObservedGeneration: ready.ObservedGeneration,
+				LastTransitionTime: ready.LastTransitionTime,
+			},
+		}
+	}
+
+	if ready.Status == metav1.ConditionTrue && ready.Reason == "Available" {
+		// Fully ready: both available and verified.
+		return []metav1.Condition{
+			{
+				Type:               conditionTypeAvailable,
+				Status:             metav1.ConditionTrue,
+				Reason:             "Available",
+				Message:            ready.Message,
+				ObservedGeneration: ready.ObservedGeneration,
+				LastTransitionTime: ready.LastTransitionTime,
+			},
+			{
+				Type:               conditionTypeVerified,
+				Status:             metav1.ConditionTrue,
+				Reason:             "Verified",
+				Message:            "MCP handshake succeeded",
+				ObservedGeneration: ready.ObservedGeneration,
+				LastTransitionTime: ready.LastTransitionTime,
+			},
+		}
+	}
+
+	// All other Ready states (DeploymentUnavailable, ServiceUnavailable,
+	// ConfigurationInvalid, ScaledToZero, Initializing) are workload-level
+	// issues. Verified is unknown since handshake hasn't been attempted.
+	return []metav1.Condition{
+		{
+			Type:               conditionTypeAvailable,
+			Status:             ready.Status,
+			Reason:             ready.Reason,
+			Message:            ready.Message,
+			ObservedGeneration: ready.ObservedGeneration,
+			LastTransitionTime: ready.LastTransitionTime,
+		},
+		{
+			Type:               conditionTypeVerified,
+			Status:             metav1.ConditionUnknown,
+			Reason:             "NotVerified",
+			Message:            "Handshake has not been attempted",
+			ObservedGeneration: ready.ObservedGeneration,
+			LastTransitionTime: ready.LastTransitionTime,
+		},
+	}
+}
+
+// convertConditionsFrom merges v1beta1 Available + Verified back into a single
+// v1alpha1 Ready condition. The Accepted condition passes through.
+func convertConditionsFrom(conditions []metav1.Condition) []metav1.Condition {
+	var out []metav1.Condition
+
+	available := meta.FindStatusCondition(conditions, conditionTypeAvailable)
+	verified := meta.FindStatusCondition(conditions, conditionTypeVerified)
+
+	for _, c := range conditions {
+		switch c.Type {
+		case conditionTypeAvailable, conditionTypeVerified:
+			// handled below
+		default:
+			out = append(out, c)
+		}
+	}
+
+	if available == nil && verified == nil {
+		return out
+	}
+
+	ready := mergeAvailableAndVerifiedToReady(available, verified)
+	out = append(out, ready)
+	return out
+}
+
+// mergeAvailableAndVerifiedToReady collapses two v1beta1 conditions into one
+// v1alpha1 Ready condition.
+func mergeAvailableAndVerifiedToReady(available, verified *metav1.Condition) metav1.Condition {
+	// If workload is not available, that dominates.
+	if available != nil && available.Status != metav1.ConditionTrue {
+		return metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             available.Status,
+			Reason:             available.Reason,
+			Message:            available.Message,
+			ObservedGeneration: available.ObservedGeneration,
+			LastTransitionTime: available.LastTransitionTime,
+		}
+	}
+
+	// Workload is available. If verification failed, report that.
+	if verified != nil && verified.Status == metav1.ConditionFalse {
+		reason := "MCPEndpointUnavailable"
+		return metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             reason,
+			Message:            verified.Message,
+			ObservedGeneration: verified.ObservedGeneration,
+			LastTransitionTime: verified.LastTransitionTime,
+		}
+	}
+
+	// Workload is available and verification passed (or is unknown/skipped).
+	if verified != nil && verified.Status == metav1.ConditionTrue {
+		src := verified
+		if available != nil {
+			src = available
+		}
+		return metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionTrue,
+			Reason:             "Available",
+			Message:            src.Message,
+			ObservedGeneration: src.ObservedGeneration,
+			LastTransitionTime: src.LastTransitionTime,
+		}
+	}
+
+	// Verified is unknown or nil, workload available - still initializing handshake.
+	src := available
+	if src == nil {
+		src = verified
+	}
+	return metav1.Condition{
+		Type:               conditionTypeReady,
+		Status:             metav1.ConditionTrue,
+		Reason:             "Available",
+		Message:            "Workload is running, handshake pending",
+		ObservedGeneration: src.ObservedGeneration,
+		LastTransitionTime: src.LastTransitionTime,
+	}
 }
