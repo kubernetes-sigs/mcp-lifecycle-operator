@@ -345,6 +345,42 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal("updated-gateway"))
 	})
 
+	It("should restore ownerReference when stripped but spec unchanged", func() {
+		createMCPServer()
+		createConfigMap(map[string]string{
+			configKeyGatewayName:      "my-gateway",
+			configKeyGatewayNamespace: "gateway-ns",
+		})
+		createBinding(ProviderName)
+
+		r := newReconciler()
+		_, err := r.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		route := &gatewayv1.HTTPRoute{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(metav1.GetControllerOf(route)).NotTo(BeNil())
+
+		route.OwnerReferences = nil
+		Expect(k8sClient.Update(ctx, route)).To(Succeed())
+
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(metav1.GetControllerOf(route)).To(BeNil())
+
+		_, err = r.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		ownerRef := metav1.GetControllerOf(route)
+		Expect(ownerRef).NotTo(BeNil())
+		Expect(ownerRef.Name).To(Equal(bindingName))
+		Expect(ownerRef.Kind).To(Equal(mcpv1alpha1.MCPGatewayBindingKind))
+	})
+
 	It("should set Registered=False when gateway-namespace is empty string", func() {
 		createMCPServer()
 		createConfigMap(map[string]string{

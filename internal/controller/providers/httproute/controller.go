@@ -195,10 +195,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	} else if err != nil {
 		return ctrl.Result{}, err
 	} else {
+		ownersBefore := existing.OwnerReferences
 		if err := controllerutil.SetControllerReference(binding, existing, r.Scheme); err != nil {
 			return ctrl.Result{}, fmt.Errorf("setting controller reference on existing HTTPRoute: %w", err)
 		}
-		if !equality.Semantic.DeepEqual(existing.Spec, httpRoute.Spec) {
+		ownersChanged := !equality.Semantic.DeepEqual(ownersBefore, existing.OwnerReferences)
+		if ownersChanged || !equality.Semantic.DeepEqual(existing.Spec, httpRoute.Spec) {
 			logger.Info("Updating HTTPRoute", "name", httpRoute.Name)
 			existing.Spec = httpRoute.Spec
 			if updateErr := r.Update(ctx, existing); updateErr != nil {
