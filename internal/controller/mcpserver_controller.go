@@ -178,6 +178,15 @@ type MCPServerReconciler struct {
 	// Secret content at the time of the last successful handshake. Keyed by
 	// namespace/name. Used to detect CA rotation without bumping generation.
 	tlsCABundleHashes sync.Map
+
+	// handshakeRetries tracks per-MCPServer handshake retry counts in memory.
+	// Key: "namespace/name", value: handshakeRetryState.
+	handshakeRetries sync.Map
+}
+
+type handshakeRetryState struct {
+	generation int64
+	count      int32
 }
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch;update;patch
@@ -292,7 +301,6 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		status := acv1beta1.MCPServerStatus().
 			WithObservedGeneration(mcpServer.Generation).
 			WithServiceName(mcpServer.Name).
-			WithHandshakeRetryCount(0).
 			WithReplicas(mcpServer.Status.Replicas).
 			WithReadyReplicas(mcpServer.Status.ReadyReplicas).
 			WithConditions(
@@ -387,7 +395,6 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		WithObservedGeneration(mcpServer.Generation).
 		WithDeploymentName(existingDeployment.Name).
 		WithServiceName(mcpServer.Name).
-		WithHandshakeRetryCount(handshakeRetryCount).
 		WithReplicas(ptr.Deref(existingDeployment.Spec.Replicas, 1)).
 		WithReadyReplicas(existingDeployment.Status.ReadyReplicas).
 		WithConditions(
@@ -532,7 +539,6 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 	status := acv1beta1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
 		WithServiceName(mcpServer.Name).
-		WithHandshakeRetryCount(0).
 		WithReplicas(mcpServer.Status.Replicas).
 		WithReadyReplicas(mcpServer.Status.ReadyReplicas).
 		WithConditions(
@@ -663,7 +669,6 @@ func (r *MCPServerReconciler) handleResourceFailure(
 		WithObservedGeneration(mcpServer.Generation).
 		WithDeploymentName(existingDeployment.Name).
 		WithServiceName(mcpServer.Name).
-		WithHandshakeRetryCount(0).
 		WithReplicas(ptr.Deref(existingDeployment.Spec.Replicas, 1)).
 		WithReadyReplicas(existingDeployment.Status.ReadyReplicas).
 		WithConditions(

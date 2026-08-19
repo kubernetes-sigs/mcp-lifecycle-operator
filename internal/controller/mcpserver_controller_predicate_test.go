@@ -108,7 +108,7 @@ var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
 			if err := k8sClient.Get(ctx, serverKey, mcpServer); err != nil {
 				return err
 			}
-			mcpServer.Status.HandshakeRetryCount = 99
+			mcpServer.Status.Replicas = 99
 			return k8sClient.Status().Update(ctx, mcpServer)
 		}, 10*time.Second).Should(Succeed())
 

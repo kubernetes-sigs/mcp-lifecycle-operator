@@ -282,32 +282,38 @@ func isHTTPAuthError(err error) bool {
 }
 
 // reconcileHandshakeEventsAndRetryCount emits handshake-related events and returns the updated retry count.
+// Retry state is tracked in-memory, not persisted to status.
 func (r *MCPServerReconciler) reconcileHandshakeEventsAndRetryCount(
 	mcpServer *mcpv1beta1.MCPServer,
 	readyCondition metav1.Condition,
 ) int32 {
+	key := mcpServer.Namespace + "/" + mcpServer.Name
+
 	if readyCondition.Reason != ReasonMCPEndpointUnavailable {
+		r.handshakeRetries.Delete(key)
 		return 0
 	}
 
-	prevHandshakeRetryCount := mcpServer.Status.HandshakeRetryCount
-	if mcpServer.Status.ObservedGeneration != mcpServer.Generation {
-		prevHandshakeRetryCount = 0
+	var prev handshakeRetryState
+	if v, ok := r.handshakeRetries.Load(key); ok {
+		prev = v.(handshakeRetryState)
+	}
+	if prev.generation != mcpServer.Generation {
+		prev = handshakeRetryState{generation: mcpServer.Generation}
 	}
 
-	var handshakeRetryCount int32
-	if mcpServer.Status.ObservedGeneration == mcpServer.Generation {
-		handshakeRetryCount = mcpServer.Status.HandshakeRetryCount + 1
-	} else {
-		handshakeRetryCount = 1
+	next := handshakeRetryState{
+		generation: mcpServer.Generation,
+		count:      prev.count + 1,
 	}
+	r.handshakeRetries.Store(key, next)
 
 	if !duplicateHandshakeUnavailable(mcpServer.Status.Conditions, readyCondition.Message) {
 		r.emitMCPHandshakeFailed(mcpServer, readyCondition.Message)
 	}
-	if int(handshakeRetryCount) >= maxMCPHandshakeRetries && int(prevHandshakeRetryCount) < maxMCPHandshakeRetries {
-		r.emitMCPHandshakeRetriesExhausted(mcpServer, handshakeRetryCount)
+	if int(next.count) >= maxMCPHandshakeRetries && int(prev.count) < maxMCPHandshakeRetries {
+		r.emitMCPHandshakeRetriesExhausted(mcpServer, next.count)
 	}
 
-	return handshakeRetryCount
+	return next.count
 }
