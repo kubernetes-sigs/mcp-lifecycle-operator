@@ -1737,5 +1737,43 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(validationErr.Reason).To(Equal(ReasonInvalid))
 			Expect(validationErr.Message).To(ContainSubstring("Invalid ConfigMap"))
 		})
+
+		It("should accept valid CA bundle Secret with TLS enabled", func() {
+			caPEM, _ := generateSelfSignedCAPEM()
+			scheme := runtime.NewScheme()
+			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "valid-ca", Namespace: "default"},
+				Data:       map[string][]byte{"ca.crt": caPEM},
+			}
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
+			reconciler := &MCPServerReconciler{
+				Client:    fakeClient,
+				Scheme:    scheme,
+				APIReader: fakeClient,
+			}
+
+			mcpServer := &mcpv1alpha1.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-server",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{Port: 8080},
+					Transport: &mcpv1alpha1.TransportConfig{
+						TLS: &mcpv1alpha1.TLSClientConfig{
+							Enabled:        true,
+							CABundleSecret: &mcpv1alpha1.SecretReference{Name: "valid-ca"},
+						},
+					},
+				},
+			}
+
+			err := reconciler.validateConfig(ctx, mcpServer)
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 })

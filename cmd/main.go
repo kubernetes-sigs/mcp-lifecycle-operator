@@ -186,10 +186,11 @@ func main() {
 	}
 
 	reconciler := &controller.MCPServerReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		Recorder:  mgr.GetEventRecorder("mcpserver-controller"),
-		APIReader: mgr.GetAPIReader(),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorder("mcpserver-controller"),
+		APIReader:  mgr.GetAPIReader(),
+		TLSProfile: tlsCfg.tlsConfigFunc(),
 	}
 	if strings.EqualFold(os.Getenv("PROPAGATE_TLS_ENV_VARS"), "true") {
 		reconciler.TLSEnvVars = tlsCfg.envVars()

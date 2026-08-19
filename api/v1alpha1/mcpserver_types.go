@@ -329,6 +329,43 @@ type RuntimeConfig struct {
 	Health HealthConfig `json:"health,omitzero"`
 }
 
+// SecretReference references a Secret in the same namespace as the MCPServer.
+type SecretReference struct {
+	// Name of the Secret.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
+// TLSClientConfig configures TLS for operator-to-MCP-server communication
+// during handshake and discovery probes.
+type TLSClientConfig struct {
+	// Enabled controls whether the operator uses HTTPS for handshake/discovery.
+	// When true, the operator connects to the MCP server using TLS.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// CABundleSecret references a Secret containing a CA certificate bundle
+	// under the key "ca.crt". Used to verify the MCP server's TLS certificate.
+	// When unset and enabled is true, system CA certificates are used.
+	// +optional
+	CABundleSecret *SecretReference `json:"caBundleSecret,omitempty"`
+
+	// InsecureSkipVerify disables TLS certificate verification.
+	// For development and testing only.
+	// +optional
+	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
+}
+
+// TransportConfig configures transport-layer settings for
+// operator-to-MCP-server communication.
+type TransportConfig struct {
+	// TLS configures TLS for operator-to-MCP-server communication
+	// during handshake and discovery probes.
+	// +optional
+	TLS *TLSClientConfig `json:"tls,omitempty"`
+}
+
 // MCPServerSpec defines the desired state of MCPServer.
 type MCPServerSpec struct {
 	// ExtraLabels are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
@@ -360,6 +397,11 @@ type MCPServerSpec struct {
 	// as opposed to how it is sourced, configured, or managed at runtime.
 	// +optional
 	MCP MCPConfig `json:"mcp,omitzero"`
+
+	// Transport configures transport-layer settings for
+	// operator-to-MCP-server communication.
+	// +optional
+	Transport *TransportConfig `json:"transport,omitempty"`
 }
 
 // MCPConfig defines Model Context Protocol specific properties of the server.
