@@ -8,6 +8,7 @@ spec:
     spec:
       containers:
       - name: manager
+        # Keep args in sync with config/manager/manager.yaml (kustomize replaces scalar lists entirely).
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
