@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -425,6 +426,104 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			Expect(gwCond.Status).To(Equal(metav1.ConditionTrue))
 
 			Expect(mcpServer.Status.GatewayBinding).NotTo(BeNil(), "GatewayBinding status should be preserved after deployment failure")
+			Expect(mcpServer.Status.GatewayBinding.Provider).To(Equal("httproute"))
+		})
+
+	})
+
+	Context("validation error with gateway", func() {
+		const resourceName = "test-gw-validation"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Gateway = &mcpv1alpha1.GatewaySpec{
+				Provider: "httproute",
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+		})
+
+		It("should preserve gateway status when permanent validation error occurs", func() {
+			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+
+			By("establishing gateway status via successful reconcile")
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			binding := &mcpv1alpha1.MCPGatewayBinding{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{
+				Name:      gatewayBindingName(resourceName),
+				Namespace: "default",
+			}, binding)).To(Succeed())
+
+			meta.SetStatusCondition(&binding.Status.Conditions, metav1.Condition{
+				Type:               ConditionTypeRegistered,
+				Status:             metav1.ConditionTrue,
+				Reason:             ReasonGatewayRegistered,
+				Message:            "HTTPRoute created",
+				LastTransitionTime: metav1.Now(),
+			})
+			binding.Status.URL = testGatewayURL
+			Expect(k8sClient.Status().Update(ctx, binding)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+			gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered)
+			Expect(gwCond).NotTo(BeNil())
+			Expect(gwCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(mcpServer.Status.GatewayBinding).NotTo(BeNil())
+
+			By("triggering a permanent validation error via missing ConfigMap reference")
+			mcpServer.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/data",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypeConfigMap,
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "nonexistent-cm",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying gateway status survived the validation error")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+			acceptedCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAccepted)
+			Expect(acceptedCond).NotTo(BeNil())
+			Expect(acceptedCond.Status).To(Equal(metav1.ConditionFalse))
+
+			gwCond = meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered)
+			Expect(gwCond).NotTo(BeNil(), "GatewayRegistered condition should be preserved after validation error")
+			Expect(gwCond.Status).To(Equal(metav1.ConditionTrue))
+
+			Expect(mcpServer.Status.GatewayBinding).NotTo(BeNil(), "GatewayBinding status should be preserved after validation error")
 			Expect(mcpServer.Status.GatewayBinding.Provider).To(Equal("httproute"))
 		})
 	})
