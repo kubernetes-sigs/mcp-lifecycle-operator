@@ -35,11 +35,12 @@ import (
 
 // reconcileHandshake performs the MCP handshake when the deployment is available,
 // skipping it when the endpoint was already verified for the current generation.
+// Returns a Verified condition and the server info (if handshake succeeded).
 func (r *MCPServerReconciler) reconcileHandshake(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
 	mcpURL string,
-	readyCondition metav1.Condition,
+	availableCondition metav1.Condition,
 	tlsCABundleHash string,
 ) (metav1.Condition, *mcpv1beta1.MCPServerInfo) {
 	logger := log.FromContext(ctx)
@@ -55,24 +56,23 @@ func (r *MCPServerReconciler) reconcileHandshake(
 		previousHash = v.(string)
 	}
 
-	existingReady := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeReady)
-	alreadyVerified := existingReady != nil &&
-		existingReady.Status == metav1.ConditionTrue &&
-		existingReady.Reason == ReasonAvailable &&
+	existingVerified := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeVerified)
+	alreadyVerified := existingVerified != nil &&
+		existingVerified.Status == metav1.ConditionTrue &&
 		mcpServer.Status.ObservedGeneration == mcpServer.Generation &&
 		mcpServer.Status.ServerInfo != nil &&
 		previousHash == tlsCABundleHash
 
 	// If the handshake was already verified for this generation, preserve
-	// Ready=True even if the Deployment has a transient status fluctuation
+	// Verified=True even if the Deployment has a transient status fluctuation
 	// (e.g. during rollout cleanup).
 	if alreadyVerified {
 		handshakeTotal.With(withResult(metricLabels, "skip")).Inc()
-		return *existingReady, mcpServer.Status.ServerInfo
+		return *existingVerified, mcpServer.Status.ServerInfo
 	}
 
-	if readyCondition.Status != metav1.ConditionTrue || readyCondition.Reason != ReasonAvailable {
-		return readyCondition, nil
+	if availableCondition.Status != metav1.ConditionTrue || availableCondition.Reason != ReasonAvailable {
+		return newNotVerifiedCondition(mcpServer.Generation, mcpServer.Status.Conditions), nil
 	}
 
 	var tlsTransport *http.Transport
@@ -83,9 +83,9 @@ func (r *MCPServerReconciler) reconcileHandshake(
 			handshakeTotal.With(withResult(metricLabels, "failure")).Inc()
 			logger.Info("Failed to build TLS transport for handshake", "error", tlsErr)
 			cond := newCondition(
-				ConditionTypeReady,
+				ConditionTypeVerified,
 				metav1.ConditionFalse,
-				ReasonMCPEndpointUnavailable,
+				ReasonEndpointUnavailable,
 				fmt.Sprintf("TLS configuration error: %v", tlsErr),
 				mcpServer.Generation,
 			)
@@ -117,19 +117,27 @@ func (r *MCPServerReconciler) reconcileHandshake(
 			handshakeTotal.With(withResult(metricLabels, "auth_skip")).Inc()
 			logger.Info("MCP endpoint returned auth error, treating as reachable", "url", mcpURL, "error", err)
 			auditHandshakeAuthSkip(ctx, mcpServer, mcpURL, err)
-			return readyCondition, &mcpv1beta1.MCPServerInfo{}
+			cond := newCondition(
+				ConditionTypeVerified,
+				metav1.ConditionTrue,
+				ReasonAuthSkipped,
+				"Endpoint returned auth error, treated as reachable",
+				mcpServer.Generation,
+			)
+			preserveLastTransitionTime(&cond, mcpServer.Status.Conditions)
+			return cond, &mcpv1beta1.MCPServerInfo{}
 		}
 		handshakeTotal.With(withResult(metricLabels, "failure")).Inc()
 		logger.Info("MCP endpoint handshake failed", "url", mcpURL, "error", err)
 		auditHandshakeFailed(ctx, mcpServer, mcpURL, err, elapsed)
 		cond := newCondition(
-			ConditionTypeReady,
+			ConditionTypeVerified,
 			metav1.ConditionFalse,
-			ReasonMCPEndpointUnavailable,
+			ReasonEndpointUnavailable,
 			fmt.Sprintf("MCP endpoint is not serving a valid MCP protocol: %v", err),
 			mcpServer.Generation,
 		)
-		if existingReady == nil || existingReady.Status != metav1.ConditionTrue {
+		if existingVerified == nil || existingVerified.Status != metav1.ConditionTrue {
 			preserveLastTransitionTime(&cond, mcpServer.Status.Conditions)
 		}
 		return cond, nil
@@ -142,7 +150,15 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	}
 	logger.Info("MCP endpoint verified successfully", "url", mcpURL, "protocolVersion", protocolVersion)
 	auditHandshakeSuccess(ctx, mcpServer, mcpURL, info, elapsed)
-	return readyCondition, info
+	cond := newCondition(
+		ConditionTypeVerified,
+		metav1.ConditionTrue,
+		ReasonVerified,
+		"MCP handshake succeeded",
+		mcpServer.Generation,
+	)
+	preserveLastTransitionTime(&cond, mcpServer.Status.Conditions)
+	return cond, info
 }
 
 func withResult(labels prometheus.Labels, result string) prometheus.Labels {
@@ -285,11 +301,11 @@ func isHTTPAuthError(err error) bool {
 // Retry state is tracked in-memory, not persisted to status.
 func (r *MCPServerReconciler) reconcileHandshakeEventsAndRetryCount(
 	mcpServer *mcpv1beta1.MCPServer,
-	readyCondition metav1.Condition,
+	verifiedCondition metav1.Condition,
 ) int32 {
 	key := mcpServer.Namespace + "/" + mcpServer.Name
 
-	if readyCondition.Reason != ReasonMCPEndpointUnavailable {
+	if verifiedCondition.Reason != ReasonEndpointUnavailable {
 		r.handshakeRetries.Delete(key)
 		return 0
 	}
@@ -308,8 +324,8 @@ func (r *MCPServerReconciler) reconcileHandshakeEventsAndRetryCount(
 	}
 	r.handshakeRetries.Store(key, next)
 
-	if !duplicateHandshakeUnavailable(mcpServer.Status.Conditions, readyCondition.Message) {
-		r.emitMCPHandshakeFailed(mcpServer, readyCondition.Message)
+	if !duplicateHandshakeUnavailable(mcpServer.Status.Conditions, verifiedCondition.Message) {
+		r.emitMCPHandshakeFailed(mcpServer, verifiedCondition.Message)
 	}
 	if int(next.count) >= maxMCPHandshakeRetries && int(prev.count) < maxMCPHandshakeRetries {
 		r.emitMCPHandshakeRetriesExhausted(mcpServer, next.count)

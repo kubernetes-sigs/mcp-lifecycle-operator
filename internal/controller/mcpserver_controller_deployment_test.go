@@ -465,12 +465,12 @@ var _ = Describe("MCPServer Controller - Deployment Reconciliation Failures", fu
 		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(acceptedCondition.Reason).To(Equal("Valid"))
 
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-		Expect(readyCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
-		Expect(readyCondition.Message).To(ContainSubstring("Failed to reconcile Deployment"))
-		Expect(readyCondition.Message).To(ContainSubstring("simulated deployment creation failure"))
+		availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+		Expect(availableCondition).NotTo(BeNil())
+		Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(availableCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
+		Expect(availableCondition.Message).To(ContainSubstring("Failed to reconcile Deployment"))
+		Expect(availableCondition.Message).To(ContainSubstring("simulated deployment creation failure"))
 	})
 
 	It("should update status with DeploymentUnavailable when deployment update fails", func() {
@@ -532,12 +532,12 @@ var _ = Describe("MCPServer Controller - Deployment Reconciliation Failures", fu
 		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(acceptedCondition.Reason).To(Equal("Valid"))
 
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-		Expect(readyCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
-		Expect(readyCondition.Message).To(ContainSubstring("Failed to reconcile Deployment"))
-		Expect(readyCondition.Message).To(ContainSubstring("simulated deployment update failure"))
+		availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+		Expect(availableCondition).NotTo(BeNil())
+		Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(availableCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
+		Expect(availableCondition.Message).To(ContainSubstring("Failed to reconcile Deployment"))
+		Expect(availableCondition.Message).To(ContainSubstring("simulated deployment update failure"))
 	})
 })
 
@@ -620,8 +620,11 @@ var _ = Describe("MCPServer Controller - Transient Validation Errors", func() {
 		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
 		Expect(acceptedCondition).To(BeNil())
 
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).To(BeNil())
+		availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+		Expect(availableCondition).To(BeNil())
+
+		verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+		Expect(verifiedCondition).To(BeNil())
 	})
 
 	It("should preserve existing status conditions on transient error after prior successful reconcile", func() {

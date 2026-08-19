@@ -32,11 +32,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-// reconcileReadyCondition determines the Ready condition for an MCPServer by
+// reconcileAvailableCondition determines the Available condition for an MCPServer by
 // inspecting deployment status. When the deployment is in a failure state, it
 // fetches pods to surface specific error details (image pull failures, crash
 // loops, OOM, etc.) rather than showing generic deployment messages.
-func (r *MCPServerReconciler) reconcileReadyCondition(
+func (r *MCPServerReconciler) reconcileAvailableCondition(
 	ctx context.Context,
 	deployment *appsv1.Deployment,
 	acceptedCondition metav1.Condition,
@@ -44,30 +44,30 @@ func (r *MCPServerReconciler) reconcileReadyCondition(
 	existingConditions []metav1.Condition,
 ) metav1.Condition {
 	if acceptedCondition.Status == metav1.ConditionFalse {
-		return newReadyCondition(metav1.ConditionFalse, ReasonConfigurationInvalid,
+		return newAvailableCondition(metav1.ConditionFalse, ReasonConfigurationInvalid,
 			"Configuration must be fixed before server can start", generation, existingConditions)
 	}
 
 	// Scaling to zero is an intentional, valid desired state (not a failure).
 	if deployment.Spec.Replicas != nil && *deployment.Spec.Replicas == 0 {
-		return newReadyCondition(metav1.ConditionTrue, ReasonScaledToZero,
+		return newAvailableCondition(metav1.ConditionTrue, ReasonScaledToZero,
 			"Server is ready (scaled to 0 replicas)", generation, existingConditions)
 	}
 
 	if len(deployment.Status.Conditions) == 0 && deployment.Status.ReadyReplicas == 0 {
-		return newReadyCondition(metav1.ConditionUnknown, ReasonInitializing,
+		return newAvailableCondition(metav1.ConditionUnknown, ReasonInitializing,
 			"Waiting for Deployment to report status", generation, existingConditions)
 	}
 
 	state := extractDeploymentState(deployment)
 
 	if deployment.Status.ObservedGeneration > 0 && deployment.Status.ObservedGeneration < deployment.Generation {
-		return newReadyCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
+		return newAvailableCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
 			"Deployment is processing spec update", generation, existingConditions)
 	}
 
 	if state.available && deployment.Status.ReadyReplicas > 0 {
-		return newReadyCondition(metav1.ConditionTrue, ReasonAvailable,
+		return newAvailableCondition(metav1.ConditionTrue, ReasonAvailable,
 			fmt.Sprintf("MCP server is ready (%d of %d instances healthy)",
 				deployment.Status.ReadyReplicas, ptr.Deref(deployment.Spec.Replicas, 1)),
 			generation, existingConditions)
@@ -85,11 +85,11 @@ func (r *MCPServerReconciler) reconcileReadyCondition(
 			}
 		}
 
-		return newReadyCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
+		return newAvailableCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
 			podFailureMessage, generation, existingConditions)
 	}
 
-	return newReadyCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
+	return newAvailableCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
 		"Waiting for instances to become healthy", generation, existingConditions)
 }
 
@@ -383,16 +383,25 @@ func newCondition(
 	}
 }
 
-// newReadyCondition creates a Ready condition and preserves the LastTransitionTime
+// newAvailableCondition creates an Available condition and preserves the LastTransitionTime
 // from existingConditions when the status has not changed.
-func newReadyCondition(
+func newAvailableCondition(
 	status metav1.ConditionStatus,
 	reason string,
 	message string,
 	generation int64,
 	existingConditions []metav1.Condition,
 ) metav1.Condition {
-	c := newCondition(ConditionTypeReady, status, reason, message, generation)
+	c := newCondition(ConditionTypeAvailable, status, reason, message, generation)
+	preserveLastTransitionTime(&c, existingConditions)
+	return c
+}
+
+// newNotVerifiedCondition creates a Verified=Unknown condition for cases where the
+// handshake has not been attempted (workload not available, config invalid, etc.).
+func newNotVerifiedCondition(generation int64, existingConditions []metav1.Condition) metav1.Condition {
+	c := newCondition(ConditionTypeVerified, metav1.ConditionUnknown, ReasonNotVerified,
+		"Handshake has not been attempted", generation)
 	preserveLastTransitionTime(&c, existingConditions)
 	return c
 }
@@ -420,31 +429,33 @@ func acceptedConditionIsTrue(conditions []metav1.Condition) bool {
 	return c != nil && c.Status == metav1.ConditionTrue
 }
 
-func readyConditionIsAvailable(conditions []metav1.Condition) bool {
-	c := meta.FindStatusCondition(conditions, ConditionTypeReady)
-	return c != nil && c.Status == metav1.ConditionTrue && c.Reason == ReasonAvailable
+func serverIsFullyReady(conditions []metav1.Condition) bool {
+	avail := meta.FindStatusCondition(conditions, ConditionTypeAvailable)
+	verified := meta.FindStatusCondition(conditions, ConditionTypeVerified)
+	return avail != nil && avail.Status == metav1.ConditionTrue &&
+		verified != nil && verified.Status == metav1.ConditionTrue
 }
 
 func duplicateHandshakeUnavailable(conditions []metav1.Condition, message string) bool {
-	prevReady := meta.FindStatusCondition(conditions, ConditionTypeReady)
-	return prevReady != nil && prevReady.Status == metav1.ConditionFalse &&
-		prevReady.Reason == ReasonMCPEndpointUnavailable && prevReady.Message == message
+	prev := meta.FindStatusCondition(conditions, ConditionTypeVerified)
+	return prev != nil && prev.Status == metav1.ConditionFalse &&
+		prev.Reason == ReasonEndpointUnavailable && prev.Message == message
 }
 
 func duplicateDeploymentUnavailable(conditions []metav1.Condition, message string) bool {
-	prevReady := meta.FindStatusCondition(conditions, ConditionTypeReady)
-	return prevReady != nil && prevReady.Status == metav1.ConditionFalse &&
-		prevReady.Reason == ReasonDeploymentUnavailable && prevReady.Message == message
+	prev := meta.FindStatusCondition(conditions, ConditionTypeAvailable)
+	return prev != nil && prev.Status == metav1.ConditionFalse &&
+		prev.Reason == ReasonDeploymentUnavailable && prev.Message == message
 }
 
 func duplicateServiceUnavailable(conditions []metav1.Condition, message string) bool {
-	prevReady := meta.FindStatusCondition(conditions, ConditionTypeReady)
-	return prevReady != nil && prevReady.Status == metav1.ConditionFalse &&
-		prevReady.Reason == ReasonServiceUnavailable && prevReady.Message == message
+	prev := meta.FindStatusCondition(conditions, ConditionTypeAvailable)
+	return prev != nil && prev.Status == metav1.ConditionFalse &&
+		prev.Reason == ReasonServiceUnavailable && prev.Message == message
 }
 
 func duplicateNetworkPolicyUnavailable(conditions []metav1.Condition, message string) bool {
-	prevReady := meta.FindStatusCondition(conditions, ConditionTypeReady)
-	return prevReady != nil && prevReady.Status == metav1.ConditionFalse &&
-		prevReady.Reason == ReasonNetworkPolicyUnavailable && prevReady.Message == message
+	prev := meta.FindStatusCondition(conditions, ConditionTypeAvailable)
+	return prev != nil && prev.Status == metav1.ConditionFalse &&
+		prev.Reason == ReasonNetworkPolicyUnavailable && prev.Message == message
 }

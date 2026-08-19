@@ -469,16 +469,16 @@ var _ = Describe("podDiagnosticsChangedPredicate", func() {
 	})
 })
 
-var _ = Describe("newReadyCondition", func() {
+var _ = Describe("newAvailableCondition", func() {
 	It("should preserve LastTransitionTime when status hasn't changed", func() {
 		pastTime := metav1.NewTime(metav1.Now().Add(-5 * time.Minute))
 		existing := []metav1.Condition{{
-			Type:               ConditionTypeReady,
+			Type:               ConditionTypeAvailable,
 			Status:             metav1.ConditionFalse,
 			Reason:             ReasonDeploymentUnavailable,
 			LastTransitionTime: pastTime,
 		}}
-		condition := newReadyCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
+		condition := newAvailableCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
 			"some message", 1, existing)
 		Expect(condition.LastTransitionTime).To(Equal(pastTime))
 	})
@@ -486,19 +486,19 @@ var _ = Describe("newReadyCondition", func() {
 	It("should update LastTransitionTime when status changes", func() {
 		pastTime := metav1.NewTime(metav1.Now().Add(-5 * time.Minute))
 		existing := []metav1.Condition{{
-			Type:               ConditionTypeReady,
+			Type:               ConditionTypeAvailable,
 			Status:             metav1.ConditionFalse,
 			LastTransitionTime: pastTime,
 		}}
-		condition := newReadyCondition(metav1.ConditionTrue, ReasonAvailable,
+		condition := newAvailableCondition(metav1.ConditionTrue, ReasonAvailable,
 			"ready", 1, existing)
 		Expect(condition.LastTransitionTime).NotTo(Equal(pastTime))
 	})
 
 	It("should set the correct fields", func() {
-		condition := newReadyCondition(metav1.ConditionTrue, ReasonAvailable,
+		condition := newAvailableCondition(metav1.ConditionTrue, ReasonAvailable,
 			"all good", 42, nil)
-		Expect(condition.Type).To(Equal(ConditionTypeReady))
+		Expect(condition.Type).To(Equal(ConditionTypeAvailable))
 		Expect(condition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(condition.Reason).To(Equal(ReasonAvailable))
 		Expect(condition.Message).To(Equal("all good"))
@@ -506,7 +506,7 @@ var _ = Describe("newReadyCondition", func() {
 	})
 })
 
-var _ = Describe("reconcileReadyCondition", func() {
+var _ = Describe("reconcileAvailableCondition", func() {
 	var generation int64 = 1
 	var acceptedCondition metav1.Condition
 	var reconciler *MCPServerReconciler
@@ -524,7 +524,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 		deployment := &appsv1.Deployment{
 			Status: appsv1.DeploymentStatus{},
 		}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Reason).To(Equal(ReasonInitializing))
 		Expect(condition.Status).To(Equal(metav1.ConditionUnknown))
 	})
@@ -541,7 +541,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				},
 			},
 		}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Reason).To(Equal(ReasonAvailable))
 		Expect(condition.Status).To(Equal(metav1.ConditionTrue))
 	})
@@ -553,7 +553,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 			Reason: ReasonInvalid,
 		}
 		deployment := &appsv1.Deployment{}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, invalidAccepted, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, invalidAccepted, generation, nil)
 		Expect(condition.Reason).To(Equal(ReasonConfigurationInvalid))
 		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 	})
@@ -564,7 +564,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				Replicas: ptr.To[int32](0),
 			},
 		}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Reason).To(Equal(ReasonScaledToZero))
 		Expect(condition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(condition.Message).To(ContainSubstring("scaled to 0 replicas"))
@@ -578,7 +578,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				},
 			},
 		}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Reason).To(Equal(ReasonDeploymentUnavailable))
 	})
 
@@ -622,7 +622,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				},
 			},
 		}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(condition.Reason).To(Equal(ReasonDeploymentUnavailable))
 		Expect(condition.Message).To(ContainSubstring("Image pull failed"))
@@ -671,7 +671,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				},
 			},
 		}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(condition.Reason).To(Equal(ReasonDeploymentUnavailable))
 		Expect(condition.Message).To(ContainSubstring("Container crashing"))
@@ -716,7 +716,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				},
 			},
 		}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(condition.Reason).To(Equal(ReasonDeploymentUnavailable))
 		Expect(condition.Message).To(ContainSubstring("Waiting for instances to become healthy"))
@@ -739,7 +739,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				},
 			},
 		}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Reason).To(Equal(ReasonDeploymentUnavailable))
 		Expect(condition.Message).To(ContainSubstring("quota exceeded"))
 	})
@@ -759,7 +759,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				},
 			},
 		}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Reason).To(Equal(ReasonDeploymentUnavailable))
 		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(condition.Message).To(ContainSubstring("processing spec update"))
@@ -781,7 +781,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				},
 			},
 		}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Reason).To(Equal(ReasonDeploymentUnavailable))
 		Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 	})
@@ -798,7 +798,7 @@ var _ = Describe("reconcileReadyCondition", func() {
 				},
 			},
 		}
-		condition := reconciler.reconcileReadyCondition(ctx, deployment, acceptedCondition, generation, nil)
+		condition := reconciler.reconcileAvailableCondition(ctx, deployment, acceptedCondition, generation, nil)
 		Expect(condition.Reason).To(Equal(ReasonAvailable))
 		Expect(condition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(condition.Message).To(ContainSubstring("1 of 1 instances healthy"))
@@ -806,72 +806,81 @@ var _ = Describe("reconcileReadyCondition", func() {
 })
 
 var _ = Describe("status condition helpers", func() {
-	It("readyConditionIsAvailable returns true only for Ready=True with reason Available", func() {
-		Expect(readyConditionIsAvailable(nil)).To(BeFalse())
-		Expect(readyConditionIsAvailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionTrue, Reason: ReasonMCPEndpointUnavailable},
+	It("serverIsFullyReady returns true only when both Available=True and Verified=True", func() {
+		Expect(serverIsFullyReady(nil)).To(BeFalse())
+		Expect(serverIsFullyReady([]metav1.Condition{
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionTrue, Reason: ReasonAvailable},
 		})).To(BeFalse())
-		Expect(readyConditionIsAvailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonAvailable},
+		Expect(serverIsFullyReady([]metav1.Condition{
+			{Type: ConditionTypeVerified, Status: metav1.ConditionTrue, Reason: ReasonVerified},
 		})).To(BeFalse())
-		Expect(readyConditionIsAvailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionTrue, Reason: ReasonAvailable},
+		Expect(serverIsFullyReady([]metav1.Condition{
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionFalse, Reason: ReasonDeploymentUnavailable},
+			{Type: ConditionTypeVerified, Status: metav1.ConditionTrue, Reason: ReasonVerified},
+		})).To(BeFalse())
+		Expect(serverIsFullyReady([]metav1.Condition{
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionTrue, Reason: ReasonAvailable},
+			{Type: ConditionTypeVerified, Status: metav1.ConditionFalse, Reason: ReasonEndpointUnavailable},
+		})).To(BeFalse())
+		Expect(serverIsFullyReady([]metav1.Condition{
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionTrue, Reason: ReasonAvailable},
+			{Type: ConditionTypeVerified, Status: metav1.ConditionTrue, Reason: ReasonVerified},
 		})).To(BeTrue())
 	})
 
-	It("duplicateHandshakeUnavailable returns true only for matching Ready=False MCPEndpointUnavailable message", func() {
+	It("duplicateHandshakeUnavailable returns true only for matching Verified=False EndpointUnavailable message", func() {
 		msg := "MCP endpoint is not serving a valid MCP protocol: connection refused"
 		Expect(duplicateHandshakeUnavailable(nil, msg)).To(BeFalse())
 		Expect(duplicateHandshakeUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonDeploymentUnavailable, Message: msg},
+			{Type: ConditionTypeVerified, Status: metav1.ConditionFalse, Reason: ReasonDeploymentUnavailable, Message: msg},
 		}, msg)).To(BeFalse())
 		Expect(duplicateHandshakeUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonMCPEndpointUnavailable, Message: "other"},
+			{Type: ConditionTypeVerified, Status: metav1.ConditionFalse, Reason: ReasonEndpointUnavailable, Message: "other"},
 		}, msg)).To(BeFalse())
 		Expect(duplicateHandshakeUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonMCPEndpointUnavailable, Message: msg},
+			{Type: ConditionTypeVerified, Status: metav1.ConditionFalse, Reason: ReasonEndpointUnavailable, Message: msg},
 		}, msg)).To(BeTrue())
 	})
 
-	It("duplicateDeploymentUnavailable returns true only for matching Ready=False DeploymentUnavailable message", func() {
+	It("duplicateDeploymentUnavailable returns true only for matching Available=False DeploymentUnavailable message", func() {
 		msg := "Failed to reconcile Deployment: simulated failure"
 		Expect(duplicateDeploymentUnavailable(nil, msg)).To(BeFalse())
 		Expect(duplicateDeploymentUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonMCPEndpointUnavailable, Message: msg},
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionFalse, Reason: ReasonEndpointUnavailable, Message: msg},
 		}, msg)).To(BeFalse())
 		Expect(duplicateDeploymentUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonDeploymentUnavailable, Message: "other"},
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionFalse, Reason: ReasonDeploymentUnavailable, Message: "other"},
 		}, msg)).To(BeFalse())
 		Expect(duplicateDeploymentUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonDeploymentUnavailable, Message: msg},
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionFalse, Reason: ReasonDeploymentUnavailable, Message: msg},
 		}, msg)).To(BeTrue())
 	})
 
-	It("duplicateServiceUnavailable returns true only for matching Ready=False ServiceUnavailable message", func() {
+	It("duplicateServiceUnavailable returns true only for matching Available=False ServiceUnavailable message", func() {
 		msg := "Failed to reconcile Service: simulated failure"
 		Expect(duplicateServiceUnavailable(nil, msg)).To(BeFalse())
 		Expect(duplicateServiceUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonDeploymentUnavailable, Message: msg},
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionFalse, Reason: ReasonDeploymentUnavailable, Message: msg},
 		}, msg)).To(BeFalse())
 		Expect(duplicateServiceUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonServiceUnavailable, Message: "other"},
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionFalse, Reason: ReasonServiceUnavailable, Message: "other"},
 		}, msg)).To(BeFalse())
 		Expect(duplicateServiceUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonServiceUnavailable, Message: msg},
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionFalse, Reason: ReasonServiceUnavailable, Message: msg},
 		}, msg)).To(BeTrue())
 	})
 
-	It("duplicateNetworkPolicyUnavailable returns true only for matching Ready=False NetworkPolicyUnavailable message", func() {
+	It("duplicateNetworkPolicyUnavailable returns true only for matching Available=False NetworkPolicyUnavailable message", func() {
 		msg := "Failed to reconcile NetworkPolicy: simulated failure"
 		Expect(duplicateNetworkPolicyUnavailable(nil, msg)).To(BeFalse())
 		Expect(duplicateNetworkPolicyUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonServiceUnavailable, Message: msg},
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionFalse, Reason: ReasonServiceUnavailable, Message: msg},
 		}, msg)).To(BeFalse())
 		Expect(duplicateNetworkPolicyUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonNetworkPolicyUnavailable, Message: "other"},
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionFalse, Reason: ReasonNetworkPolicyUnavailable, Message: "other"},
 		}, msg)).To(BeFalse())
 		Expect(duplicateNetworkPolicyUnavailable([]metav1.Condition{
-			{Type: ConditionTypeReady, Status: metav1.ConditionFalse, Reason: ReasonNetworkPolicyUnavailable, Message: msg},
+			{Type: ConditionTypeAvailable, Status: metav1.ConditionFalse, Reason: ReasonNetworkPolicyUnavailable, Message: msg},
 		}, msg)).To(BeTrue())
 	})
 })

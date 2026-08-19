@@ -756,7 +756,7 @@ var _ = Describe("MCPServer Controller", func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
 
-			By("Reconciling to update MCPServer status to Ready=True")
+			By("Reconciling to update MCPServer status to Available=True and Verified=True")
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
@@ -764,10 +764,15 @@ var _ = Describe("MCPServer Controller", func() {
 
 			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
-			Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
+			Expect(availableCondition.Reason).To(Equal(ReasonAvailable))
+
+			verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+			Expect(verifiedCondition).NotTo(BeNil())
+			Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
+			Expect(verifiedCondition.Reason).To(Equal(ReasonVerified))
 			Expect(mcpServer.Status.Replicas).To(Equal(int32(1)))
 			Expect(mcpServer.Status.ReadyReplicas).To(Equal(int32(1)))
 
@@ -794,12 +799,17 @@ var _ = Describe("MCPServer Controller", func() {
 			// Without the fix, reconcileDeployment would return deployment with stale status,
 			// causing determineReadyCondition to incorrectly report DeploymentUnavailable
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-			readyCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
+			availableCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
 			// The deployment is still available (we haven't changed its status),
-			// so Ready should remain True, not incorrectly flip to False
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
-			Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+			// so Available should remain True, not incorrectly flip to False
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
+			Expect(availableCondition.Reason).To(Equal(ReasonAvailable))
+
+			verifiedCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+			Expect(verifiedCondition).NotTo(BeNil())
+			Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
+			Expect(verifiedCondition.Reason).To(Equal(ReasonVerified))
 
 			By("Verifying Replicas and ReadyReplicas status fields")
 			Expect(mcpServer.Status.Replicas).To(Equal(int32(3)))
@@ -858,7 +868,7 @@ var _ = Describe("MCPServer Controller", func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
 
-			By("Reconciling should set Ready=False, omit address, emit Warning, and not requeue")
+			By("Reconciling should set Available=False, omit address, emit Warning, and not requeue")
 			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
@@ -868,10 +878,10 @@ var _ = Describe("MCPServer Controller", func() {
 
 			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(availableCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
 
 			By("Verifying Replicas and ReadyReplicas reflect deployment state")
 			Expect(mcpServer.Status.Replicas).To(Equal(int32(1)))
@@ -923,7 +933,7 @@ var _ = Describe("MCPServer Controller", func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
 
-			By("Reconciling should set Ready=True and NOT requeue")
+			By("Reconciling should set Available=True, Verified=True and NOT requeue")
 			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
@@ -934,10 +944,15 @@ var _ = Describe("MCPServer Controller", func() {
 
 			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
-			Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
+			Expect(availableCondition.Reason).To(Equal(ReasonAvailable))
+
+			verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+			Expect(verifiedCondition).NotTo(BeNil())
+			Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
+			Expect(verifiedCondition.Reason).To(Equal(ReasonVerified))
 		})
 
 		It("should eventually reach Ready=True after Deployment becomes available", func() {
@@ -977,8 +992,8 @@ var _ = Describe("MCPServer Controller", func() {
 
 			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
 
 			By("Deployment becomes available")
 			err = k8sClient.Get(ctx, client.ObjectKey{
@@ -1000,7 +1015,7 @@ var _ = Describe("MCPServer Controller", func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
 
-			By("Second reconciliation: available, no requeue, Ready=True")
+			By("Second reconciliation: available, no requeue, Available=True and Verified=True")
 			result, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
@@ -1008,10 +1023,15 @@ var _ = Describe("MCPServer Controller", func() {
 			Expect(result.RequeueAfter).To(BeZero())
 
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-			readyCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
-			Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+			availableCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
+			Expect(availableCondition.Reason).To(Equal(ReasonAvailable))
+
+			verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+			Expect(verifiedCondition).NotTo(BeNil())
+			Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
+			Expect(verifiedCondition.Reason).To(Equal(ReasonVerified))
 		})
 	})
 
@@ -1187,10 +1207,10 @@ var _ = Describe("MCPServer Controller", func() {
 			Expect(acceptedCondition.Reason).To(Equal(ReasonInvalid))
 			Expect(acceptedCondition.Message).To(ContainSubstring("nonexistent-configmap"))
 
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCondition.Reason).To(Equal(ReasonConfigurationInvalid))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(availableCondition.Reason).To(Equal(ReasonConfigurationInvalid))
 
 			By("Verifying Replicas and ReadyReplicas are zero when no Deployment exists")
 			Expect(mcpServer.Status.Replicas).To(Equal(int32(0)))
@@ -1274,10 +1294,10 @@ var _ = Describe("MCPServer Controller", func() {
 			Expect(acceptedCondition.Reason).To(Equal(ReasonInvalid))
 			Expect(acceptedCondition.Message).To(ContainSubstring("nonexistent-secret"))
 
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCondition.Reason).To(Equal(ReasonConfigurationInvalid))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(availableCondition.Reason).To(Equal(ReasonConfigurationInvalid))
 		})
 
 		It("should skip validation when envFrom Secret reference is optional", func() {
@@ -1396,10 +1416,10 @@ var _ = Describe("MCPServer Controller", func() {
 			Expect(acceptedCondition.Message).To(ContainSubstring("nonexistent-env-configmap"))
 			Expect(acceptedCondition.Message).To(ContainSubstring("MY_CONFIG_VAR"))
 
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCondition.Reason).To(Equal(ReasonConfigurationInvalid))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(availableCondition.Reason).To(Equal(ReasonConfigurationInvalid))
 		})
 
 		It("should skip validation when env valueFrom ConfigMap reference is optional", func() {
@@ -1485,10 +1505,10 @@ var _ = Describe("MCPServer Controller", func() {
 			Expect(acceptedCondition.Message).To(ContainSubstring("nonexistent-env-secret"))
 			Expect(acceptedCondition.Message).To(ContainSubstring("MY_SECRET_VAR"))
 
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCondition.Reason).To(Equal(ReasonConfigurationInvalid))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(availableCondition.Reason).To(Equal(ReasonConfigurationInvalid))
 		})
 
 		It("should skip validation when env valueFrom Secret reference is optional", func() {

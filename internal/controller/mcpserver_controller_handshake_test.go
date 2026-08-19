@@ -94,7 +94,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		}
 	})
 
-	It("should set MCPEndpointUnavailable when handshake fails", func() {
+	It("should set EndpointUnavailable when handshake fails", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
@@ -130,21 +130,21 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		By("Verifying Ready=False with reason MCPEndpointUnavailable")
+		By("Verifying Verified=False with reason EndpointUnavailable")
 		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-		Expect(readyCondition.Reason).To(Equal(ReasonMCPEndpointUnavailable))
-		Expect(readyCondition.Message).To(ContainSubstring("MCP endpoint is not serving a valid MCP protocol"))
-		Expect(readyCondition.Message).To(ContainSubstring("connection refused"))
+		verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+		Expect(verifiedCondition).NotTo(BeNil())
+		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(verifiedCondition.Reason).To(Equal(ReasonEndpointUnavailable))
+		Expect(verifiedCondition.Message).To(ContainSubstring("MCP endpoint is not serving a valid MCP protocol"))
+		Expect(verifiedCondition.Message).To(ContainSubstring("connection refused"))
 
 		By("Verifying requeue is set")
 		Expect(result.RequeueAfter).To(Equal(10 * time.Second))
 	})
 
-	It("should keep Ready=True when handshake succeeds", func() {
+	It("should set Verified=True when handshake succeeds", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
@@ -180,13 +180,13 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		By("Verifying Ready=True with reason Available")
+		By("Verifying Verified=True with reason Verified")
 		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
-		Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+		verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+		Expect(verifiedCondition).NotTo(BeNil())
+		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
+		Expect(verifiedCondition.Reason).To(Equal(ReasonVerified))
 
 		By("Verifying no requeue")
 		Expect(result.RequeueAfter).To(BeZero())
@@ -273,12 +273,12 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		By("Verifying MCPDialer was not called")
 		Expect(dialerCalled).To(BeFalse())
 
-		By("Verifying Ready=True with ScaledToZero reason")
+		By("Verifying Available=True with ScaledToZero reason")
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
-		Expect(readyCondition.Reason).To(Equal(ReasonScaledToZero))
+		availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+		Expect(availableCondition).NotTo(BeNil())
+		Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
+		Expect(availableCondition.Reason).To(Equal(ReasonScaledToZero))
 	})
 
 	It("should requeue on handshake failure", func() {
@@ -360,7 +360,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
 
-		By("Reconciling with handshake failure to ensure Ready!=Available")
+		By("Reconciling with handshake failure to ensure Verified!=True")
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{
 			NamespacedName: typeNamespacedName,
 		})
@@ -368,12 +368,12 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 
 		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-		Expect(readyCondition.Reason).To(Equal(ReasonMCPEndpointUnavailable))
+		verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+		Expect(verifiedCondition).NotTo(BeNil())
+		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(verifiedCondition.Reason).To(Equal(ReasonEndpointUnavailable))
 
-		By("Switching to successful handshake - should run because Ready is not yet Available")
+		By("Switching to successful handshake - should run because Verified is not yet True")
 		shouldFail = false
 		dialCount = 0
 		_, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -382,12 +382,12 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dialCount).To(Equal(1))
 
-		By("Verifying Ready=True/Available is set")
+		By("Verifying Verified=True/Verified is set")
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
-		Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+		verifiedCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+		Expect(verifiedCondition).NotTo(BeNil())
+		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
+		Expect(verifiedCondition.Reason).To(Equal(ReasonVerified))
 
 		By("Second reconcile - handshake should be skipped (already verified)")
 		dialCount = 0
@@ -398,7 +398,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(dialCount).To(Equal(0))
 	})
 
-	It("should emit a Normal ServerReady event only when Ready transitions to Available after handshake", func() {
+	It("should emit a Normal ServerReady event only when server becomes fully ready after handshake", func() {
 		shouldFail := true
 		reconciler, fr := newReconcilerForTestWithFakeEvents(k8sClient, k8sClient.Scheme())
 		reconciler.MCPDialer = func(ctx context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
@@ -498,7 +498,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		var handshakeFailedEvent string
 		Eventually(fr.Events).Should(Receive(&handshakeFailedEvent))
 		Expect(handshakeFailedEvent).To(ContainSubstring(corev1.EventTypeWarning))
-		Expect(handshakeFailedEvent).To(ContainSubstring(ReasonMCPEndpointUnavailable))
+		Expect(handshakeFailedEvent).To(ContainSubstring(ReasonEndpointUnavailable))
 		Expect(handshakeFailedEvent).To(ContainSubstring(resourceName))
 		Expect(handshakeFailedEvent).To(ContainSubstring(failMsg))
 
@@ -519,7 +519,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		var secondHandshakeFailedEvent string
 		Eventually(fr.Events).Should(Receive(&secondHandshakeFailedEvent))
 		Expect(secondHandshakeFailedEvent).To(ContainSubstring(corev1.EventTypeWarning))
-		Expect(secondHandshakeFailedEvent).To(ContainSubstring(ReasonMCPEndpointUnavailable))
+		Expect(secondHandshakeFailedEvent).To(ContainSubstring(ReasonEndpointUnavailable))
 		Expect(secondHandshakeFailedEvent).To(ContainSubstring(resourceName))
 		Expect(secondHandshakeFailedEvent).To(ContainSubstring(failMsg))
 		Expect(secondHandshakeFailedEvent).NotTo(Equal(handshakeFailedEvent))
@@ -581,7 +581,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 			}
 		}
 		Expect(exhaustedEvent).To(ContainSubstring(corev1.EventTypeWarning))
-		Expect(exhaustedEvent).To(ContainSubstring(ReasonMCPEndpointUnavailable))
+		Expect(exhaustedEvent).To(ContainSubstring(ReasonEndpointUnavailable))
 		Expect(exhaustedEvent).To(ContainSubstring(resourceName))
 
 		By("Further reconcile — no duplicate exhausted event")
@@ -692,13 +692,13 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		By("Verifying no requeue (retries exhausted)")
 		Expect(result.RequeueAfter).To(BeZero(), "should not requeue after max retries")
 
-		By("Verifying status is still MCPEndpointUnavailable")
+		By("Verifying status is still EndpointUnavailable")
 		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-		Expect(readyCondition.Reason).To(Equal(ReasonMCPEndpointUnavailable))
+		verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+		Expect(verifiedCondition).NotTo(BeNil())
+		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(verifiedCondition.Reason).To(Equal(ReasonEndpointUnavailable))
 	})
 
 	It("should use exponential backoff for handshake requeue delays", func() {
@@ -842,10 +842,10 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 
 		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
-		Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+		verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+		Expect(verifiedCondition).NotTo(BeNil())
+		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
+		Expect(verifiedCondition.Reason).To(Equal(ReasonAuthSkipped))
 		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil(), "auth error should set non-nil empty serverInfo to prevent re-dial")
 	})
 
@@ -1006,10 +1006,10 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 
 		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
-		Expect(readyCondition.Reason).To(Equal(ReasonAvailable))
+		verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+		Expect(verifiedCondition).NotTo(BeNil())
+		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
+		Expect(verifiedCondition.Reason).To(Equal(ReasonAuthSkipped))
 		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil(), "auth error should set non-nil empty serverInfo to prevent re-dial")
 	})
 })
@@ -1743,9 +1743,9 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(dialCount).To(Equal(1))
 
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+		verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeVerified)
+		Expect(verifiedCondition).NotTo(BeNil())
+		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
 		hashKey := mcpServer.Namespace + "/" + mcpServer.Name
 		storedVal, ok := reconciler.tlsCABundleHashes.Load(hashKey)
 		Expect(ok).To(BeTrue())
