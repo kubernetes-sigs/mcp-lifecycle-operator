@@ -190,26 +190,6 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(registered.Status).To(Equal(metav1.ConditionTrue))
 	})
 
-	It("should ignore bindings with non-httproute provider", func() {
-		createMCPServer()
-		createConfigMap(map[string]string{
-			configKeyGatewayName:      "my-gateway",
-			configKeyGatewayNamespace: "gateway-ns",
-		})
-		createBinding("custom-vendor")
-
-		r := newReconciler()
-		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
-		})
-		Expect(err).NotTo(HaveOccurred())
-
-		route := &gatewayv1.HTTPRoute{}
-		err = k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)
-		Expect(err).To(HaveOccurred())
-		Expect(client.IgnoreNotFound(err)).To(Succeed())
-	})
-
 	It("should set Registered=False when MCPServer not found", func() {
 		createConfigMap(map[string]string{
 			configKeyGatewayName:      "my-gateway",

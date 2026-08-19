@@ -197,14 +197,16 @@ The MCPServer controller reflects the binding status automatically - your provid
 The operator uses a provider registry so that `cmd/main.go` does not need per-provider setup code. To add a new in-tree provider:
 
 1. Create a package under `internal/controller/providers/<name>/`
-2. Implement a `Reconciler` with a `SetupWithManager(mgr ctrl.Manager) error` method
-3. Register the provider via `init()` using the registry:
+2. Implement a `Reconciler` with a `SetupWithManager(mgr ctrl.Manager) error` method that uses `providers.MatchesProvider` to filter bindings by provider name:
 
     ```go
     package myprovider
 
     import (
         ctrl "sigs.k8s.io/controller-runtime"
+        "sigs.k8s.io/controller-runtime/pkg/builder"
+
+        mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
         "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers"
     )
 
@@ -220,9 +222,17 @@ The operator uses a provider registry so that `cmd/main.go` does not need per-pr
             Scheme: mgr.GetScheme(),
         }).SetupWithManager(mgr)
     }
+
+    func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+        return ctrl.NewControllerManagedBy(mgr).
+            For(&mcpv1alpha1.MCPGatewayBinding{},
+                builder.WithPredicates(providers.MatchesProvider(ProviderName))).
+            // Owns(...), Watches(...), etc.
+            Complete(r)
+    }
     ```
 
-4. Add a blank import in `cmd/main.go`:
+3. Add a blank import in `cmd/main.go`:
 
     ```go
     // Gateway integration providers register themselves via init().

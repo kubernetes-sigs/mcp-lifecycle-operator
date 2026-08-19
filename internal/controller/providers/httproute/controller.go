@@ -93,10 +93,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	if binding.Spec.Provider != ProviderName {
-		return ctrl.Result{}, nil
-	}
-
 	logger.Info("Reconciling MCPGatewayBinding", "name", binding.Name, "namespace", binding.Namespace)
 
 	mcpServer := &mcpv1alpha1.MCPServer{}
@@ -289,7 +285,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&mcpv1alpha1.MCPGatewayBinding{}).
+		For(&mcpv1alpha1.MCPGatewayBinding{}, builder.WithPredicates(providers.MatchesProvider(ProviderName))).
 		Owns(&gatewayv1.HTTPRoute{}).
 		Watches(
 			&corev1.ConfigMap{},
