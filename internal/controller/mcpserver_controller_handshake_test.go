@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -138,9 +139,6 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(readyCondition.Reason).To(Equal(ReasonMCPEndpointUnavailable))
 		Expect(readyCondition.Message).To(ContainSubstring("MCP endpoint is not serving a valid MCP protocol"))
 		Expect(readyCondition.Message).To(ContainSubstring("connection refused"))
-
-		By("Verifying HandshakeRetryCount is incremented")
-		Expect(mcpServer.Status.HandshakeRetryCount).To(Equal(int32(1)))
 
 		By("Verifying requeue is set")
 		Expect(result.RequeueAfter).To(Equal(10 * time.Second))
@@ -257,7 +255,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		By("Setting replicas to 0")
 		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		mcpServer.Spec.Runtime.Replicas = new(int32(0))
+		mcpServer.Spec.Runtime.Replicas = ptr.To[int32](0)
 		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
 
 		By("Initial reconciliation creates deployment")
@@ -586,10 +584,6 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(exhaustedEvent).To(ContainSubstring(ReasonMCPEndpointUnavailable))
 		Expect(exhaustedEvent).To(ContainSubstring(resourceName))
 
-		mcpServer := &mcpv1beta1.MCPServer{}
-		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		Expect(mcpServer.Status.HandshakeRetryCount).To(BeNumerically(">=", maxMCPHandshakeRetries))
-
 		By("Further reconcile — no duplicate exhausted event")
 		drainFakeRecorderEvents(fr)
 		result, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -681,14 +675,13 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.RequeueAfter).NotTo(BeZero(), "should requeue on first failure")
 
-		By("Simulating exhausted retries via HandshakeRetryCount status field")
-		mcpServer := &mcpv1beta1.MCPServer{}
-		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-		Expect(readyCondition).NotTo(BeNil())
-		Expect(readyCondition.Reason).To(Equal(ReasonMCPEndpointUnavailable))
-		mcpServer.Status.HandshakeRetryCount = int32(maxMCPHandshakeRetries)
-		Expect(k8sClient.Status().Update(ctx, mcpServer)).To(Succeed())
+		By("Exhausting retries via repeated reconciliation")
+		for i := 1; i < maxMCPHandshakeRetries; i++ {
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+		}
 
 		By("Reconciling after retries exhausted")
 		result, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -700,8 +693,9 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(result.RequeueAfter).To(BeZero(), "should not requeue after max retries")
 
 		By("Verifying status is still MCPEndpointUnavailable")
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		readyCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
 		Expect(readyCondition).NotTo(BeNil())
 		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(readyCondition.Reason).To(Equal(ReasonMCPEndpointUnavailable))
@@ -718,7 +712,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(mcpHandshakeBackoff(100)).To(Equal(2 * time.Minute))
 	})
 
-	It("should increment HandshakeRetryCount on each failed handshake", func() {
+	It("should use increasing backoff on each failed handshake", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
 			Scheme: k8sClient.Scheme(),
@@ -747,25 +741,22 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
 
-		By("First handshake failure sets HandshakeRetryCount to 1")
-		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+		By("First handshake failure requeues with initial delay")
+		result, err := reconciler.Reconcile(ctx, reconcile.Request{
 			NamespacedName: typeNamespacedName,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		mcpServer := &mcpv1beta1.MCPServer{}
-		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		Expect(mcpServer.Status.HandshakeRetryCount).To(Equal(int32(1)))
+		Expect(result.RequeueAfter).To(Equal(10 * time.Second))
 
-		By("Second handshake failure increments to 2")
-		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+		By("Second handshake failure requeues with doubled delay")
+		result, err = reconciler.Reconcile(ctx, reconcile.Request{
 			NamespacedName: typeNamespacedName,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		Expect(mcpServer.Status.HandshakeRetryCount).To(Equal(int32(2)))
+		Expect(result.RequeueAfter).To(Equal(20 * time.Second))
 	})
 
-	It("should reset HandshakeRetryCount to 0 on successful handshake", func() {
+	It("should stop requeuing after successful handshake following failures", func() {
 		failHandshake := true
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
@@ -798,23 +789,20 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
 
-		By("Failed handshake sets retry count")
-		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+		By("Failed handshake causes requeue")
+		result, err := reconciler.Reconcile(ctx, reconcile.Request{
 			NamespacedName: typeNamespacedName,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		mcpServer := &mcpv1beta1.MCPServer{}
-		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		Expect(mcpServer.Status.HandshakeRetryCount).To(Equal(int32(1)))
+		Expect(result.RequeueAfter).NotTo(BeZero())
 
-		By("Successful handshake resets retry count to 0")
+		By("Successful handshake stops requeuing")
 		failHandshake = false
-		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+		result, err = reconciler.Reconcile(ctx, reconcile.Request{
 			NamespacedName: typeNamespacedName,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		Expect(mcpServer.Status.HandshakeRetryCount).To(Equal(int32(0)))
+		Expect(result.RequeueAfter).To(BeZero())
 	})
 
 	It("should treat 401 Unauthorized as a reachable endpoint", func() {
