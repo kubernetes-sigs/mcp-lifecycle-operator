@@ -22,8 +22,17 @@ const (
 	defaultLoggingConfigMapName = "mcp-lifecycle-operator-config"
 	defaultLoggingConfigMapKey  = "log-level"
 	podNamespaceEnvVar          = "POD_NAMESPACE"
-	serviceAccountNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 )
+
+var serviceAccountNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+
+// resolveLoggingNamespace returns the namespace for the logging ConfigMap watch.
+func resolveLoggingNamespace(namespaceOverride string) string {
+	if ns := strings.TrimSpace(namespaceOverride); ns != "" {
+		return ns
+	}
+	return detectOperatorNamespace()
+}
 
 // extractAtomicLevel returns the zap.AtomicLevel used by the logger options.
 // When --zap-log-level is not set, a new Info-level AtomicLevel is created.

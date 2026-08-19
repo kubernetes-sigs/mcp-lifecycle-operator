@@ -222,10 +222,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	loggingNamespace := loggingConfigMapNamespace
-	if loggingNamespace == "" {
-		loggingNamespace = detectOperatorNamespace()
-	}
+	loggingNamespace := resolveLoggingNamespace(loggingConfigMapNamespace)
 	if err := setupLogLevelFromConfigMap(mgr, atomicLevel, loggingNamespace, loggingConfigMapName, loggingConfigMapKey); err != nil {
 		setupLog.Error(err, "unable to set up runtime log level sync")
 		os.Exit(1)

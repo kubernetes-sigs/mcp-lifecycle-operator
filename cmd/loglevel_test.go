@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	uzap "go.uber.org/zap"
@@ -10,7 +13,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	crzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -107,6 +112,34 @@ func TestDetectOperatorNamespace_NoEnvNoFile(t *testing.T) {
 	t.Setenv(podNamespaceEnvVar, "")
 	if got := detectOperatorNamespace(); got != "" {
 		t.Fatalf("detectOperatorNamespace() = %q, want empty string when env and SA file are absent", got)
+	}
+}
+
+func TestDetectOperatorNamespace_FromFile(t *testing.T) {
+	t.Setenv(podNamespaceEnvVar, "")
+
+	path := filepath.Join(t.TempDir(), "namespace")
+	if err := os.WriteFile(path, []byte("from-file\n"), 0o644); err != nil {
+		t.Fatalf("failed to write namespace file: %v", err)
+	}
+
+	oldPath := serviceAccountNamespaceFile
+	serviceAccountNamespaceFile = path
+	t.Cleanup(func() { serviceAccountNamespaceFile = oldPath })
+
+	if got := detectOperatorNamespace(); got != "from-file" {
+		t.Fatalf("detectOperatorNamespace() = %q, want from-file", got)
+	}
+}
+
+func TestResolveLoggingNamespace(t *testing.T) {
+	t.Setenv(podNamespaceEnvVar, "from-env")
+
+	if got := resolveLoggingNamespace("override"); got != "override" {
+		t.Fatalf("resolveLoggingNamespace(override) = %q, want override", got)
+	}
+	if got := resolveLoggingNamespace(""); got != "from-env" {
+		t.Fatalf("resolveLoggingNamespace() = %q, want from-env", got)
 	}
 }
 
@@ -248,6 +281,34 @@ func TestLogLevelReconciler_NotFound(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
+	}
+}
+
+func TestLogLevelReconciler_GetError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	getErr := errors.New("simulated get error")
+	reconciler := &logLevelReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(context.Context, client.WithWatch, client.ObjectKey, client.Object, ...client.GetOption) error {
+				return getErr
+			},
+		}).Build(),
+		atomicLevel: uzap.NewAtomicLevelAt(uzap.InfoLevel),
+		key:         "log-level",
+	}
+
+	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Namespace: "system",
+			Name:      "mcp-lifecycle-operator-config",
+		},
+	})
+	if !errors.Is(err, getErr) {
+		t.Fatalf("Reconcile() error = %v, want %v", err, getErr)
 	}
 }
 
