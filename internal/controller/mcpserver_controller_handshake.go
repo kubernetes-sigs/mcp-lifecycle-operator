@@ -89,7 +89,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 				fmt.Sprintf("TLS configuration error: %v", tlsErr),
 				mcpServer.Generation,
 			)
-			preserveLastTransitionTime(&cond, mcpServer.Status.Conditions)
+			PreserveLastTransitionTime(&cond, mcpServer.Status.Conditions)
 			return cond, nil
 		}
 		if tlsTransport != nil && tlsTransport.TLSClientConfig != nil && r.TLSProfile != nil {
