@@ -412,11 +412,11 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			By("Verifying the MCPServer status shows deployment unavailable with ownership error")
 			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCondition.Reason).To(Equal("DeploymentUnavailable"))
-			Expect(readyCondition.Message).To(ContainSubstring("has no controller owner"))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(availableCondition.Reason).To(Equal("DeploymentUnavailable"))
+			Expect(availableCondition.Message).To(ContainSubstring("has no controller owner"))
 		})
 	})
 
@@ -487,11 +487,11 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			By("Verifying the MCPServer status shows service unavailable with ownership error")
 			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCondition.Reason).To(Equal("ServiceUnavailable"))
-			Expect(readyCondition.Message).To(ContainSubstring("has no controller owner"))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(availableCondition.Reason).To(Equal("ServiceUnavailable"))
+			Expect(availableCondition.Message).To(ContainSubstring("has no controller owner"))
 		})
 	})
 
@@ -592,11 +592,11 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			By("Verifying the MCPServer status shows deployment unavailable with ownership error")
 			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCondition.Reason).To(Equal("DeploymentUnavailable"))
-			Expect(readyCondition.Message).To(ContainSubstring("has no controller owner"))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(availableCondition.Reason).To(Equal("DeploymentUnavailable"))
+			Expect(availableCondition.Message).To(ContainSubstring("has no controller owner"))
 		})
 	})
 
@@ -689,11 +689,11 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			By("Verifying the MCPServer status shows service unavailable with ownership error")
 			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-			Expect(readyCondition).NotTo(BeNil())
-			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCondition.Reason).To(Equal("ServiceUnavailable"))
-			Expect(readyCondition.Message).To(ContainSubstring("has no controller owner"))
+			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+			Expect(availableCondition).NotTo(BeNil())
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(availableCondition.Reason).To(Equal("ServiceUnavailable"))
+			Expect(availableCondition.Message).To(ContainSubstring("has no controller owner"))
 		})
 	})
 
@@ -800,11 +800,11 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 				if err != nil {
 					return ""
 				}
-				readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-				if readyCondition == nil {
+				availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+				if availableCondition == nil {
 					return ""
 				}
-				return readyCondition.Reason
+				return availableCondition.Reason
 			}).Should(Or(
 				Equal("Initializing"),          // Initial state after creation
 				Equal("DeploymentUnavailable"), // Deployment exists but not ready yet
@@ -919,11 +919,11 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 				if err != nil {
 					return ""
 				}
-				readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
-				if readyCondition == nil {
+				availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+				if availableCondition == nil {
 					return ""
 				}
-				return readyCondition.Reason
+				return availableCondition.Reason
 			}).Should(Or(
 				Equal("Initializing"),          // Initial state after creation
 				Equal("DeploymentUnavailable"), // Deployment exists but not ready yet

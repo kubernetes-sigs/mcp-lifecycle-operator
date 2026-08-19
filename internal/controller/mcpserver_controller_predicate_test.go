@@ -208,7 +208,7 @@ var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
 			if err := k8sClient.Get(ctx, serverKey, server); err != nil {
 				return ""
 			}
-			cond := meta.FindStatusCondition(server.Status.Conditions, ConditionTypeReady)
+			cond := meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAvailable)
 			if cond == nil {
 				return ""
 			}

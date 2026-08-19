@@ -90,9 +90,9 @@ var _ = Describe("MCPServer Metrics", func() {
 			resourceName, namespace, "Accepted", "True", "Valid",
 		))).To(Equal(1.0))
 
-		// Ready condition should be recorded (at least Accepted + Ready)
+		// Available and Verified conditions should be recorded (at least Accepted + Available + Verified)
 		count := testutil.CollectAndCount(conditionInfo)
-		Expect(count).To(BeNumerically(">=", 2))
+		Expect(count).To(BeNumerically(">=", 3))
 	})
 
 	It("should record validation failure metrics when config is invalid", func() {
@@ -137,7 +137,7 @@ var _ = Describe("MCPServer Metrics", func() {
 			resourceName, namespace, "Accepted", "False", "Invalid",
 		))).To(Equal(1.0))
 		Expect(testutil.ToFloat64(conditionInfo.WithLabelValues(
-			resourceName, namespace, "Ready", "False", "ConfigurationInvalid",
+			resourceName, namespace, "Available", "False", "ConfigurationInvalid",
 		))).To(Equal(1.0))
 
 		// Validation failure counter incremented
@@ -265,9 +265,9 @@ var _ = Describe("MCPServer Metrics", func() {
 			depFailName, namespace, MetricReasonReconcileError,
 		))).To(Equal(1.0))
 
-		// Ready=False condition recorded
+		// Available=False condition recorded
 		Expect(testutil.ToFloat64(conditionInfo.WithLabelValues(
-			depFailName, namespace, "Ready", "False", "DeploymentUnavailable",
+			depFailName, namespace, "Available", "False", "DeploymentUnavailable",
 		))).To(Equal(1.0))
 	})
 
@@ -314,9 +314,9 @@ var _ = Describe("MCPServer Metrics", func() {
 			svcFailName, namespace, MetricReasonReconcileError,
 		))).To(Equal(1.0))
 
-		// Ready=False condition recorded
+		// Available=False condition recorded
 		Expect(testutil.ToFloat64(conditionInfo.WithLabelValues(
-			svcFailName, namespace, "Ready", "False", "ServiceUnavailable",
+			svcFailName, namespace, "Available", "False", "ServiceUnavailable",
 		))).To(Equal(1.0))
 	})
 
