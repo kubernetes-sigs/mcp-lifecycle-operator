@@ -118,10 +118,10 @@ func WithReplicas(n int32) MCPServerOption {
 }
 
 // WithGateway sets the gateway integration on the MCPServer.
-func WithGateway(className, configRef string) MCPServerOption {
+func WithGateway(provider, configRef string) MCPServerOption {
 	return func(s *mcpv1alpha1.MCPServer) {
 		s.Spec.Gateway = &mcpv1alpha1.GatewaySpec{
-			ClassName: className,
+			Provider:  provider,
 			ConfigRef: configRef,
 		}
 	}

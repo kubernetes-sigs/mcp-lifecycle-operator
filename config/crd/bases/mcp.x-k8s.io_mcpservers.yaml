@@ -598,15 +598,6 @@ spec:
                   When set, the operator creates an MCPGatewayBinding resource that
                   integration controllers watch to provision gateway-specific resources.
                 properties:
-                  className:
-                    description: |-
-                      ClassName identifies which gateway integration controller should handle
-                      this MCPServer. The operator creates an MCPGatewayBinding with this value
-                      as spec.provider. Integration controllers filter bindings by provider.
-                      Example: "httproute" for the reference Gateway API HTTPRoute controller.
-                    maxLength: 253
-                    minLength: 1
-                    type: string
                   configRef:
                     description: |-
                       ConfigRef is the name of a ConfigMap in the same namespace containing
@@ -614,8 +605,17 @@ spec:
                       MCPGatewayBinding and read by the integration controller.
                     maxLength: 253
                     type: string
+                  provider:
+                    description: |-
+                      Provider identifies which gateway integration controller should handle
+                      this MCPServer. The operator creates an MCPGatewayBinding with this value
+                      as spec.provider. Integration controllers filter bindings by provider name.
+                      Example: "httproute" for the reference Gateway API HTTPRoute controller.
+                    maxLength: 253
+                    minLength: 1
+                    type: string
                 required:
-                - className
+                - provider
                 type: object
               mcp:
                 description: |-

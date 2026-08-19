@@ -48,7 +48,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
 			resource.Spec.Gateway = &mcpv1alpha1.GatewaySpec{
-				ClassName: "httproute",
+				Provider:  "httproute",
 				ConfigRef: "gw-config",
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -147,7 +147,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			Expect(err).NotTo(HaveOccurred())
 			oldUID := binding.UID
 
-			mcpServer.Spec.Gateway.ClassName = "custom-provider"
+			mcpServer.Spec.Gateway.Provider = "custom-provider"
 			err = reconciler.reconcileGatewayBinding(ctx, mcpServer)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -183,7 +183,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
 			resource.Spec.Gateway = &mcpv1alpha1.GatewaySpec{
-				ClassName: "httproute",
+				Provider: "httproute",
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
@@ -282,7 +282,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
 			resource.Spec.Gateway = &mcpv1alpha1.GatewaySpec{
-				ClassName: "httproute",
+				Provider: "httproute",
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})

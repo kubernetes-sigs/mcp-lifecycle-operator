@@ -42,13 +42,13 @@ spec:
     port: 8080
     path: /mcp
   gateway:
-    className: httproute
+    provider: httproute
     configRef: mcp-gateway-config
 ```
 
-| Field               | Required | Description                                                      |
-|---------------------|----------|------------------------------------------------------------------|
-| `gateway.className` | Yes      | Provider name that identifies the integration controller          |
+| Field              | Required | Description                                                      |
+|--------------------|----------|------------------------------------------------------------------|
+| `gateway.provider` | Yes      | Provider name that identifies the integration controller          |
 | `gateway.configRef` | No       | Name of a ConfigMap with provider-specific configuration          |
 
 ## MCPGatewayBinding

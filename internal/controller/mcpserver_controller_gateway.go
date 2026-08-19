@@ -75,7 +75,7 @@ func (r *MCPServerReconciler) reconcileGatewayBinding(
 		},
 		Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 			MCPServerRef: mcpServer.Name,
-			Provider:     mcpServer.Spec.Gateway.ClassName,
+			Provider:     mcpServer.Spec.Gateway.Provider,
 			ConfigRef:    mcpServer.Spec.Gateway.ConfigRef,
 		},
 	}

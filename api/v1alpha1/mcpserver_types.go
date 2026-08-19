@@ -431,14 +431,14 @@ type MCPServerSpec struct {
 
 // GatewaySpec configures gateway integration for an MCPServer.
 type GatewaySpec struct {
-	// ClassName identifies which gateway integration controller should handle
+	// Provider identifies which gateway integration controller should handle
 	// this MCPServer. The operator creates an MCPGatewayBinding with this value
-	// as spec.provider. Integration controllers filter bindings by provider.
+	// as spec.provider. Integration controllers filter bindings by provider name.
 	// Example: "httproute" for the reference Gateway API HTTPRoute controller.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
-	ClassName string `json:"className"`
+	Provider string `json:"provider"`
 
 	// ConfigRef is the name of a ConfigMap in the same namespace containing
 	// gateway-specific configuration. The ConfigMap is referenced by the

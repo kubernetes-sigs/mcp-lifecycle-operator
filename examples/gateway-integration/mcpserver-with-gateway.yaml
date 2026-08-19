@@ -12,5 +12,5 @@ spec:
     port: 8080
     path: /mcp
   gateway:
-    className: httproute
+    provider: httproute
     configRef: mcp-gateway-config

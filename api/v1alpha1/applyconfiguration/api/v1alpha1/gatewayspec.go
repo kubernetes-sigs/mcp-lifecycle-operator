@@ -23,11 +23,11 @@ package v1alpha1
 //
 // GatewaySpec configures gateway integration for an MCPServer.
 type GatewaySpecApplyConfiguration struct {
-	// ClassName identifies which gateway integration controller should handle
+	// Provider identifies which gateway integration controller should handle
 	// this MCPServer. The operator creates an MCPGatewayBinding with this value
-	// as spec.provider. Integration controllers filter bindings by provider.
+	// as spec.provider. Integration controllers filter bindings by provider name.
 	// Example: "httproute" for the reference Gateway API HTTPRoute controller.
-	ClassName *string `json:"className,omitempty"`
+	Provider *string `json:"provider,omitempty"`
 	// ConfigRef is the name of a ConfigMap in the same namespace containing
 	// gateway-specific configuration. The ConfigMap is referenced by the
 	// MCPGatewayBinding and read by the integration controller.
@@ -40,11 +40,11 @@ func GatewaySpec() *GatewaySpecApplyConfiguration {
 	return &GatewaySpecApplyConfiguration{}
 }
 
-// WithClassName sets the ClassName field in the declarative configuration to the given value
+// WithProvider sets the Provider field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ClassName field is set to the value of the last call.
-func (b *GatewaySpecApplyConfiguration) WithClassName(value string) *GatewaySpecApplyConfiguration {
-	b.ClassName = &value
+// If called multiple times, the Provider field is set to the value of the last call.
+func (b *GatewaySpecApplyConfiguration) WithProvider(value string) *GatewaySpecApplyConfiguration {
+	b.Provider = &value
 	return b
 }
 
