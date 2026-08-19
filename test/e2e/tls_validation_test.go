@@ -435,7 +435,7 @@ func TestTLSDisabledIgnoresStaleCARef(t *testing.T) {
 	feature := features.New("TLS disabled skips CA bundle validation").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Moderate).
-		WithLabel(scenario.Label, scenario.Security).
+		WithLabel(scenario.Label, scenario.Deploy).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "tls-disabled", true,
 				f.WithTransport(&mcpv1alpha1.TransportConfig{
