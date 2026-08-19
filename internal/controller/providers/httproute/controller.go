@@ -40,7 +40,20 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers"
 )
+
+func init() {
+	providers.Register(ProviderName, Setup)
+}
+
+// Setup creates the httproute provider controller and registers it with the manager.
+func Setup(mgr ctrl.Manager) error {
+	return (&Reconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr)
+}
 
 const (
 	// ProviderName is the provider name for the reference Gateway API HTTPRoute

@@ -183,7 +183,7 @@ kubectl get mcpserver my-mcp-server -o jsonpath='{.status.address.url}'
 
 ## Implementing a Custom Provider
 
-To add support for a different gateway or ingress system:
+Any provider needs to:
 
 1. Create a controller that watches `MCPGatewayBinding` resources filtered by `spec.provider`
 2. Read configuration from the ConfigMap referenced by `spec.configRef`
@@ -191,3 +191,48 @@ To add support for a different gateway or ingress system:
 4. Update the binding status with a `Registered` condition and optionally set `status.url`
 
 The MCPServer controller reflects the binding status automatically - your provider only needs to manage the `MCPGatewayBinding` status, not the MCPServer status directly.
+
+### Adding an In-Tree Provider
+
+The operator uses a provider registry so that `cmd/main.go` does not need per-provider setup code. To add a new in-tree provider:
+
+1. Create a package under `internal/controller/providers/<name>/`
+2. Implement a `Reconciler` with a `SetupWithManager(mgr ctrl.Manager) error` method
+3. Register the provider via `init()` using the registry:
+
+    ```go
+    package myprovider
+
+    import (
+        ctrl "sigs.k8s.io/controller-runtime"
+        "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers"
+    )
+
+    const ProviderName = "myprovider"
+
+    func init() {
+        providers.Register(ProviderName, Setup)
+    }
+
+    func Setup(mgr ctrl.Manager) error {
+        return (&Reconciler{
+            Client: mgr.GetClient(),
+            Scheme: mgr.GetScheme(),
+        }).SetupWithManager(mgr)
+    }
+    ```
+
+4. Add a blank import in `cmd/main.go`:
+
+    ```go
+    // Gateway integration providers register themselves via init().
+    // Add new providers here as blank imports.
+    _ "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/httproute"
+    _ "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/myprovider"
+    ```
+
+The `providers.SetupAll(mgr)` call in `cmd/main.go` handles the rest.
+
+### Adding an Out-of-Tree Provider
+
+An out-of-tree provider runs as a separate controller in its own deployment. It watches `MCPGatewayBinding` resources filtered by its provider name and manages its own resources independently. No changes to the operator are required - the provider only needs RBAC access to the `MCPGatewayBinding` CRD.
