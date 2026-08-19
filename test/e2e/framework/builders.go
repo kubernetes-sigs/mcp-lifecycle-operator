@@ -24,9 +24,9 @@ import (
 )
 
 const (
-	DefaultMCPServerImage   = "quay.io/matzew/mcp-everything@sha256:537cdedad807bb56140caca9c332d3577b16e533584164bbc3f27abac7b5ba15" // :2026.7.10
-	AlternateMCPServerImage = "quay.io/matzew/mcp-everything@sha256:d93b35b4f0d2f9b9d4c7b49aecfbebd73ce1933b18e03875698bca9615c178f8" // :2026.8.13
-	BusyboxImage            = "docker.io/library/busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0"     // :1.37
+	DefaultMCPServerImage    = "quay.io/matzew/mcp-everything@sha256:537cdedad807bb56140caca9c332d3577b16e533584164bbc3f27abac7b5ba15"            // :2026.7.10
+	AlternateMCPServerImage  = "quay.io/matzew/mcp-everything@sha256:d93b35b4f0d2f9b9d4c7b49aecfbebd73ce1933b18e03875698bca9615c178f8"            // :2026.8.13
+	BusyboxImage             = "docker.io/library/busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0"                // :1.37
 	KubernetesMCPServerImage = "quay.io/containers/kubernetes_mcp_server@sha256:3a4bee3f07c1c81458f9810b160d9123d9edd91a6602d2b3c91baf7c24277090" // :v0.0.66
 )
 
