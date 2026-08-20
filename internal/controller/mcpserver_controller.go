@@ -209,6 +209,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.Get(ctx, req.NamespacedName, mcpServer); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("MCPServer resource not found, ignoring since object must be deleted")
+			r.tlsCABundleHashes.Delete(req.Namespace + "/" + req.Name)
 			cleanupMetrics(req.Name, req.Namespace)
 			return ctrl.Result{}, nil
 		}
@@ -375,15 +376,6 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	var serverInfo *mcpv1alpha1.MCPServerInfo
 	readyCondition, serverInfo = r.reconcileHandshake(ctx, mcpServer, mcpURL, readyCondition, tlsCABundleHash)
 
-	// Persist the TLS CA bundle hash in-memory after reconciliation so CA
-	// rotation is detected on the next reconcile.
-	tlsKey := mcpServer.Namespace + "/" + mcpServer.Name
-	if tlsCABundleHash != "" {
-		r.tlsCABundleHashes.Store(tlsKey, tlsCABundleHash)
-	} else {
-		r.tlsCABundleHashes.Delete(tlsKey)
-	}
-
 	// Normal Event once per Ready transition to Available after a successful handshake.
 	if pendingServerReadyEvent &&
 		readyCondition.Status == metav1.ConditionTrue &&
@@ -417,6 +409,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		logger.Error(err, "Failed to apply MCPServer status")
 		return ctrl.Result{}, err
 	}
+
+	r.updateTLSCABundleHash(mcpServer, tlsCABundleHash, readyCondition)
 
 	if capDiff != "" {
 		capabilityChangesTotal.WithLabelValues(mcpServer.Name, mcpServer.Namespace).Inc()
