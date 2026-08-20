@@ -21,7 +21,7 @@ graph LR
     Gateway -->|traffic| Service[MCP Server<br/>Service]
 ```
 
-This design is extensible - any provider can implement its own integration controller by watching `MCPGatewayBinding` resources filtered by `spec.provider`. The operator ships with a reference implementation for the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/).
+This design is extensible - any provider can implement its own integration controller by watching `MCPGatewayBinding` resources filtered by `spec.provider`. The operator ships with two built-in providers: `httproute` for the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/) and `kuadrant` for the [Kuadrant MCP Gateway](https://docs.kuadrant.io/latest/mcp-gateway/).
 
 ## MCPServer Configuration
 
@@ -176,6 +176,100 @@ kubectl get mcpgatewaybindings
 
 # HTTPRoute should exist
 kubectl get httproutes
+
+# MCPServer address should reflect the gateway URL
+kubectl get mcpserver my-mcp-server -o jsonpath='{.status.address.url}'
+```
+
+## Kuadrant Provider: `kuadrant`
+
+The operator includes an integration controller for the `kuadrant` provider, which registers MCP servers with the [Kuadrant MCP Gateway](https://docs.kuadrant.io/latest/mcp-gateway/). It creates a Gateway API HTTPRoute and a Kuadrant `MCPServerRegistration` resource that enables the MCP Gateway broker to discover and federate the server's tools and prompts.
+
+### Prerequisites
+
+- [Gateway API CRDs](https://gateway-api.sigs.k8s.io/guides/#installing-gateway-api) installed on the cluster
+- [Kuadrant MCP Gateway](https://docs.kuadrant.io/latest/mcp-gateway/docs/guides/how-to-install-and-configure/) installed (provides the `MCPServerRegistration` CRD)
+- A Gateway resource with an MCP listener (typically named `mcps`) managed by a gateway controller (e.g., Istio)
+
+!!! note
+    The operator checks for both the HTTPRoute and MCPServerRegistration CRDs at startup. If either is missing, the `kuadrant` controller is skipped. Install the required CRDs and restart the operator to enable it.
+
+### ConfigMap Format
+
+The `kuadrant` provider reads its configuration from a ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-kuadrant-config
+  namespace: default
+data:
+  gateway-name: mcp-gateway
+  gateway-namespace: mcp-system
+  hostname: myserver.mcp.local
+  prefix: myserver_
+  section-name: mcps
+```
+
+| Key                 | Required | Default | Description                                                  |
+|---------------------|----------|---------|--------------------------------------------------------------|
+| `gateway-name`      | Yes      |         | Name of the existing Gateway resource                        |
+| `gateway-namespace` | Yes      |         | Namespace where the Gateway resource lives                   |
+| `hostname`          | Yes      |         | Hostname matching the Gateway's MCP listener wildcard        |
+| `prefix`            | No       |         | Tool/prompt name prefix for federation (e.g., `myserver_`)   |
+| `section-name`      | No       | `mcps`  | Gateway listener section name for the parent reference       |
+
+### What It Creates
+
+For each registered binding, the controller creates:
+
+1. An **HTTPRoute** that:
+    - References the specified Gateway with the configured `sectionName` (default `mcps`)
+    - Sets the hostname from the ConfigMap
+    - Matches the MCPServer's path (default `/mcp`) using `PathPrefix`
+    - Routes traffic to the MCPServer's Service and port
+
+2. An **MCPServerRegistration** (`mcp.kuadrant.io/v1alpha1`) that:
+    - References the HTTPRoute via `targetRef`
+    - Sets the MCP server path for the broker
+    - Sets the tool/prompt prefix if configured
+    - State is always `Enabled`
+
+Both resources are owned by the MCPGatewayBinding, so they are automatically deleted when the binding is removed.
+
+### MCPServer Configuration
+
+```yaml
+apiVersion: mcp.x-k8s.io/v1alpha1
+kind: MCPServer
+metadata:
+  name: my-mcp-server
+  namespace: default
+spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: quay.io/containers/kubernetes_mcp_server:latest
+  config:
+    port: 8080
+    path: /mcp
+  gateway:
+    provider: kuadrant
+    configRef: mcp-kuadrant-config
+```
+
+### Verify
+
+```bash
+# MCPGatewayBinding should be Registered
+kubectl get mcpgatewaybindings
+
+# HTTPRoute should exist
+kubectl get httproutes
+
+# MCPServerRegistration should exist
+kubectl get mcpserverregistrations
 
 # MCPServer address should reflect the gateway URL
 kubectl get mcpserver my-mcp-server -o jsonpath='{.status.address.url}'

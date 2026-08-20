@@ -49,6 +49,7 @@ import (
 	// Gateway integration providers register themselves via init().
 	// Add new providers here as blank imports.
 	_ "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/httproute"
+	_ "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant"
 	// +kubebuilder:scaffold:imports
 )
 
