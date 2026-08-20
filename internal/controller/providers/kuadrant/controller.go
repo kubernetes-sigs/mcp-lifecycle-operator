@@ -69,7 +69,6 @@ const (
 	configKeySectionName      = "section-name"
 
 	defaultSectionName = "mcps"
-	defaultMCPPath     = "/mcp"
 
 	reasonRouteNotAccepted = "RouteNotAccepted"
 )
@@ -145,7 +144,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	path := mcpServer.Spec.Config.Path
 	if path == "" {
-		path = defaultMCPPath
+		path = mcpcontroller.DefaultMCPPath
 	}
 
 	if err := r.reconcileHTTPRoute(ctx, binding, mcpServer, gwName, gwNamespace, hostname, sectionName, path); err != nil {
