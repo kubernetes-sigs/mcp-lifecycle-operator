@@ -32,6 +32,18 @@ type NetworkConfigApplyConfiguration struct {
 	// namespaceSelector, ipBlock).
 	// When empty, any pod in the cluster can reach the MCP server (default).
 	IngressFrom []v1.NetworkPolicyPeer `json:"ingressFrom,omitempty"`
+	// EgressTo restricts which destinations the MCP server pod can reach.
+	// Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,
+	// namespaceSelector, ipBlock).
+	// When empty, egress to all destinations is allowed (default).
+	// Egress to kube-dns (UDP/TCP port 53) is always permitted regardless
+	// of this setting.
+	EgressTo []v1.NetworkPolicyPeer `json:"egressTo,omitempty"`
+	// EgressPorts restricts which ports the MCP server pod can connect to.
+	// When empty and EgressTo is set, all ports are allowed to the
+	// specified destinations. When set, only listed ports are allowed
+	// (in addition to DNS port 53 which is always permitted).
+	EgressPorts []v1.NetworkPolicyPort `json:"egressPorts,omitempty"`
 }
 
 // NetworkConfigApplyConfiguration constructs a declarative configuration of the NetworkConfig type for use with
@@ -46,6 +58,26 @@ func NetworkConfig() *NetworkConfigApplyConfiguration {
 func (b *NetworkConfigApplyConfiguration) WithIngressFrom(values ...v1.NetworkPolicyPeer) *NetworkConfigApplyConfiguration {
 	for i := range values {
 		b.IngressFrom = append(b.IngressFrom, values[i])
+	}
+	return b
+}
+
+// WithEgressTo adds the given value to the EgressTo field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the EgressTo field.
+func (b *NetworkConfigApplyConfiguration) WithEgressTo(values ...v1.NetworkPolicyPeer) *NetworkConfigApplyConfiguration {
+	for i := range values {
+		b.EgressTo = append(b.EgressTo, values[i])
+	}
+	return b
+}
+
+// WithEgressPorts adds the given value to the EgressPorts field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the EgressPorts field.
+func (b *NetworkConfigApplyConfiguration) WithEgressPorts(values ...v1.NetworkPolicyPort) *NetworkConfigApplyConfiguration {
+	for i := range values {
+		b.EgressPorts = append(b.EgressPorts, values[i])
 	}
 	return b
 }

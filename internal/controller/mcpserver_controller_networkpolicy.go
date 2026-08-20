@@ -60,7 +60,10 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 		if mcpServer.Spec.Network == nil || len(mcpServer.Spec.Network.IngressFrom) == 0 {
 			logger.Info("NetworkPolicy created without ingress source restrictions", "name", netpol.Name)
 		}
-		auditNetworkPolicyCreated(ctx, mcpServer, netpol.Name, hasIngressSourceRestriction(netpol))
+		if mcpServer.Spec.Network == nil || (len(mcpServer.Spec.Network.EgressTo) == 0 && len(mcpServer.Spec.Network.EgressPorts) == 0) {
+			logger.Info("NetworkPolicy created without egress destination restrictions", "name", netpol.Name)
+		}
+		auditNetworkPolicyCreated(ctx, mcpServer, netpol.Name, hasIngressSourceRestriction(netpol), hasEgressDestinationRestriction(netpol))
 		return nil
 	} else if err != nil {
 		logger.Error(err, "Failed to get NetworkPolicy")
@@ -130,6 +133,8 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1alpha1.MCPServ
 		ingressRule.From = mcpServer.Spec.Network.DeepCopy().IngressFrom
 	}
 
+	egressRules := buildEgressRules(mcpServer)
+
 	return &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      mcpServer.Name,
@@ -147,11 +152,46 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1alpha1.MCPServ
 			Ingress: []networkingv1.NetworkPolicyIngressRule{
 				ingressRule,
 			},
-			Egress: []networkingv1.NetworkPolicyEgressRule{
-				{},
-			},
+			Egress: egressRules,
 		},
 	}
+}
+
+func buildEgressRules(mcpServer *mcpv1alpha1.MCPServer) []networkingv1.NetworkPolicyEgressRule {
+	hasEgressTo := mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.EgressTo) > 0
+	hasEgressPorts := mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.EgressPorts) > 0
+
+	if !hasEgressTo && !hasEgressPorts {
+		return []networkingv1.NetworkPolicyEgressRule{{}}
+	}
+
+	dnsPort := intstr.FromInt32(53)
+	udp := corev1.ProtocolUDP
+	tcp := corev1.ProtocolTCP
+
+	dnsRule := networkingv1.NetworkPolicyEgressRule{
+		To: []networkingv1.NetworkPolicyPeer{
+			{
+				NamespaceSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"kubernetes.io/metadata.name": "kube-system"},
+				},
+			},
+		},
+		Ports: []networkingv1.NetworkPolicyPort{
+			{Port: &dnsPort, Protocol: &udp},
+			{Port: &dnsPort, Protocol: &tcp},
+		},
+	}
+
+	userRule := networkingv1.NetworkPolicyEgressRule{}
+	if hasEgressTo {
+		userRule.To = mcpServer.Spec.Network.DeepCopy().EgressTo
+	}
+	if hasEgressPorts {
+		userRule.Ports = mcpServer.Spec.Network.DeepCopy().EgressPorts
+	}
+
+	return []networkingv1.NetworkPolicyEgressRule{dnsRule, userRule}
 }
 
 func hasIngressSourceRestriction(netpol *networkingv1.NetworkPolicy) bool {
@@ -160,6 +200,15 @@ func hasIngressSourceRestriction(netpol *networkingv1.NetworkPolicy) bool {
 			if peer.PodSelector != nil || peer.NamespaceSelector != nil || peer.IPBlock != nil {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func hasEgressDestinationRestriction(netpol *networkingv1.NetworkPolicy) bool {
+	for _, rule := range netpol.Spec.Egress {
+		if len(rule.To) > 0 || len(rule.Ports) > 0 {
+			return true
 		}
 	}
 	return false

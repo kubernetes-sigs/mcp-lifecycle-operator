@@ -104,12 +104,13 @@ var _ = Describe("Audit Logging", func() {
 	It("should log NetworkPolicyCreated with ingress restriction status", func() {
 		mcpServer := newTestMCPServerForAudit("np-server")
 		entries := captureAuditLogs(func(ctx context.Context) {
-			auditNetworkPolicyCreated(ctx, mcpServer, "np-server", true)
+			auditNetworkPolicyCreated(ctx, mcpServer, "np-server", true, false)
 		})
 
 		entry, found := findAuditEntry(entries, "NetworkPolicyCreated")
 		Expect(found).To(BeTrue(), "expected NetworkPolicyCreated audit entry, got %v", entries)
 		Expect(entry.output).To(ContainSubstring("hasIngressRestriction"))
+		Expect(entry.output).To(ContainSubstring("hasEgressRestriction"))
 	})
 
 	It("should log ConfigurationRejected with reason and message", func() {

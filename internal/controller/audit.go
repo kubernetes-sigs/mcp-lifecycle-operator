@@ -104,12 +104,13 @@ func auditCapabilityChange(ctx context.Context, mcpServer *mcpv1alpha1.MCPServer
 	)
 }
 
-func auditNetworkPolicyCreated(ctx context.Context, mcpServer *mcpv1alpha1.MCPServer, netpolName string, hasIngressRestriction bool) {
+func auditNetworkPolicyCreated(ctx context.Context, mcpServer *mcpv1alpha1.MCPServer, netpolName string, hasIngressRestriction bool, hasEgressRestriction bool) {
 	auditLog(ctx).Info("audit",
 		append(auditFields(mcpServer),
 			"operation", "NetworkPolicyCreated",
 			"networkPolicy", netpolName,
 			"hasIngressRestriction", hasIngressRestriction,
+			"hasEgressRestriction", hasEgressRestriction,
 		)...,
 	)
 }

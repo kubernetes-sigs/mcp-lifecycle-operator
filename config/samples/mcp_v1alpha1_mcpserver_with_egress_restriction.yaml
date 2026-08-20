@@ -1,0 +1,21 @@
+apiVersion: mcp.x-k8s.io/v1alpha1
+kind: MCPServer
+metadata:
+  labels:
+    app.kubernetes.io/name: mcp-lifecycle-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: mcpserver-restricted-egress
+spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: quay.io/containers/kubernetes_mcp_server:latest
+  config:
+    port: 8080
+  network:
+    egressTo:
+      - ipBlock:
+          cidr: 10.0.0.0/8
+    egressPorts:
+      - port: 443
+        protocol: TCP

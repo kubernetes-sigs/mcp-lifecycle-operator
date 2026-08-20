@@ -342,6 +342,22 @@ type NetworkConfig struct {
 	// When empty, any pod in the cluster can reach the MCP server (default).
 	// +optional
 	IngressFrom []networkingv1.NetworkPolicyPeer `json:"ingressFrom,omitempty"`
+
+	// EgressTo restricts which destinations the MCP server pod can reach.
+	// Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,
+	// namespaceSelector, ipBlock).
+	// When empty, egress to all destinations is allowed (default).
+	// Egress to kube-dns (UDP/TCP port 53) is always permitted regardless
+	// of this setting.
+	// +optional
+	EgressTo []networkingv1.NetworkPolicyPeer `json:"egressTo,omitempty"`
+
+	// EgressPorts restricts which ports the MCP server pod can connect to.
+	// When empty and EgressTo is set, all ports are allowed to the
+	// specified destinations. When set, only listed ports are allowed
+	// (in addition to DNS port 53 which is always permitted).
+	// +optional
+	EgressPorts []networkingv1.NetworkPolicyPort `json:"egressPorts,omitempty"`
 }
 
 // SecretReference references a Secret in the same namespace as the MCPServer.

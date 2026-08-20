@@ -29,6 +29,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -977,4 +978,320 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 			HaveKeyWithValue("app", "my-agent"))
 	})
 
+})
+
+var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restrictions", func() {
+	ctx := context.Background()
+
+	It("should reject egressTo with invalid ipBlock CIDR during validation", func() {
+		mcpServer := newTestMCPServer("test-netpol-egress-bad-cidr")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			EgressTo: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR: "not-a-cidr",
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test-netpol-egress-bad-cidr",
+				Namespace: "default",
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying Accepted condition is False with Invalid reason")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal("Invalid"))
+		Expect(acceptedCondition.Message).To(ContainSubstring("network.egressTo[0]"))
+		Expect(acceptedCondition.Message).To(ContainSubstring("invalid ipBlock.cidr"))
+	})
+
+	It("should reject egressTo with ipBlock combined with namespaceSelector", func() {
+		mcpServer := newTestMCPServer("test-netpol-egress-ipblock-ns")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			EgressTo: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR: "10.0.0.0/8",
+					},
+					NamespaceSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"env": "prod"},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test-netpol-egress-ipblock-ns",
+				Namespace: "default",
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
+		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
+		Expect(acceptedCondition).NotTo(BeNil())
+		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(acceptedCondition.Reason).To(Equal("Invalid"))
+		Expect(acceptedCondition.Message).To(ContainSubstring("network.egressTo[0]"))
+		Expect(acceptedCondition.Message).To(ContainSubstring("ipBlock cannot be combined"))
+	})
+
+	It("should restrict egress to specified destinations with kube-dns rule when egressTo is set", func() {
+		mcpServer := newTestMCPServer("test-netpol-egress-to")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			EgressTo: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR: "10.0.0.0/8",
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		err := reconciler.reconcileNetworkPolicy(ctx, mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-egress-to",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying two egress rules: kube-dns + user-configured")
+		Expect(netpol.Spec.Egress).To(HaveLen(2))
+
+		By("Verifying first rule is kube-dns (UDP/TCP 53, scoped to kube-system)")
+		dnsRule := netpol.Spec.Egress[0]
+		Expect(dnsRule.To).To(HaveLen(1))
+		Expect(dnsRule.To[0].NamespaceSelector).NotTo(BeNil())
+		Expect(dnsRule.To[0].NamespaceSelector.MatchLabels).To(
+			HaveKeyWithValue("kubernetes.io/metadata.name", "kube-system"))
+		Expect(dnsRule.Ports).To(HaveLen(2))
+		Expect(dnsRule.Ports[0].Port.IntValue()).To(Equal(53))
+		Expect(*dnsRule.Ports[0].Protocol).To(Equal(corev1.ProtocolUDP))
+		Expect(dnsRule.Ports[1].Port.IntValue()).To(Equal(53))
+		Expect(*dnsRule.Ports[1].Protocol).To(Equal(corev1.ProtocolTCP))
+
+		By("Verifying second rule has user-specified destinations")
+		userRule := netpol.Spec.Egress[1]
+		Expect(userRule.To).To(HaveLen(1))
+		Expect(userRule.To[0].IPBlock).NotTo(BeNil())
+		Expect(userRule.To[0].IPBlock.CIDR).To(Equal("10.0.0.0/8"))
+		Expect(userRule.Ports).To(BeEmpty())
+	})
+
+	It("should restrict egress ports with kube-dns rule when egressPorts is set", func() {
+		port443 := intstr.FromInt32(443)
+		protocolTCP := corev1.ProtocolTCP
+		mcpServer := newTestMCPServer("test-netpol-egress-ports")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			EgressPorts: []networkingv1.NetworkPolicyPort{
+				{
+					Port:     &port443,
+					Protocol: &protocolTCP,
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		err := reconciler.reconcileNetworkPolicy(ctx, mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-egress-ports",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying two egress rules: kube-dns + user ports")
+		Expect(netpol.Spec.Egress).To(HaveLen(2))
+
+		By("Verifying second rule has port restriction but no destination restriction")
+		userRule := netpol.Spec.Egress[1]
+		Expect(userRule.To).To(BeEmpty())
+		Expect(userRule.Ports).To(HaveLen(1))
+		Expect(userRule.Ports[0].Port.IntValue()).To(Equal(443))
+	})
+
+	It("should preserve allow-all egress when no egress restrictions are configured", func() {
+		mcpServer := newTestMCPServer("test-netpol-egress-default")
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		err := reconciler.reconcileNetworkPolicy(ctx, mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-egress-default",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying single allow-all egress rule (backward compatible)")
+		Expect(netpol.Spec.Egress).To(HaveLen(1))
+		Expect(netpol.Spec.Egress[0].To).To(BeEmpty())
+		Expect(netpol.Spec.Egress[0].Ports).To(BeEmpty())
+	})
+
+	It("should combine egressTo and egressPorts in a single user rule", func() {
+		port443 := intstr.FromInt32(443)
+		protocolTCP := corev1.ProtocolTCP
+		mcpServer := newTestMCPServer("test-netpol-egress-both")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			EgressTo: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR: "10.0.0.0/8",
+					},
+				},
+			},
+			EgressPorts: []networkingv1.NetworkPolicyPort{
+				{
+					Port:     &port443,
+					Protocol: &protocolTCP,
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		err := reconciler.reconcileNetworkPolicy(ctx, mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-egress-both",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying two egress rules")
+		Expect(netpol.Spec.Egress).To(HaveLen(2))
+
+		By("Verifying user rule has both destinations and ports")
+		userRule := netpol.Spec.Egress[1]
+		Expect(userRule.To).To(HaveLen(1))
+		Expect(userRule.To[0].IPBlock.CIDR).To(Equal("10.0.0.0/8"))
+		Expect(userRule.Ports).To(HaveLen(1))
+		Expect(userRule.Ports[0].Port.IntValue()).To(Equal(443))
+	})
+
+	It("should update egress rules when egressTo changes", func() {
+		mcpServer := newTestMCPServer("test-netpol-egress-update")
+		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
+			EgressTo: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR: "10.0.0.0/8",
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := &MCPServerReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			APIReader: k8sClient,
+		}
+
+		By("Initial reconcile with egress restriction")
+		Expect(reconciler.reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-egress-update",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+		Expect(netpol.Spec.Egress).To(HaveLen(2))
+
+		By("Updating egressTo to a different CIDR")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
+		mcpServer.Spec.Network.EgressTo = []networkingv1.NetworkPolicyPeer{
+			{
+				IPBlock: &networkingv1.IPBlock{
+					CIDR: "192.168.0.0/16",
+				},
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		By("Reconciling again to pick up the change")
+		Expect(reconciler.reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-egress-update",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying egress rule updated")
+		Expect(netpol.Spec.Egress).To(HaveLen(2))
+		Expect(netpol.Spec.Egress[1].To[0].IPBlock.CIDR).To(Equal("192.168.0.0/16"))
+	})
 })
