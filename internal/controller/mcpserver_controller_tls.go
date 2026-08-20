@@ -18,12 +18,14 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"net/http"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
@@ -89,4 +91,40 @@ func buildTLSTransport(ctx context.Context, reader client.Reader, namespace stri
 		RootCAs:    pool,
 	}
 	return transport, nil
+}
+
+// updateTLSCABundleHash persists the CA bundle hash in-memory only after the
+// status write succeeded and the handshake passed. A failed handshake preserves
+// the previous hash so re-verification is forced on the next reconcile.
+func (r *MCPServerReconciler) updateTLSCABundleHash(
+	mcpServer *mcpv1alpha1.MCPServer,
+	hash string,
+	readyCondition metav1.Condition,
+) {
+	key := mcpServer.Namespace + "/" + mcpServer.Name
+	if hash == "" {
+		r.tlsCABundleHashes.Delete(key)
+	} else if readyCondition.Status == metav1.ConditionTrue &&
+		readyCondition.Reason == ReasonAvailable {
+		r.tlsCABundleHashes.Store(key, hash)
+	}
+}
+
+func computeTLSCABundleHash(ctx context.Context, reader client.Reader, namespace string, tlsConfig *mcpv1alpha1.TLSClientConfig) string {
+	if tlsConfig == nil || !tlsConfig.Enabled || tlsConfig.InsecureSkipVerify || tlsConfig.CABundleSecret == nil {
+		return ""
+	}
+	secret := &corev1.Secret{}
+	if err := reader.Get(ctx, client.ObjectKey{
+		Name:      tlsConfig.CABundleSecret.Name,
+		Namespace: namespace,
+	}, secret); err != nil {
+		return ""
+	}
+	caPEM, ok := secret.Data[caBundleKey]
+	if !ok {
+		return ""
+	}
+	h := sha256.Sum256(caPEM)
+	return fmt.Sprintf("%x", h[:])
 }

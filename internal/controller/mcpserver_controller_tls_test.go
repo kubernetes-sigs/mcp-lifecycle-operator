@@ -228,3 +228,85 @@ var _ = Describe("urlScheme", func() {
 		Expect(urlScheme(mcpServer)).To(Equal("https"))
 	})
 })
+
+var _ = Describe("computeTLSCABundleHash", func() {
+	ctx := context.Background()
+
+	It("should return empty for nil TLS config", func() {
+		cli := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
+		Expect(computeTLSCABundleHash(ctx, cli, "default", nil)).To(BeEmpty())
+	})
+
+	It("should return empty when TLS is disabled", func() {
+		cli := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
+		cfg := &mcpv1alpha1.TLSClientConfig{Enabled: false}
+		Expect(computeTLSCABundleHash(ctx, cli, "default", cfg)).To(BeEmpty())
+	})
+
+	It("should return empty when insecureSkipVerify is set", func() {
+		cli := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
+		cfg := &mcpv1alpha1.TLSClientConfig{
+			Enabled:            true,
+			InsecureSkipVerify: true,
+			CABundleSecret:     &mcpv1alpha1.SecretReference{Name: "ca"},
+		}
+		Expect(computeTLSCABundleHash(ctx, cli, "default", cfg)).To(BeEmpty())
+	})
+
+	It("should return empty when no caBundleSecret is set", func() {
+		cli := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
+		cfg := &mcpv1alpha1.TLSClientConfig{Enabled: true}
+		Expect(computeTLSCABundleHash(ctx, cli, "default", cfg)).To(BeEmpty())
+	})
+
+	It("should return empty when Secret does not exist", func() {
+		sch := runtime.NewScheme()
+		Expect(corev1.AddToScheme(sch)).To(Succeed())
+		cli := fake.NewClientBuilder().WithScheme(sch).Build()
+		cfg := &mcpv1alpha1.TLSClientConfig{
+			Enabled:        true,
+			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "missing"},
+		}
+		Expect(computeTLSCABundleHash(ctx, cli, "default", cfg)).To(BeEmpty())
+	})
+
+	It("should return a stable hash for the same Secret content", func() {
+		sch := runtime.NewScheme()
+		Expect(corev1.AddToScheme(sch)).To(Succeed())
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "ca-bundle", Namespace: "default"},
+			Data:       map[string][]byte{"ca.crt": []byte("test-ca-data")},
+		}
+		cli := fake.NewClientBuilder().WithScheme(sch).WithObjects(secret).Build()
+		cfg := &mcpv1alpha1.TLSClientConfig{
+			Enabled:        true,
+			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "ca-bundle"},
+		}
+		hash1 := computeTLSCABundleHash(ctx, cli, "default", cfg)
+		hash2 := computeTLSCABundleHash(ctx, cli, "default", cfg)
+		Expect(hash1).NotTo(BeEmpty())
+		Expect(hash1).To(Equal(hash2))
+		Expect(hash1).To(HaveLen(64))
+	})
+
+	It("should return a different hash when Secret content changes", func() {
+		sch := runtime.NewScheme()
+		Expect(corev1.AddToScheme(sch)).To(Succeed())
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "ca-bundle", Namespace: "default"},
+			Data:       map[string][]byte{"ca.crt": []byte("original-ca")},
+		}
+		cli := fake.NewClientBuilder().WithScheme(sch).WithObjects(secret).Build()
+		cfg := &mcpv1alpha1.TLSClientConfig{
+			Enabled:        true,
+			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "ca-bundle"},
+		}
+		hash1 := computeTLSCABundleHash(ctx, cli, "default", cfg)
+
+		secret.Data["ca.crt"] = []byte("rotated-ca")
+		Expect(cli.Update(ctx, secret)).To(Succeed())
+
+		hash2 := computeTLSCABundleHash(ctx, cli, "default", cfg)
+		Expect(hash1).NotTo(Equal(hash2))
+	})
+})

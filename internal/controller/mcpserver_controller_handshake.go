@@ -38,15 +38,23 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	mcpServer *mcpv1alpha1.MCPServer,
 	mcpURL string,
 	readyCondition metav1.Condition,
+	tlsCABundleHash string,
 ) (metav1.Condition, *mcpv1alpha1.MCPServerInfo) {
 	logger := log.FromContext(ctx)
+
+	key := mcpServer.Namespace + "/" + mcpServer.Name
+	var previousHash string
+	if v, ok := r.tlsCABundleHashes.Load(key); ok {
+		previousHash = v.(string)
+	}
 
 	existingReady := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeReady)
 	alreadyVerified := existingReady != nil &&
 		existingReady.Status == metav1.ConditionTrue &&
 		existingReady.Reason == ReasonAvailable &&
 		mcpServer.Status.ObservedGeneration == mcpServer.Generation &&
-		mcpServer.Status.ServerInfo != nil
+		mcpServer.Status.ServerInfo != nil &&
+		previousHash == tlsCABundleHash
 
 	// If the handshake was already verified for this generation, preserve
 	// Ready=True even if the Deployment has a transient status fluctuation
