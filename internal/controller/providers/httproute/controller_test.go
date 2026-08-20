@@ -190,7 +190,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(registered.Status).To(Equal(metav1.ConditionTrue))
 	})
 
-	It("should set Registered=False when MCPServer not found", func() {
+	It("should return early when MCPServer not found", func() {
 		createConfigMap(map[string]string{
 			configKeyGatewayName:      "my-gateway",
 			configKeyGatewayNamespace: "gateway-ns",
@@ -210,16 +210,15 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(k8sClient.Create(ctx, binding)).To(Succeed())
 
 		r := newReconciler()
-		_, err := r.Reconcile(ctx, reconcile.Request{
+		result, err := r.Reconcile(ctx, reconcile.Request{
 			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
 		})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(result).To(Equal(reconcile.Result{}))
 
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
-		Expect(registered).NotTo(BeNil())
-		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
-		Expect(registered.Message).To(ContainSubstring("nonexistent"))
+		Expect(registered).To(BeNil())
 	})
 
 	It("should set Registered=False when ConfigMap missing", func() {

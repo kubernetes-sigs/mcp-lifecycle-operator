@@ -81,6 +81,7 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -97,8 +98,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	mcpServer := &mcpv1alpha1.MCPServer{}
 	if err := r.Get(ctx, client.ObjectKey{Name: binding.Spec.MCPServerRef, Namespace: binding.Namespace}, mcpServer); err != nil {
-		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
-			fmt.Sprintf("MCPServer %q not found: %v", binding.Spec.MCPServerRef, err))
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
 	}
 
 	configMap := &corev1.ConfigMap{}
@@ -224,7 +227,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	url := ""
 	if hostname, ok := configMap.Data[configKeyHostname]; ok && hostname != "" {
-		url = fmt.Sprintf("http://%s%s", hostname, path)
+		scheme := providers.SchemeFromAcceptedRoute(ctx, r.Client, route)
+		url = fmt.Sprintf("%s://%s%s", scheme, hostname, path)
 	}
 
 	return ctrl.Result{}, r.updateBindingStatus(ctx, binding, metav1.ConditionTrue,
