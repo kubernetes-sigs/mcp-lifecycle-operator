@@ -105,7 +105,6 @@ cover-clean: ## Remove cover.out and out/coverage.{txt,html} from test-cover.
 	rm -f $(COVER_PROFILE) $(COVER_OUTPUT_DIR)/coverage.txt $(COVER_OUTPUT_DIR)/coverage.html
 
 KIND_CLUSTER ?= mcp-lifecycle-operator-test-e2e
-GATEWAY_API_VERSION ?= v1.6.1
 ENVOY_GATEWAY_VERSION ?= v1.9.0
 
 .PHONY: setup-test-e2e

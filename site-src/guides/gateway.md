@@ -245,4 +245,4 @@ The `providers.SetupAll(mgr)` call in `cmd/main.go` handles the rest.
 
 ### Adding an Out-of-Tree Provider
 
-An out-of-tree provider runs as a separate controller in its own deployment. It watches `MCPGatewayBinding` resources filtered by its provider name and manages its own resources independently. No changes to the operator are required - the provider only needs RBAC access to the `MCPGatewayBinding` CRD.
+An out-of-tree provider runs as a separate controller in its own deployment. It watches `MCPGatewayBinding` resources filtered by its provider name and manages its own resources independently. No changes to the operator are required - the provider needs RBAC access to watch and read `MCPGatewayBinding` resources, update their status, read referenced `ConfigMap` resources, and manage its provider-specific resources.

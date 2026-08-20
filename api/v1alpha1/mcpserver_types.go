@@ -466,9 +466,11 @@ type MCPConfig struct {
 
 // MCPServerAddress contains the address information for the MCPServer.
 type MCPServerAddress struct {
-	// URL is the cluster-internal address of the MCP server service.
-	// Format: <scheme>://<servicename>.<namespace>.svc.cluster.local:<port>/<path>
+	// URL is the address of the MCP server.
+	// When no gateway is configured, this is the cluster-internal service address
+	// (e.g. <scheme>://<servicename>.<namespace>.svc.cluster.local:<port>/<path>).
 	// The scheme is "https" when TLS is enabled, "http" otherwise.
+	// When a gateway provider is active, this is the external gateway address.
 	// +optional
 	URL string `json:"url,omitempty"`
 }
