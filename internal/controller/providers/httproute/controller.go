@@ -281,13 +281,15 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Kind:    "HTTPRoute",
 	}
 
-	_, err := mgr.GetRESTMapper().RESTMapping(httpRouteGVK.GroupKind(), httpRouteGVK.Version)
-	if err != nil {
-		setupLog := mgr.GetLogger().WithName("setup")
-		setupLog.Info("Gateway API HTTPRoute CRD not found, skipping MCPGatewayBinding httproute controller. "+
-			"Install Gateway API CRDs and restart the operator to enable gateway integration.",
-			"gvk", httpRouteGVK.String())
-		return nil
+	if _, err := mgr.GetRESTMapper().RESTMapping(httpRouteGVK.GroupKind(), httpRouteGVK.Version); err != nil {
+		if meta.IsNoMatchError(err) {
+			setupLog := mgr.GetLogger().WithName("setup")
+			setupLog.Info("Gateway API HTTPRoute CRD not found, skipping MCPGatewayBinding httproute controller. "+
+				"Install Gateway API CRDs and restart the operator to enable gateway integration.",
+				"gvk", httpRouteGVK.String())
+			return nil
+		}
+		return fmt.Errorf("checking for HTTPRoute CRD: %w", err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
