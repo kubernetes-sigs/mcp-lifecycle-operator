@@ -49,13 +49,19 @@ func (r *MCPServerReconciler) reconcileHandshake(
 		"namespace": mcpServer.Namespace,
 	}
 
+	key := mcpServer.Namespace + "/" + mcpServer.Name
+	var previousHash string
+	if v, ok := r.tlsCABundleHashes.Load(key); ok {
+		previousHash = v.(string)
+	}
+
 	existingReady := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeReady)
 	alreadyVerified := existingReady != nil &&
 		existingReady.Status == metav1.ConditionTrue &&
 		existingReady.Reason == ReasonAvailable &&
 		mcpServer.Status.ObservedGeneration == mcpServer.Generation &&
 		mcpServer.Status.ServerInfo != nil &&
-		mcpServer.Status.TLSCABundleHash == tlsCABundleHash
+		previousHash == tlsCABundleHash
 
 	// If the handshake was already verified for this generation, preserve
 	// Ready=True even if the Deployment has a transient status fluctuation

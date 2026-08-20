@@ -1757,7 +1757,10 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
 		Expect(readyCondition).NotTo(BeNil())
 		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
-		originalHash := mcpServer.Status.TLSCABundleHash
+		hashKey := mcpServer.Namespace + "/" + mcpServer.Name
+		storedVal, ok := reconciler.tlsCABundleHashes.Load(hashKey)
+		Expect(ok).To(BeTrue())
+		originalHash := storedVal.(string)
 		Expect(originalHash).NotTo(BeEmpty())
 
 		By("Reconciling again without changes - handshake should be skipped")
@@ -1784,8 +1787,9 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dialCount).To(Equal(1))
 
-		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		Expect(mcpServer.Status.TLSCABundleHash).NotTo(Equal(originalHash))
+		storedVal, ok = reconciler.tlsCABundleHashes.Load(hashKey)
+		Expect(ok).To(BeTrue())
+		Expect(storedVal.(string)).NotTo(Equal(originalHash))
 
 		By("Cleaning up Secret")
 		Expect(k8sClient.Delete(ctx, caSecret)).To(Succeed())

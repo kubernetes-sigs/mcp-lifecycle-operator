@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -176,6 +177,10 @@ type MCPServerReconciler struct {
 	// TLSProfile applies operator-wide TLS settings (min version, cipher suites)
 	// to outbound connections. Populated from TLS_MIN_VERSION / TLS_CIPHER_SUITES.
 	TLSProfile func(*tls.Config)
+	// tlsCABundleHashes tracks the SHA-256 hash of each MCPServer's CA bundle
+	// Secret content at the time of the last successful handshake. Keyed by
+	// namespace/name. Used to detect CA rotation without bumping generation.
+	tlsCABundleHashes sync.Map
 }
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch;update;patch
@@ -370,6 +375,15 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	var serverInfo *mcpv1alpha1.MCPServerInfo
 	readyCondition, serverInfo = r.reconcileHandshake(ctx, mcpServer, mcpURL, readyCondition, tlsCABundleHash)
 
+	// Persist the TLS CA bundle hash in-memory after reconciliation so CA
+	// rotation is detected on the next reconcile.
+	tlsKey := mcpServer.Namespace + "/" + mcpServer.Name
+	if tlsCABundleHash != "" {
+		r.tlsCABundleHashes.Store(tlsKey, tlsCABundleHash)
+	} else {
+		r.tlsCABundleHashes.Delete(tlsKey)
+	}
+
 	// Normal Event once per Ready transition to Available after a successful handshake.
 	if pendingServerReadyEvent &&
 		readyCondition.Status == metav1.ConditionTrue &&
@@ -384,7 +398,6 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		WithDeploymentName(existingDeployment.Name).
 		WithServiceName(mcpServer.Name).
 		WithHandshakeRetryCount(handshakeRetryCount).
-		WithTLSCABundleHash(tlsCABundleHash).
 		WithReplicas(ptr.Deref(existingDeployment.Spec.Replicas, 1)).
 		WithReadyReplicas(existingDeployment.Status.ReadyReplicas).
 		WithAddress(acv1alpha1.MCPServerAddress().
