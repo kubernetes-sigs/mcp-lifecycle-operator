@@ -272,60 +272,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	existingDeployment, err := r.reconcileDeployment(ctx, mcpServer)
 	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseDeployment}).Observe(time.Since(deploymentStart).Seconds())
 	if err != nil {
-		deploymentFailuresTotal.With(prometheus.Labels{
-			"name":      mcpServer.Name,
-			"namespace": mcpServer.Namespace,
-			"reason":    MetricReasonReconcileError,
-		}).Inc()
-		// Deployment reconciliation failed - update status
-		readyCondition := newCondition(
-			ConditionTypeReady,
-			metav1.ConditionFalse,
-			ReasonDeploymentUnavailable,
-			fmt.Sprintf("Failed to reconcile Deployment: %v", err),
-			mcpServer.Generation,
-		)
-		PreserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
-
-		recordCondition(mcpServer.Name, mcpServer.Namespace,
-			readyCondition.Type, string(readyCondition.Status), readyCondition.Reason)
-
-		if !duplicateDeploymentUnavailable(mcpServer.Status.Conditions, readyCondition.Message) {
-			r.emitDeploymentReconcileFailed(mcpServer, readyCondition.Message)
-		}
-
-		conditions := []*v1ac.ConditionApplyConfiguration{
-			conditionToAC(acceptedCondition),
-			conditionToAC(readyCondition),
-		}
-		if gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered); gwCond != nil {
-			conditions = append(conditions, conditionToAC(*gwCond))
-		}
-
-		status := acv1alpha1.MCPServerStatus().
-			WithObservedGeneration(mcpServer.Generation).
-			WithServiceName(mcpServer.Name).
-			WithHandshakeRetryCount(0).
-			WithReplicas(mcpServer.Status.Replicas).
-			WithReadyReplicas(mcpServer.Status.ReadyReplicas).
-			WithConditions(conditions...)
-
-		if mcpServer.Status.GatewayBinding != nil {
-			status.WithGatewayBinding(
-				acv1alpha1.GatewayBindingStatus().
-					WithName(mcpServer.Status.GatewayBinding.Name).
-					WithProvider(mcpServer.Status.GatewayBinding.Provider),
-			)
-		}
-
-		if statusErr := r.applyStatus(ctx, mcpServer, status); statusErr != nil {
-			logger.Error(statusErr, "Failed to update MCPServer status")
-			return ctrl.Result{}, statusErr
-		}
-		if IsOwnershipConflict(err) {
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, err
+		return r.handleDeploymentFailure(ctx, mcpServer, acceptedCondition, err)
 	}
 
 	// Reconcile Service
@@ -665,6 +612,70 @@ func (r *MCPServerReconciler) withGatewayStatus(mcpServer *mcpv1alpha1.MCPServer
 		params.gatewayBinding = mcpServer.Status.GatewayBinding
 	}
 	return params
+}
+
+func (r *MCPServerReconciler) handleDeploymentFailure(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+	acceptedCondition metav1.Condition,
+	err error,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	deploymentFailuresTotal.With(prometheus.Labels{
+		"name":      mcpServer.Name,
+		"namespace": mcpServer.Namespace,
+		"reason":    MetricReasonReconcileError,
+	}).Inc()
+
+	readyCondition := newCondition(
+		ConditionTypeReady,
+		metav1.ConditionFalse,
+		ReasonDeploymentUnavailable,
+		fmt.Sprintf("Failed to reconcile Deployment: %v", err),
+		mcpServer.Generation,
+	)
+	PreserveLastTransitionTime(&readyCondition, mcpServer.Status.Conditions)
+
+	recordCondition(mcpServer.Name, mcpServer.Namespace,
+		readyCondition.Type, string(readyCondition.Status), readyCondition.Reason)
+
+	if !duplicateDeploymentUnavailable(mcpServer.Status.Conditions, readyCondition.Message) {
+		r.emitDeploymentReconcileFailed(mcpServer, readyCondition.Message)
+	}
+
+	conditions := []*v1ac.ConditionApplyConfiguration{
+		conditionToAC(acceptedCondition),
+		conditionToAC(readyCondition),
+	}
+	if gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered); gwCond != nil {
+		conditions = append(conditions, conditionToAC(*gwCond))
+	}
+
+	status := acv1alpha1.MCPServerStatus().
+		WithObservedGeneration(mcpServer.Generation).
+		WithServiceName(mcpServer.Name).
+		WithHandshakeRetryCount(0).
+		WithReplicas(mcpServer.Status.Replicas).
+		WithReadyReplicas(mcpServer.Status.ReadyReplicas).
+		WithConditions(conditions...)
+
+	if mcpServer.Status.GatewayBinding != nil {
+		status.WithGatewayBinding(
+			acv1alpha1.GatewayBindingStatus().
+				WithName(mcpServer.Status.GatewayBinding.Name).
+				WithProvider(mcpServer.Status.GatewayBinding.Provider),
+		)
+	}
+
+	if statusErr := r.applyStatus(ctx, mcpServer, status); statusErr != nil {
+		logger.Error(statusErr, "Failed to update MCPServer status")
+		return ctrl.Result{}, statusErr
+	}
+	if IsOwnershipConflict(err) {
+		return ctrl.Result{}, nil
+	}
+	return ctrl.Result{}, err
 }
 
 func (r *MCPServerReconciler) handleResourceFailure(
