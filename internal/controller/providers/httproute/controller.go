@@ -227,7 +227,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	url := ""
 	if hostname, ok := configMap.Data[configKeyHostname]; ok && hostname != "" {
-		scheme := providers.SchemeFromAcceptedRoute(ctx, r.Client, route)
+		scheme := providers.SchemeFromAcceptedRoute(ctx, r.Client, route, gwName, gwNamespace)
 		url = fmt.Sprintf("%s://%s%s", scheme, hostname, path)
 	}
 

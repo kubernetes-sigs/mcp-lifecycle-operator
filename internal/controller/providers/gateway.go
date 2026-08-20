@@ -30,20 +30,25 @@ const (
 )
 
 // SchemeFromAcceptedRoute determines the URL scheme (http or https) by
-// inspecting the Gateway listener that accepted the HTTPRoute. It finds the
-// accepted parent, fetches the Gateway, matches the listener by sectionName
-// (if present), and returns "https" when the protocol is HTTPS or TLS.
-// Falls back to "http" on any error or when no TLS listener matches.
-func SchemeFromAcceptedRoute(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute) string {
+// inspecting the Gateway listener that accepted the HTTPRoute. It matches
+// the parent status entry for the given Gateway name and namespace, fetches
+// the Gateway, and checks the listener protocol. Falls back to "http" on
+// any error or when no matching parent or TLS listener is found.
+func SchemeFromAcceptedRoute(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, gwName, gwNamespace string) string {
 	for _, parent := range route.Status.Parents {
 		if !isParentAccepted(parent) {
 			continue
 		}
 
-		gwName := string(parent.ParentRef.Name)
-		gwNamespace := route.Namespace
+		if string(parent.ParentRef.Name) != gwName {
+			continue
+		}
+		parentNS := route.Namespace
 		if parent.ParentRef.Namespace != nil {
-			gwNamespace = string(*parent.ParentRef.Namespace)
+			parentNS = string(*parent.ParentRef.Namespace)
+		}
+		if parentNS != gwNamespace {
+			continue
 		}
 
 		gw := &gatewayv1.Gateway{}
