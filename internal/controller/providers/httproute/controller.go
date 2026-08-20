@@ -305,6 +305,11 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(r.findBindingsForMCPServer),
 			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
+		Watches(
+			&gatewayv1.Gateway{},
+			handler.EnqueueRequestsFromMapFunc(r.findBindingsForGateway),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
 		Named("mcpgatewaybinding-httproute").
 		Complete(r)
 }
@@ -332,6 +337,31 @@ func (r *Reconciler) findBindingsForConfigMap(ctx context.Context, obj client.Ob
 			bindingList.Items[i].Spec.ConfigRef == obj.GetName() {
 			requests = append(requests, ctrl.Request{
 				NamespacedName: client.ObjectKeyFromObject(&bindingList.Items[i]),
+			})
+		}
+	}
+	return requests
+}
+
+func (r *Reconciler) findBindingsForGateway(ctx context.Context, obj client.Object) []ctrl.Request {
+	bindingList := &mcpv1alpha1.MCPGatewayBindingList{}
+	if err := r.List(ctx, bindingList); err != nil {
+		return nil
+	}
+	var requests []ctrl.Request
+	for i := range bindingList.Items {
+		b := &bindingList.Items[i]
+		if b.Spec.Provider != ProviderName || b.Spec.ConfigRef == "" {
+			continue
+		}
+		cm := &corev1.ConfigMap{}
+		if err := r.Get(ctx, client.ObjectKey{Name: b.Spec.ConfigRef, Namespace: b.Namespace}, cm); err != nil {
+			continue
+		}
+		if cm.Data[configKeyGatewayName] == obj.GetName() &&
+			cm.Data[configKeyGatewayNamespace] == obj.GetNamespace() {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(b),
 			})
 		}
 	}

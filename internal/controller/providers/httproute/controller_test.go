@@ -33,11 +33,17 @@ import (
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 )
 
+const (
+	testNamespace   = "default"
+	testGatewayName = "my-gateway"
+	testGatewayNS   = "gateway-ns"
+)
+
 func newTestMCPServer(name string) *mcpv1alpha1.MCPServer {
 	return &mcpv1alpha1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: "default",
+			Namespace: testNamespace,
 		},
 		Spec: mcpv1alpha1.MCPServerSpec{
 			Source: mcpv1alpha1.Source{
@@ -102,7 +108,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		cm := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      configMapName,
-				Namespace: "default",
+				Namespace: testNamespace,
 			},
 			Data: data,
 		}
@@ -113,7 +119,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      bindingName,
-				Namespace: "default",
+				Namespace: testNamespace,
 			},
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: mcpServerName,
@@ -126,10 +132,10 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 	AfterEach(func() {
 		for _, obj := range []client.Object{
-			&gatewayv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: "default"}},
-			&mcpv1alpha1.MCPGatewayBinding{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: "default"}},
-			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: configMapName, Namespace: "default"}},
-			&mcpv1alpha1.MCPServer{ObjectMeta: metav1.ObjectMeta{Name: mcpServerName, Namespace: "default"}},
+			&gatewayv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
+			&mcpv1alpha1.MCPGatewayBinding{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
+			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: configMapName, Namespace: testNamespace}},
+			&mcpv1alpha1.MCPServer{ObjectMeta: metav1.ObjectMeta{Name: mcpServerName, Namespace: testNamespace}},
 		} {
 			_ = k8sClient.Delete(ctx, obj)
 		}
@@ -138,23 +144,23 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 	It("should create an HTTPRoute from a binding with httproute provider", func() {
 		createMCPServer()
 		createConfigMap(map[string]string{
-			configKeyGatewayName:      "my-gateway",
-			configKeyGatewayNamespace: "gateway-ns",
+			configKeyGatewayName:      testGatewayName,
+			configKeyGatewayNamespace: testGatewayNS,
 		})
 		createBinding(ProviderName)
 
 		r := newReconciler()
 		result, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		route := &gatewayv1.HTTPRoute{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 
 		Expect(route.Spec.ParentRefs).To(HaveLen(1))
-		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal("my-gateway"))
-		Expect(string(*route.Spec.ParentRefs[0].Namespace)).To(Equal("gateway-ns"))
+		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal(testGatewayName))
+		Expect(string(*route.Spec.ParentRefs[0].Namespace)).To(Equal(testGatewayNS))
 
 		Expect(route.Spec.Rules).To(HaveLen(1))
 		Expect(route.Spec.Rules[0].BackendRefs).To(HaveLen(1))
@@ -169,7 +175,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		By("initially setting Registered=False until gateway accepts the route")
 		binding := &mcpv1alpha1.MCPGatewayBinding{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
@@ -180,11 +186,11 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		setHTTPRouteAccepted(ctx, route)
 
 		_, err = r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered = meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionTrue))
@@ -192,14 +198,14 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 	It("should return early when MCPServer not found", func() {
 		createConfigMap(map[string]string{
-			configKeyGatewayName:      "my-gateway",
-			configKeyGatewayNamespace: "gateway-ns",
+			configKeyGatewayName:      testGatewayName,
+			configKeyGatewayNamespace: testGatewayNS,
 		})
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      bindingName,
-				Namespace: "default",
+				Namespace: testNamespace,
 			},
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: "nonexistent",
@@ -211,12 +217,12 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		result, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result).To(Equal(reconcile.Result{}))
 
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).To(BeNil())
 	})
@@ -227,12 +233,12 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
@@ -246,12 +252,12 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
@@ -261,32 +267,32 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 	It("should set hostname on HTTPRoute when configured in ConfigMap", func() {
 		createMCPServer()
 		createConfigMap(map[string]string{
-			configKeyGatewayName:      "my-gateway",
-			configKeyGatewayNamespace: "gateway-ns",
+			configKeyGatewayName:      testGatewayName,
+			configKeyGatewayNamespace: testGatewayNS,
 			configKeyHostname:         "mcp.example.com",
 		})
 		createBinding(ProviderName)
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		route := &gatewayv1.HTTPRoute{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		Expect(route.Spec.Hostnames).To(HaveLen(1))
 		Expect(string(route.Spec.Hostnames[0])).To(Equal("mcp.example.com"))
 
 		setHTTPRouteAccepted(ctx, route)
 
 		_, err = r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		Expect(binding.Status.URL).To(Equal("http://mcp.example.com/mcp"))
 	})
 
@@ -296,84 +302,84 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
 
 		createConfigMap(map[string]string{
-			configKeyGatewayName:      "my-gateway",
-			configKeyGatewayNamespace: "gateway-ns",
+			configKeyGatewayName:      testGatewayName,
+			configKeyGatewayNamespace: testGatewayNS,
 		})
 		createBinding(ProviderName)
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		route := &gatewayv1.HTTPRoute{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		Expect(*route.Spec.Rules[0].Matches[0].Path.Value).To(Equal("/mcp"))
 	})
 
 	It("should update existing HTTPRoute when ConfigMap changes", func() {
 		createMCPServer()
 		createConfigMap(map[string]string{
-			configKeyGatewayName:      "my-gateway",
-			configKeyGatewayNamespace: "gateway-ns",
+			configKeyGatewayName:      testGatewayName,
+			configKeyGatewayNamespace: testGatewayNS,
 		})
 		createBinding(ProviderName)
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		route := &gatewayv1.HTTPRoute{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
-		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal("my-gateway"))
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
+		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal(testGatewayName))
 
 		cm := &corev1.ConfigMap{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: configMapName, Namespace: "default"}, cm)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: configMapName, Namespace: testNamespace}, cm)).To(Succeed())
 		cm.Data[configKeyGatewayName] = "updated-gateway"
 		Expect(k8sClient.Update(ctx, cm)).To(Succeed())
 
 		_, err = r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal("updated-gateway"))
 	})
 
 	It("should restore ownerReference when stripped but spec unchanged", func() {
 		createMCPServer()
 		createConfigMap(map[string]string{
-			configKeyGatewayName:      "my-gateway",
-			configKeyGatewayNamespace: "gateway-ns",
+			configKeyGatewayName:      testGatewayName,
+			configKeyGatewayNamespace: testGatewayNS,
 		})
 		createBinding(ProviderName)
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		route := &gatewayv1.HTTPRoute{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		Expect(metav1.GetControllerOf(route)).NotTo(BeNil())
 
 		route.OwnerReferences = nil
 		Expect(k8sClient.Update(ctx, route)).To(Succeed())
 
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		Expect(metav1.GetControllerOf(route)).To(BeNil())
 
 		_, err = r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		ownerRef := metav1.GetControllerOf(route)
 		Expect(ownerRef).NotTo(BeNil())
 		Expect(ownerRef.Name).To(Equal(bindingName))
@@ -383,19 +389,19 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 	It("should set Registered=False when gateway-namespace is empty string", func() {
 		createMCPServer()
 		createConfigMap(map[string]string{
-			configKeyGatewayName:      "my-gateway",
+			configKeyGatewayName:      testGatewayName,
 			configKeyGatewayNamespace: "",
 		})
 		createBinding(ProviderName)
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
@@ -408,7 +414,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      bindingName,
-				Namespace: "default",
+				Namespace: testNamespace,
 			},
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: mcpServerName,
@@ -419,11 +425,11 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
@@ -438,7 +444,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			cm := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      configMapName,
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
@@ -453,7 +459,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			cm := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "unrelated-cm",
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
@@ -467,10 +473,85 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			cm := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      configMapName,
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
+			Expect(requests).To(BeEmpty())
+		})
+	})
+
+	Describe("findBindingsForGateway", func() {
+		It("should return requests for bindings whose ConfigMap references the Gateway", func() {
+			createConfigMap(map[string]string{
+				configKeyGatewayName:      testGatewayName,
+				configKeyGatewayNamespace: testGatewayNS,
+			})
+			createBinding(ProviderName)
+
+			r := newReconciler()
+			gw := &gatewayv1.Gateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testGatewayName,
+					Namespace: testGatewayNS,
+				},
+			}
+			requests := r.findBindingsForGateway(ctx, gw)
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0].Name).To(Equal(bindingName))
+		})
+
+		It("should not return bindings for a different Gateway name", func() {
+			createConfigMap(map[string]string{
+				configKeyGatewayName:      testGatewayName,
+				configKeyGatewayNamespace: testGatewayNS,
+			})
+			createBinding(ProviderName)
+
+			r := newReconciler()
+			gw := &gatewayv1.Gateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "other-gateway",
+					Namespace: testGatewayNS,
+				},
+			}
+			requests := r.findBindingsForGateway(ctx, gw)
+			Expect(requests).To(BeEmpty())
+		})
+
+		It("should not return bindings for a different Gateway namespace", func() {
+			createConfigMap(map[string]string{
+				configKeyGatewayName:      testGatewayName,
+				configKeyGatewayNamespace: testGatewayNS,
+			})
+			createBinding(ProviderName)
+
+			r := newReconciler()
+			gw := &gatewayv1.Gateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testGatewayName,
+					Namespace: "other-ns",
+				},
+			}
+			requests := r.findBindingsForGateway(ctx, gw)
+			Expect(requests).To(BeEmpty())
+		})
+
+		It("should not return bindings with non-httproute provider", func() {
+			createConfigMap(map[string]string{
+				configKeyGatewayName:      testGatewayName,
+				configKeyGatewayNamespace: testGatewayNS,
+			})
+			createBinding("custom-vendor")
+
+			r := newReconciler()
+			gw := &gatewayv1.Gateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testGatewayName,
+					Namespace: testGatewayNS,
+				},
+			}
+			requests := r.findBindingsForGateway(ctx, gw)
 			Expect(requests).To(BeEmpty())
 		})
 	})
@@ -483,7 +564,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			server := &mcpv1alpha1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      mcpServerName,
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 			}
 			requests := r.findBindingsForMCPServer(ctx, server)
@@ -498,7 +579,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			server := &mcpv1alpha1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "other-server",
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 			}
 			requests := r.findBindingsForMCPServer(ctx, server)
@@ -512,7 +593,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			server := &mcpv1alpha1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      mcpServerName,
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 			}
 			requests := r.findBindingsForMCPServer(ctx, server)
