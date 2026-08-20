@@ -168,7 +168,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, statusErr
 	}
 
-	scheme := providers.SchemeFromAcceptedRoute(ctx, r.Client, route)
+	scheme := providers.SchemeFromAcceptedRoute(ctx, r.Client, route, gwName, gwNamespace)
 	url := fmt.Sprintf("%s://%s%s", scheme, hostname, path)
 
 	return ctrl.Result{}, r.updateBindingStatus(ctx, binding, metav1.ConditionTrue,
@@ -380,10 +380,13 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Kind:    "HTTPRoute",
 	}
 	if _, err := mgr.GetRESTMapper().RESTMapping(httpRouteGVK.GroupKind(), httpRouteGVK.Version); err != nil {
-		setupLog.Info("Gateway API HTTPRoute CRD not found, skipping MCPGatewayBinding kuadrant controller. "+
-			"Install Gateway API CRDs and restart the operator to enable Kuadrant gateway integration.",
-			"gvk", httpRouteGVK.String())
-		return nil
+		if meta.IsNoMatchError(err) {
+			setupLog.Info("Gateway API HTTPRoute CRD not found, skipping MCPGatewayBinding kuadrant controller. "+
+				"Install Gateway API CRDs and restart the operator to enable Kuadrant gateway integration.",
+				"gvk", httpRouteGVK.String())
+			return nil
+		}
+		return fmt.Errorf("checking for HTTPRoute CRD: %w", err)
 	}
 
 	regGVK := schema.GroupVersionKind{
@@ -392,10 +395,13 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Kind:    "MCPServerRegistration",
 	}
 	if _, err := mgr.GetRESTMapper().RESTMapping(regGVK.GroupKind(), regGVK.Version); err != nil {
-		setupLog.Info("Kuadrant MCPServerRegistration CRD not found, skipping MCPGatewayBinding kuadrant controller. "+
-			"Install Kuadrant MCP Gateway CRDs and restart the operator to enable Kuadrant gateway integration.",
-			"gvk", regGVK.String())
-		return nil
+		if meta.IsNoMatchError(err) {
+			setupLog.Info("Kuadrant MCPServerRegistration CRD not found, skipping MCPGatewayBinding kuadrant controller. "+
+				"Install Kuadrant MCP Gateway CRDs and restart the operator to enable Kuadrant gateway integration.",
+				"gvk", regGVK.String())
+			return nil
+		}
+		return fmt.Errorf("checking for MCPServerRegistration CRD: %w", err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -411,6 +417,11 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&mcpv1alpha1.MCPServer{},
 			handler.EnqueueRequestsFromMapFunc(r.findBindingsForMCPServer),
 			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+		).
+		Watches(
+			&gatewayv1.Gateway{},
+			handler.EnqueueRequestsFromMapFunc(r.findBindingsForGateway),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
 		).
 		Named("mcpgatewaybinding-kuadrant").
 		Complete(r)
@@ -439,6 +450,31 @@ func (r *Reconciler) findBindingsForConfigMap(ctx context.Context, obj client.Ob
 			bindingList.Items[i].Spec.ConfigRef == obj.GetName() {
 			requests = append(requests, ctrl.Request{
 				NamespacedName: client.ObjectKeyFromObject(&bindingList.Items[i]),
+			})
+		}
+	}
+	return requests
+}
+
+func (r *Reconciler) findBindingsForGateway(ctx context.Context, obj client.Object) []ctrl.Request {
+	bindingList := &mcpv1alpha1.MCPGatewayBindingList{}
+	if err := r.List(ctx, bindingList); err != nil {
+		return nil
+	}
+	var requests []ctrl.Request
+	for i := range bindingList.Items {
+		b := &bindingList.Items[i]
+		if b.Spec.Provider != ProviderName || b.Spec.ConfigRef == "" {
+			continue
+		}
+		cm := &corev1.ConfigMap{}
+		if err := r.Get(ctx, client.ObjectKey{Name: b.Spec.ConfigRef, Namespace: b.Namespace}, cm); err != nil {
+			continue
+		}
+		if cm.Data[configKeyGatewayName] == obj.GetName() &&
+			cm.Data[configKeyGatewayNamespace] == obj.GetNamespace() {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(b),
 			})
 		}
 	}

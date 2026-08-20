@@ -34,11 +34,13 @@ import (
 	kuadrantapi "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant/api"
 )
 
+const testNamespace = "default"
+
 func newTestMCPServer(name string) *mcpv1alpha1.MCPServer {
 	return &mcpv1alpha1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: "default",
+			Namespace: testNamespace,
 		},
 		Spec: mcpv1alpha1.MCPServerSpec{
 			Source: mcpv1alpha1.Source{
@@ -103,7 +105,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		cm := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      configMapName,
-				Namespace: "default",
+				Namespace: testNamespace,
 			},
 			Data: data,
 		}
@@ -122,7 +124,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      bindingName,
-				Namespace: "default",
+				Namespace: testNamespace,
 			},
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: mcpServerName,
@@ -136,17 +138,17 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 	doReconcile := func() (reconcile.Result, error) {
 		r := newReconciler()
 		return r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: "default"},
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
 		})
 	}
 
 	AfterEach(func() {
 		for _, obj := range []client.Object{
-			&kuadrantapi.MCPServerRegistration{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: "default"}},
-			&gatewayv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: "default"}},
-			&mcpv1alpha1.MCPGatewayBinding{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: "default"}},
-			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: configMapName, Namespace: "default"}},
-			&mcpv1alpha1.MCPServer{ObjectMeta: metav1.ObjectMeta{Name: mcpServerName, Namespace: "default"}},
+			&kuadrantapi.MCPServerRegistration{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
+			&gatewayv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
+			&mcpv1alpha1.MCPGatewayBinding{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
+			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: configMapName, Namespace: testNamespace}},
+			&mcpv1alpha1.MCPServer{ObjectMeta: metav1.ObjectMeta{Name: mcpServerName, Namespace: testNamespace}},
 		} {
 			_ = k8sClient.Delete(ctx, obj)
 		}
@@ -162,7 +164,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("verifying HTTPRoute was created with sectionName")
 		route := &gatewayv1.HTTPRoute{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 
 		Expect(route.Spec.ParentRefs).To(HaveLen(1))
 		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal("my-gateway"))
@@ -184,7 +186,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("verifying MCPServerRegistration was created")
 		reg := &kuadrantapi.MCPServerRegistration{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, reg)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, reg)).To(Succeed())
 
 		Expect(reg.Spec.TargetRef.Group).To(Equal("gateway.networking.k8s.io"))
 		Expect(reg.Spec.TargetRef.Kind).To(Equal("HTTPRoute"))
@@ -199,7 +201,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("initially setting Registered=False until gateway accepts the route")
 		binding := &mcpv1alpha1.MCPGatewayBinding{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
@@ -212,7 +214,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		_, err = doReconcile()
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered = meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionTrue))
@@ -230,7 +232,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		reg := &kuadrantapi.MCPServerRegistration{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, reg)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, reg)).To(Succeed())
 		Expect(reg.Spec.Prefix).To(Equal("myserver_"))
 	})
 
@@ -243,7 +245,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		route := &gatewayv1.HTTPRoute{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		Expect(route.Spec.ParentRefs[0].SectionName).NotTo(BeNil())
 		Expect(string(*route.Spec.ParentRefs[0].SectionName)).To(Equal("mcps"))
 	})
@@ -259,7 +261,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		route := &gatewayv1.HTTPRoute{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		Expect(string(*route.Spec.ParentRefs[0].SectionName)).To(Equal("custom-listener"))
 	})
 
@@ -269,7 +271,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      bindingName,
-				Namespace: "default",
+				Namespace: testNamespace,
 			},
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: "nonexistent",
@@ -283,7 +285,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result).To(Equal(reconcile.Result{}))
 
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).To(BeNil())
 	})
@@ -297,7 +299,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
@@ -316,7 +318,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
@@ -329,7 +331,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      bindingName,
-				Namespace: "default",
+				Namespace: testNamespace,
 			},
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: mcpServerName,
@@ -341,7 +343,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		_, err := doReconcile()
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, binding)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
@@ -359,16 +361,16 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		reg := &kuadrantapi.MCPServerRegistration{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, reg)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, reg)).To(Succeed())
 		Expect(reg.Spec.Prefix).To(Equal("old_"))
 
 		route := &gatewayv1.HTTPRoute{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal("my-gateway"))
 
 		By("updating ConfigMap")
 		cm := &corev1.ConfigMap{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: configMapName, Namespace: "default"}, cm)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: configMapName, Namespace: testNamespace}, cm)).To(Succeed())
 		cm.Data[configKeyGatewayName] = "updated-gateway"
 		cm.Data[configKeyPrefix] = "new_"
 		Expect(k8sClient.Update(ctx, cm)).To(Succeed())
@@ -376,10 +378,10 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		_, err = doReconcile()
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, route)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal("updated-gateway"))
 
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: "default"}, reg)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, reg)).To(Succeed())
 		Expect(reg.Spec.Prefix).To(Equal("new_"))
 	})
 
@@ -391,7 +393,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			cm := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      configMapName,
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
@@ -406,7 +408,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			cm := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "unrelated-cm",
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
@@ -417,7 +419,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			binding := &mcpv1alpha1.MCPGatewayBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      bindingName,
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 				Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 					MCPServerRef: mcpServerName,
@@ -431,7 +433,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			cm := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      configMapName,
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
@@ -447,7 +449,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			server := &mcpv1alpha1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      mcpServerName,
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 			}
 			requests := r.findBindingsForMCPServer(ctx, server)
@@ -462,7 +464,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			server := &mcpv1alpha1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "other-server",
-					Namespace: "default",
+					Namespace: testNamespace,
 				},
 			}
 			requests := r.findBindingsForMCPServer(ctx, server)
