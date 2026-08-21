@@ -110,8 +110,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			"spec.configRef is required for httproute provider")
 	}
 	if err := r.Get(ctx, client.ObjectKey{Name: binding.Spec.ConfigRef, Namespace: binding.Namespace}, configMap); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
-			fmt.Sprintf("ConfigMap %q not found: %v", binding.Spec.ConfigRef, err))
+			fmt.Sprintf("ConfigMap %q not found", binding.Spec.ConfigRef))
 	}
 
 	gwName, ok := configMap.Data[configKeyGatewayName]
@@ -251,7 +254,8 @@ func (r *Reconciler) updateBindingStatus(
 ) error {
 	existing := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 	if existing != nil && existing.Status == status && existing.Reason == reason &&
-		existing.Message == message && binding.Status.URL == url {
+		existing.Message == message && binding.Status.URL == url &&
+		existing.ObservedGeneration == binding.Generation {
 		return nil
 	}
 
