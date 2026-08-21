@@ -349,7 +349,8 @@ func (r *Reconciler) updateBindingStatus(
 ) error {
 	existing := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 	if existing != nil && existing.Status == status && existing.Reason == reason &&
-		existing.Message == message && binding.Status.URL == url {
+		existing.Message == message && binding.Status.URL == url &&
+		existing.ObservedGeneration == binding.Generation {
 		return nil
 	}
 
