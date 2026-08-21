@@ -117,8 +117,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			"spec.configRef is required for kuadrant provider")
 	}
 	if err := r.Get(ctx, client.ObjectKey{Name: binding.Spec.ConfigRef, Namespace: binding.Namespace}, configMap); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
-			fmt.Sprintf("ConfigMap %q not found: %v", binding.Spec.ConfigRef, err))
+			fmt.Sprintf("ConfigMap %q not found", binding.Spec.ConfigRef))
 	}
 
 	gwName, ok := configMap.Data[configKeyGatewayName]
