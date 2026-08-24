@@ -31,6 +31,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"sigs.k8s.io/e2e-framework/klient/k8s"
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
@@ -335,6 +336,130 @@ func WaitForEndpointsReady(ctx context.Context, t *testing.T, cfg *envconf.Confi
 		t.Fatalf("endpoints for Service %s/%s never became ready: %v", namespace, name, err)
 	}
 	t.Logf("Service %s/%s has ready endpoints", namespace, name)
+}
+
+// CreateGatewayConfigMap creates a ConfigMap with gateway integration settings.
+func CreateGatewayConfigMap(ctx context.Context, t *testing.T, cfg *envconf.Config,
+	name, namespace, gwName, gwNamespace, hostname string) {
+	t.Helper()
+	data := map[string]string{
+		"gateway-name":      gwName,
+		"gateway-namespace": gwNamespace,
+	}
+	if hostname != "" {
+		data["hostname"] = hostname
+	}
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Data: data,
+	}
+	if err := cfg.Client().Resources().Create(ctx, cm); err != nil {
+		t.Fatalf("failed to create gateway ConfigMap: %v", err)
+	}
+	t.Logf("created gateway ConfigMap %s/%s", namespace, name)
+}
+
+// EnsureGateway creates a GatewayClass, namespace, and Gateway resource if they don't
+// already exist. The Gateway allows routes from all namespaces so that HTTPRoutes
+// created in per-test namespaces are accepted by the gateway controller.
+func EnsureGateway(ctx context.Context, t *testing.T, cfg *envconf.Config,
+	name, namespace, gatewayClassName string) {
+	t.Helper()
+	r := cfg.Client().Resources()
+
+	gc := &gatewayv1.GatewayClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: gatewayClassName,
+		},
+		Spec: gatewayv1.GatewayClassSpec{
+			ControllerName: "gateway.envoyproxy.io/gatewayclass-controller",
+		},
+	}
+	if err := r.Create(ctx, gc); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("failed to create GatewayClass %s: %v", gatewayClassName, err)
+	}
+
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
+	if err := r.Create(ctx, ns); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("failed to create namespace %s: %v", namespace, err)
+	}
+
+	fromAll := gatewayv1.NamespacesFromAll
+	gw := &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: gatewayv1.GatewaySpec{
+			GatewayClassName: gatewayv1.ObjectName(gatewayClassName),
+			Listeners: []gatewayv1.Listener{{
+				Name:     "http",
+				Protocol: gatewayv1.HTTPProtocolType,
+				Port:     80,
+				AllowedRoutes: &gatewayv1.AllowedRoutes{
+					Namespaces: &gatewayv1.RouteNamespaces{
+						From: &fromAll,
+					},
+				},
+			}},
+		},
+	}
+	if err := r.Create(ctx, gw); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("failed to create Gateway %s/%s: %v", namespace, name, err)
+	}
+	t.Logf("ensured Gateway %s/%s (class=%s)", namespace, name, gatewayClassName)
+}
+
+// WaitForBindingRegistered polls until the MCPGatewayBinding's Registered condition
+// matches the desired status. An optional timeout can be provided; defaults to 3 minutes.
+func WaitForBindingRegistered(ctx context.Context, t *testing.T, r *resources.Resources,
+	binding *mcpv1alpha1.MCPGatewayBinding, status metav1.ConditionStatus, timeout ...time.Duration) {
+	t.Helper()
+	d := 3 * time.Minute
+	if len(timeout) > 0 {
+		d = timeout[0]
+	}
+	err := wait.For(
+		conditions.New(r).ResourceMatch(binding, func(obj k8s.Object) bool {
+			b := obj.(*mcpv1alpha1.MCPGatewayBinding)
+			for _, c := range b.Status.Conditions {
+				if c.Type == "Registered" && c.Status == status {
+					return true
+				}
+			}
+			return false
+		}),
+		wait.WithContext(ctx),
+		wait.WithTimeout(d),
+		wait.WithInterval(2*time.Second),
+	)
+	if err != nil {
+		t.Fatalf("MCPGatewayBinding %s/%s: timed out waiting for Registered=%s: %v",
+			binding.Namespace, binding.Name, status, err)
+	}
+}
+
+// WaitForBindingDeleted polls until the MCPGatewayBinding is deleted.
+func WaitForBindingDeleted(ctx context.Context, t *testing.T, r *resources.Resources,
+	binding *mcpv1alpha1.MCPGatewayBinding, timeout ...time.Duration) {
+	t.Helper()
+	d := 1 * time.Minute
+	if len(timeout) > 0 {
+		d = timeout[0]
+	}
+	err := wait.For(
+		conditions.New(r).ResourceDeleted(binding),
+		wait.WithContext(ctx),
+		wait.WithTimeout(d),
+		wait.WithInterval(2*time.Second),
+	)
+	if err != nil {
+		t.Fatalf("MCPGatewayBinding %s/%s: timed out waiting for deletion: %v",
+			binding.Namespace, binding.Name, err)
+	}
 }
 
 // UpdateWithRetry performs a read-modify-write loop with automatic retry on

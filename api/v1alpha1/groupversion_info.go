@@ -46,4 +46,7 @@ var (
 const (
 	// MCPServerKind is the kind name for MCPServer resources.
 	MCPServerKind = "MCPServer"
+
+	// MCPGatewayBindingKind is the kind name for MCPGatewayBinding resources.
+	MCPGatewayBindingKind = "MCPGatewayBinding"
 )

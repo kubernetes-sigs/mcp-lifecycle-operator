@@ -35,6 +35,9 @@ type MCPServerStatusApplyConfiguration struct {
 	DeploymentName *string `json:"deploymentName,omitempty"`
 	// ServiceName is the name of the Service created for this MCPServer.
 	ServiceName *string `json:"serviceName,omitempty"`
+	// GatewayBinding contains the status of the MCPGatewayBinding created for
+	// this MCPServer, when spec.gateway is configured.
+	GatewayBinding *GatewayBindingStatusApplyConfiguration `json:"gatewayBinding,omitempty"`
 	// Address contains the address of the MCP server service.
 	Address *MCPServerAddressApplyConfiguration `json:"address,omitempty"`
 	// ServerInfo contains identity and capability information reported by the
@@ -54,18 +57,21 @@ type MCPServerStatusApplyConfiguration struct {
 	// Standard condition types:
 	// - "Accepted": Configuration is valid and all referenced resources exist
 	// - "Ready": MCP server is operational and ready to serve requests
+	// - "GatewayRegistered": Gateway integration is active (only when spec.gateway is set)
 	//
 	// The "Accepted" condition validates configuration before creating resources.
 	// Reasons: Valid (True), Invalid (False with details in message)
 	//
 	// The "Ready" condition indicates overall server readiness.
 	// Status=True means at least one instance is healthy and serving requests.
+	// When spec.gateway is configured, Ready=False until gateway is registered.
 	// Reasons:
 	// - Available: Server is ready (Status=True)
 	// - ConfigurationInvalid: Accepted=False, cannot proceed
 	// - DeploymentUnavailable: No healthy instances (all deployment/pod issues)
 	// - ScaledToZero: Deployment scaled to 0 replicas
 	// - Initializing: Waiting for initial status
+	// - GatewayNotRegistered: Gateway binding not yet registered
 	//
 	// Note: Specific failure details (ImagePullBackOff, OOMKilled, CrashLoop, etc.)
 	// are included in the condition message, not the reason.
@@ -99,6 +105,14 @@ func (b *MCPServerStatusApplyConfiguration) WithDeploymentName(value string) *MC
 // If called multiple times, the ServiceName field is set to the value of the last call.
 func (b *MCPServerStatusApplyConfiguration) WithServiceName(value string) *MCPServerStatusApplyConfiguration {
 	b.ServiceName = &value
+	return b
+}
+
+// WithGatewayBinding sets the GatewayBinding field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the GatewayBinding field is set to the value of the last call.
+func (b *MCPServerStatusApplyConfiguration) WithGatewayBinding(value *GatewayBindingStatusApplyConfiguration) *MCPServerStatusApplyConfiguration {
+	b.GatewayBinding = value
 	return b
 }
 

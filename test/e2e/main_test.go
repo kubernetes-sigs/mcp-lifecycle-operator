@@ -27,6 +27,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"sigs.k8s.io/e2e-framework/pkg/env"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
@@ -50,8 +51,11 @@ func TestMain(m *testing.M) {
 
 	testenv = env.NewWithConfig(cfg)
 
-	// Register MCPServer types so the client can work with them.
-	if err := mcpv1alpha1.AddToScheme(cfg.Client().Resources().GetScheme()); err != nil {
+	scheme := cfg.Client().Resources().GetScheme()
+	if err := mcpv1alpha1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	if err := gatewayv1.Install(scheme); err != nil {
 		panic(err)
 	}
 
@@ -121,6 +125,26 @@ func dumpDiagnostics(ctx context.Context, t *testing.T, cfg *envconf.Config, ns 
 				t.Logf("  condition %s=%s reason=%s message=%q",
 					c.Type, c.Status, c.Reason, c.Message)
 			}
+		}
+	}
+
+	var bindings mcpv1alpha1.MCPGatewayBindingList
+	if err := r.List(ctx, &bindings); err == nil {
+		for _, b := range bindings.Items {
+			t.Logf("MCPGatewayBinding %s/%s provider=%s mcpServerRef=%s",
+				b.Namespace, b.Name, b.Spec.Provider, b.Spec.MCPServerRef)
+			for _, c := range b.Status.Conditions {
+				t.Logf("  condition %s=%s reason=%s message=%q",
+					c.Type, c.Status, c.Reason, c.Message)
+			}
+		}
+	}
+
+	var httpRoutes gatewayv1.HTTPRouteList
+	if err := r.List(ctx, &httpRoutes); err == nil {
+		for _, hr := range httpRoutes.Items {
+			t.Logf("HTTPRoute %s/%s parentRefs=%d rules=%d",
+				hr.Namespace, hr.Name, len(hr.Spec.ParentRefs), len(hr.Spec.Rules))
 		}
 	}
 

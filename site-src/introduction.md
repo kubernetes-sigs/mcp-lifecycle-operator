@@ -154,9 +154,12 @@ graph TB
     Operator -->|Creates/Updates| Deployment[Deployment]
     Operator -->|Creates/Updates| Service[Service]
     Operator -->|Creates/Updates| NetworkPolicy[NetworkPolicy]
+    Operator -->|Creates/Updates| Binding[MCPGatewayBinding]
     Deployment -->|Manages| Pods[MCP Server Pods]
     Service -->|Routes to| Pods
     NetworkPolicy -->|Secures| Pods
+    Binding -->|Watched by| Provider[Integration Controller]
+    Provider -->|Creates| GWResources[Gateway Resources]
     Operator -->|Updates| Status[Status with Address]
 ```
 
@@ -165,9 +168,10 @@ The operator watches for `MCPServer` resources and automatically:
 1. Creates a Deployment to run the MCP server containers
 2. Creates a Service for network access
 3. Creates a NetworkPolicy to restrict ingress to the configured server port
-4. Manages updates and rollouts
-5. Reports status and connection information
-6. Cleans up resources on deletion
+4. Creates an MCPGatewayBinding when `spec.gateway` is configured, enabling external access through provider-specific gateway resources
+5. Manages updates and rollouts
+6. Reports status and connection information
+7. Cleans up resources on deletion
 
 ## Next Steps
 
