@@ -78,6 +78,21 @@ spec:
 EOF
 ```
 
+For an MCP server image in a private registry, create an image pull Secret in
+the same namespace and reference it from the `ContainerImage` source. The
+optional `pullPolicy` field accepts `Always`, `IfNotPresent`, or `Never`.
+
+```yaml
+spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: registry.example.com/team/mcp-server:v1
+      pullPolicy: IfNotPresent
+      imagePullSecrets:
+        - name: registry-credentials
+```
+
 ### 3. Verify the Deployment
 
 Check that the operator created the resources:

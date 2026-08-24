@@ -21,8 +21,11 @@ package controller
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/http"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -107,9 +110,6 @@ const (
 
 // Reconciliation constants.
 const (
-	// requeueDelayDeploymentUnavailable is the delay before requeuing when a deployment is not yet available.
-	requeueDelayDeploymentUnavailable = 15 * time.Second
-
 	// eventActionConfigurationValidation is the reporting action for configuration validation outcomes.
 	eventActionConfigurationValidation = "ConfigurationValidation"
 	// eventActionConfigurationAccepted is the reporting action when Accepted becomes True.
@@ -166,11 +166,18 @@ type MCPServerReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
 	Recorder  events.EventRecorder
-	MCPDialer func(ctx context.Context, url string) (*mcpv1alpha1.MCPServerInfo, error) // nil = use real MCP handshake
+	MCPDialer func(ctx context.Context, url string, transport *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) // nil = use real MCP handshake
 	APIReader client.Reader
 	// TLSEnvVars holds TLS-related environment variables to propagate to every
 	// MCP server container. Populated at startup when PROPAGATE_TLS_ENV_VARS is set.
 	TLSEnvVars []corev1.EnvVar
+	// TLSProfile applies operator-wide TLS settings (min version, cipher suites)
+	// to outbound connections. Populated from TLS_MIN_VERSION / TLS_CIPHER_SUITES.
+	TLSProfile func(*tls.Config)
+	// tlsCABundleHashes tracks the SHA-256 hash of each MCPServer's CA bundle
+	// Secret content at the time of the last successful handshake. Keyed by
+	// namespace/name. Used to detect CA rotation without bumping generation.
+	tlsCABundleHashes sync.Map
 }
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch;update;patch
@@ -181,7 +188,7 @@ type MCPServerReconciler struct {
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
@@ -199,6 +206,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.Get(ctx, req.NamespacedName, mcpServer); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("MCPServer resource not found, ignoring since object must be deleted")
+			r.tlsCABundleHashes.Delete(req.Namespace + "/" + req.Name)
 			cleanupMetrics(req.Name, req.Namespace)
 			return ctrl.Result{}, nil
 		}
@@ -353,12 +361,19 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		path = defaultMCPPath
 	}
 
-	mcpURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d%s",
-		mcpServer.Name, mcpServer.Namespace, mcpServer.Spec.Config.Port, path)
+	mcpURL := fmt.Sprintf("%s://%s.%s.svc.cluster.local:%d%s",
+		urlScheme(mcpServer), mcpServer.Name, mcpServer.Namespace, mcpServer.Spec.Config.Port, path)
+
+	// Compute current TLS CA bundle hash so the handshake is re-verified
+	// when the CA bundle Secret content changes (which does not bump generation).
+	var tlsCABundleHash string
+	if mcpServer.Spec.Transport != nil && mcpServer.Spec.Transport.TLS != nil {
+		tlsCABundleHash = computeTLSCABundleHash(ctx, r.APIReader, mcpServer.Namespace, mcpServer.Spec.Transport.TLS)
+	}
 
 	// If deployment-level readiness reports Available, verify the MCP endpoint.
 	var serverInfo *mcpv1alpha1.MCPServerInfo
-	readyCondition, serverInfo = r.reconcileHandshake(ctx, mcpServer, mcpURL, readyCondition)
+	readyCondition, serverInfo = r.reconcileHandshake(ctx, mcpServer, mcpURL, readyCondition, tlsCABundleHash)
 
 	// Normal Event once per Ready transition to Available after a successful handshake.
 	if pendingServerReadyEvent &&
@@ -394,6 +409,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
+	r.updateTLSCABundleHash(mcpServer, tlsCABundleHash, readyCondition)
+
 	if capDiff != "" {
 		capabilityChangesTotal.WithLabelValues(mcpServer.Name, mcpServer.Namespace).Inc()
 		r.emitCapabilityChangeDetected(mcpServer, capDiff)
@@ -404,12 +421,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		"accepted", acceptedCondition.Status,
 		"ready", readyCondition.Status)
 
-	// If Deployment is not yet available, requeue to check again later
-	if readyCondition.Status == metav1.ConditionFalse && readyCondition.Reason == ReasonDeploymentUnavailable {
-		logger.Info("Deployment not yet available, requeuing to check again",
-			"requeueAfter", requeueDelayDeploymentUnavailable)
-		return ctrl.Result{RequeueAfter: requeueDelayDeploymentUnavailable}, nil
-	}
+	// Deployment progress is driven by the Deployment and Pod watches rather than a
+	// timed requeue; pod-level failures surface via podDiagnosticsChangedPredicate.
 
 	// If MCP endpoint is not yet reachable, requeue with exponential backoff up to a max retry count.
 	if readyCondition.Status == metav1.ConditionFalse && readyCondition.Reason == ReasonMCPEndpointUnavailable {
@@ -757,6 +770,11 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&networkingv1.NetworkPolicy{}).
+		Watches(
+			&corev1.Pod{},
+			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForPod),
+			builder.WithPredicates(podDiagnosticsChangedPredicate()),
+		).
 		WatchesMetadata(
 			&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForConfigMap),

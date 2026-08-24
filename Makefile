@@ -153,6 +153,10 @@ verify: manifests generate fmt ## Verify generated code and formatting are up-to
 		echo "Generated code and formatting are up-to-date."; \
 	fi
 
+.PHONY: verify-go-version
+verify-go-version: ## Verify the Dockerfile's Go version is not older than go.mod requires.
+	./hack/verify-go-version.sh
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	"$(GOLANGCI_LINT)" run

@@ -1634,6 +1634,44 @@ spec:
                     description: ContainerImage specifies container image details
                       when Type is ContainerImage.
                     properties:
+                      imagePullSecrets:
+                        description: |-
+                          ImagePullSecrets references Secrets in the MCPServer namespace that contain
+                          credentials for pulling the MCP server image from a private registry.
+                          The operator passes these references to the managed Pod and does not read
+                          or copy Secret data.
+                        items:
+                          description: |-
+                            LocalObjectReference contains enough information to let you locate the
+                            referenced object inside the same namespace.
+                          properties:
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                        x-kubernetes-validations:
+                        - message: imagePullSecrets names must not be empty
+                          rule: self.all(secret, secret.name != '')
+                      pullPolicy:
+                        description: |-
+                          PullPolicy controls when the kubelet pulls the MCP server image.
+                          When omitted, Kubernetes applies its native default based on the image reference.
+                        enum:
+                        - Always
+                        - IfNotPresent
+                        - Never
+                        type: string
                       ref:
                         description: |-
                           Ref is the container image containing the MCP server implementation.
@@ -1704,6 +1742,41 @@ spec:
                     and must not be set otherwise
                   rule: 'self.type == ''ContainerImage'' ? has(self.containerImage)
                     : !has(self.containerImage)'
+              transport:
+                description: |-
+                  Transport configures transport-layer settings for
+                  operator-to-MCP-server communication.
+                properties:
+                  tls:
+                    description: |-
+                      TLS configures TLS for operator-to-MCP-server communication
+                      during handshake and discovery probes.
+                    properties:
+                      caBundleSecret:
+                        description: |-
+                          CABundleSecret references a Secret containing a CA certificate bundle
+                          under the key "ca.crt". Used to verify the MCP server's TLS certificate.
+                          When unset and enabled is true, system CA certificates are used.
+                        properties:
+                          name:
+                            description: Name of the Secret.
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      enabled:
+                        description: |-
+                          Enabled controls whether the operator uses HTTPS for handshake/discovery.
+                          When true, the operator connects to the MCP server using TLS.
+                        type: boolean
+                      insecureSkipVerify:
+                        description: |-
+                          InsecureSkipVerify disables TLS certificate verification.
+                          For development and testing only.
+                        type: boolean
+                    type: object
+                type: object
             required:
             - config
             - source
@@ -1717,7 +1790,8 @@ spec:
                   url:
                     description: |-
                       URL is the cluster-internal address of the MCP server service.
-                      Format: http://<servicename>.<namespace>.svc.cluster.local:<port>/<path>
+                      Format: <scheme>://<servicename>.<namespace>.svc.cluster.local:<port>/<path>
+                      The scheme is "https" when TLS is enabled, "http" otherwise.
                     type: string
                 type: object
               conditions:

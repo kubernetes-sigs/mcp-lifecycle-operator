@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"net"
 
@@ -76,6 +77,28 @@ func (r *MCPServerReconciler) validateConfig(
 		}
 	}
 
+	// Validate TLS configuration
+	if mcpServer.Spec.Transport != nil &&
+		mcpServer.Spec.Transport.TLS != nil &&
+		mcpServer.Spec.Transport.TLS.Enabled {
+		tlsCfg := mcpServer.Spec.Transport.TLS
+		if tlsCfg.InsecureSkipVerify && tlsCfg.CABundleSecret != nil {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: "insecureSkipVerify and caBundleSecret are mutually exclusive",
+			}
+		}
+		if tlsCfg.CABundleSecret != nil {
+			if err := r.validateCABundleSecret(
+				ctx,
+				mcpServer.Namespace,
+				tlsCfg.CABundleSecret.Name,
+			); err != nil {
+				return err
+			}
+		}
+	}
+
 	// All validation passed
 	return nil
 }
@@ -102,6 +125,34 @@ func (r *MCPServerReconciler) validateReferencedSecret(
 	secret := &corev1.Secret{}
 	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
 		return classifyAPIError(resourceDesc, namespace, err)
+	}
+	return nil
+}
+
+// validateCABundleSecret validates that the referenced Secret exists, contains
+// the "ca.crt" key, and that the value is parseable PEM. This catches permanent
+// config errors at validation time instead of burning handshake retries.
+func (r *MCPServerReconciler) validateCABundleSecret(
+	ctx context.Context,
+	namespace, name string,
+) error {
+	secret := &corev1.Secret{}
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
+		return classifyAPIError("TLS CA bundle Secret", namespace, err)
+	}
+	caPEM, ok := secret.Data[caBundleKey]
+	if !ok {
+		return &ValidationError{
+			Reason:  ReasonInvalid,
+			Message: fmt.Sprintf("TLS CA bundle Secret %q does not contain key %q", name, caBundleKey),
+		}
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return &ValidationError{
+			Reason:  ReasonInvalid,
+			Message: fmt.Sprintf("TLS CA bundle Secret %q key %q contains no valid PEM certificates", name, caBundleKey),
+		}
 	}
 	return nil
 }

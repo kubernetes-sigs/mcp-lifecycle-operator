@@ -24,6 +24,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -321,6 +322,150 @@ var _ = Describe("analyzePodFailures", func() {
 	It("should return empty string for empty pod list", func() {
 		result := analyzePodFailures(nil)
 		Expect(result).To(BeEmpty())
+	})
+})
+
+// podWithContainerStatus builds a pod carrying a single container status, which is
+// all podFailureSignature inspects.
+func podWithContainerStatus(name string, cs corev1.ContainerStatus) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Status:     corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{cs}},
+	}
+}
+
+func healthyContainerStatus() corev1.ContainerStatus {
+	return corev1.ContainerStatus{
+		Name:  "c",
+		Ready: true,
+		State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+	}
+}
+
+func imagePullContainerStatus() corev1.ContainerStatus {
+	return corev1.ContainerStatus{
+		Name:  "c",
+		Image: "ghcr.io/bad/image:v1",
+		State: corev1.ContainerState{
+			Waiting: &corev1.ContainerStateWaiting{
+				Reason:  WaitingReasonImagePullBackOff,
+				Message: "manifest unknown",
+			},
+		},
+	}
+}
+
+func crashLoopContainerStatus(exitCode, restarts int32) corev1.ContainerStatus {
+	return corev1.ContainerStatus{
+		Name:         "c",
+		RestartCount: restarts,
+		State: corev1.ContainerState{
+			Waiting: &corev1.ContainerStateWaiting{Reason: WaitingReasonCrashLoopBackOff},
+		},
+		LastTerminationState: corev1.ContainerState{
+			Terminated: &corev1.ContainerStateTerminated{ExitCode: exitCode},
+		},
+	}
+}
+
+var _ = Describe("podFailureSignature", func() {
+	It("should return empty for a healthy container", func() {
+		Expect(podFailureSignature(podWithContainerStatus("healthy", healthyContainerStatus()))).To(BeEmpty())
+	})
+
+	It("should return empty for a container that is not ready but has never restarted", func() {
+		pod := podWithContainerStatus("starting", corev1.ContainerStatus{
+			Name:         "c",
+			RestartCount: 0,
+			State:        corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+		})
+		Expect(podFailureSignature(pod)).To(BeEmpty())
+	})
+
+	It("should stay stable while only the restart counter changes", func() {
+		before := podWithContainerStatus("crash", crashLoopContainerStatus(1, 5))
+		after := podWithContainerStatus("crash", crashLoopContainerStatus(1, 6))
+		Expect(podFailureSignature(before)).NotTo(BeEmpty())
+		Expect(podFailureSignature(before)).To(Equal(podFailureSignature(after)))
+	})
+
+	It("should change when the exit code changes", func() {
+		before := podWithContainerStatus("crash", crashLoopContainerStatus(1, 5))
+		after := podWithContainerStatus("crash", crashLoopContainerStatus(137, 5))
+		Expect(podFailureSignature(before)).NotTo(Equal(podFailureSignature(after)))
+	})
+
+	It("should distinguish a missing last-terminated state from exit code zero", func() {
+		withExitZero := podWithContainerStatus("crash", crashLoopContainerStatus(0, 1))
+		noTermination := podWithContainerStatus("crash", corev1.ContainerStatus{
+			Name: "c",
+			State: corev1.ContainerState{
+				Waiting: &corev1.ContainerStateWaiting{Reason: WaitingReasonCrashLoopBackOff},
+			},
+		})
+		Expect(podFailureSignature(withExitZero)).NotTo(Equal(podFailureSignature(noTermination)))
+	})
+
+	It("should change when the failure kind changes", func() {
+		imgPull := podWithContainerStatus("p", imagePullContainerStatus())
+		crash := podWithContainerStatus("p", crashLoopContainerStatus(1, 1))
+		Expect(podFailureSignature(imgPull)).NotTo(Equal(podFailureSignature(crash)))
+	})
+
+	It("should prefer init container failures", func() {
+		pod := podWithContainerStatus("p", crashLoopContainerStatus(1, 1))
+		pod.Status.InitContainerStatuses = []corev1.ContainerStatus{
+			imagePullContainerStatus(),
+		}
+		Expect(podFailureSignature(pod)).To(ContainSubstring(string(failureImagePull)))
+	})
+})
+
+var _ = Describe("podDiagnosticsChangedPredicate", func() {
+	pred := podDiagnosticsChangedPredicate()
+
+	It("should fire when the failure reason changes", func() {
+		before := podWithContainerStatus("p", corev1.ContainerStatus{
+			Name: "c",
+			State: corev1.ContainerState{
+				Waiting: &corev1.ContainerStateWaiting{Reason: "ContainerCreating"},
+			},
+		})
+		after := podWithContainerStatus("p", imagePullContainerStatus())
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: before, ObjectNew: after})).To(BeTrue())
+	})
+
+	It("should not fire when only the restart counter ticks", func() {
+		before := podWithContainerStatus("p", crashLoopContainerStatus(1, 5))
+		after := podWithContainerStatus("p", crashLoopContainerStatus(1, 6))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: before, ObjectNew: after})).To(BeFalse())
+	})
+
+	It("should not fire for routine healthy pod updates", func() {
+		before := podWithContainerStatus("p", healthyContainerStatus())
+		after := podWithContainerStatus("p", healthyContainerStatus())
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: before, ObjectNew: after})).To(BeFalse())
+	})
+
+	It("should fire when a failure clears", func() {
+		before := podWithContainerStatus("p", imagePullContainerStatus())
+		after := podWithContainerStatus("p", healthyContainerStatus())
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: before, ObjectNew: after})).To(BeTrue())
+	})
+
+	It("should fire on create only for pods that are already failing", func() {
+		failing := podWithContainerStatus("p", imagePullContainerStatus())
+		healthy := podWithContainerStatus("p", healthyContainerStatus())
+		Expect(pred.Create(event.CreateEvent{Object: failing})).To(BeTrue())
+		Expect(pred.Create(event.CreateEvent{Object: healthy})).To(BeFalse())
+	})
+
+	It("should fire on delete of a failing pod, or whenever the final state was missed", func() {
+		failing := podWithContainerStatus("p", imagePullContainerStatus())
+		healthy := podWithContainerStatus("p", healthyContainerStatus())
+		Expect(pred.Delete(event.DeleteEvent{Object: failing})).To(BeTrue())
+		Expect(pred.Delete(event.DeleteEvent{Object: healthy})).To(BeFalse())
+		Expect(pred.Delete(event.DeleteEvent{Object: healthy, DeleteStateUnknown: true})).To(BeTrue())
 	})
 })
 
