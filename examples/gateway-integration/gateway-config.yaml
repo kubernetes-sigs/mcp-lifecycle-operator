@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-gateway-config
+  namespace: default
+data:
+  gateway-name: my-gateway
+  gateway-namespace: gateway-system
+  hostname: mcp.example.com

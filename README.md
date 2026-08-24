@@ -8,6 +8,7 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 
 - [Introduction](https://mcp-lifecycle-operator.sigs.k8s.io/introduction/) - Architecture and MCPServer API overview
 - [Quickstart Guide](https://mcp-lifecycle-operator.sigs.k8s.io/guides/quickstart/) - Get up and running quickly
+- [Gateway Integration](https://mcp-lifecycle-operator.sigs.k8s.io/guides/gateway/) - Expose MCP servers through external gateways
 - [Metrics](https://mcp-lifecycle-operator.sigs.k8s.io/operating/metrics/) - Prometheus metrics reference
 - [API Reference](https://mcp-lifecycle-operator.sigs.k8s.io/reference/) - Full MCPServer API documentation
 - [Complete MCPServer example](./config/samples/mcp_v1alpha1_mcpserver_complete.yaml) - YAML showing all available fields
@@ -178,6 +179,7 @@ For more examples, see the [examples/](./examples/) directory:
 
 - **[kubernetes-mcp-server](./examples/kubernetes-mcp-server/)** - Deploy the Kubernetes MCP Server with basic and ConfigMap-based configurations
 - **[everything-mcp-server](./examples/everything-mcp-server/)** - Deploy the Everything MCP Server
+- **[gateway-integration](./examples/gateway-integration/)** - Expose an MCP server through a gateway
 
 ## Development
 

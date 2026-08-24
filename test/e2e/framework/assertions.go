@@ -76,6 +76,19 @@ func AssertConditionStable(ctx context.Context, t *testing.T, r *resources.Resou
 	t.Logf("condition %s=%s stable for %s (%d polls)", condType, status, d, polls)
 }
 
+// AssertGatewayAddressURL verifies the MCPServer's status address URL matches the gateway hostname and path.
+func AssertGatewayAddressURL(t *testing.T, server *mcpv1alpha1.MCPServer, hostname, path string) {
+	t.Helper()
+	expectedURL := fmt.Sprintf("http://%s%s", hostname, path)
+	if server.Status.Address == nil || server.Status.Address.URL != expectedURL {
+		actual := ""
+		if server.Status.Address != nil {
+			actual = server.Status.Address.URL
+		}
+		t.Fatalf("expected gateway address URL %q, got %q", expectedURL, actual)
+	}
+}
+
 // GetMCPServerCondition returns a pointer to the named condition, or nil.
 func GetMCPServerCondition(server *mcpv1alpha1.MCPServer, condType string) *metav1.Condition {
 	for i := range server.Status.Conditions {
