@@ -20,6 +20,13 @@ package e2e
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"testing"
 	"time"
 
@@ -36,25 +43,38 @@ import (
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
-var testCAPEM = []byte(`-----BEGIN CERTIFICATE-----
-MIIBgzCCASmgAwIBAgIUXeHgADE6XFO/hNfBfLGyt/Cw880wCgYIKoZIzj0EAwIw
-FjEUMBIGA1UEAwwLZTJlLXRlc3QtY2EwIBcNMjYwODIwMTE1MzAzWhgPMjEyNjA3
-MjcxMTUzMDNaMBYxFDASBgNVBAMMC2UyZS10ZXN0LWNhMFkwEwYHKoZIzj0CAQYI
-KoZIzj0DAQcDQgAEJsnZ8e9zLYa1egP6tJD0c/JmUPVjwW0T6lJU2frN7mdgrn8o
-cgxOZzaiTQRJ2uq0k9C3aPI5BO+LHfsjWS//D6NTMFEwHQYDVR0OBBYEFKE196tU
-ZJCrHMN5C3SDH8a/NoGQMB8GA1UdIwQYMBaAFKE196tUZJCrHMN5C3SDH8a/NoGQ
-MA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIhAJDaTjLMUzD7RyFz
-DTp3kKM7fYOneB7wdmUEuLjKSbzoAiAcfvPPfSLAc3EJ/khzG88fElJco2gGiYlt
-Um8SPRQMrQ==
------END CERTIFICATE-----
-`)
+func generateTestCACert(t *testing.T) (caPEM []byte, keyPEM []byte) {
+	t.Helper()
 
-var testPrivKeyPEM = []byte(`-----BEGIN EC PRIVATE KEY-----
-MHcCAQEEIKuqL95aBIB8Nfj1xV93YUtmqoMLr6NFDJJhJnQV0abRoAoGCCqGSM49
-AwEHoUQDQgAEJsnZ8e9zLYa1egP6tJD0c/JmUPVjwW0T6lJU2frN7mdgrn8ocgxO
-ZzaiTQRJ2uq0k9C3aPI5BO+LHfsjWS//Dw==
------END EC PRIVATE KEY-----
-`)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate EC key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "e2e-test-ca"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("failed to create certificate: %v", err)
+	}
+
+	caPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatalf("failed to marshal EC key: %v", err)
+	}
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	return caPEM, keyPEM
+}
 
 func TestTLSMissingCABundleSecret(t *testing.T) {
 	t.Parallel()
@@ -173,6 +193,7 @@ func TestTLSInvalidPEMInCABundle(t *testing.T) {
 
 func TestTLSMissingCACrtKey(t *testing.T) {
 	t.Parallel()
+	testCAPEM, _ := generateTestCACert(t)
 	feature := features.New("TLS validation rejects Secret missing ca.crt key").
 		WithLabel(category.Label, category.Resilience).
 		WithLabel(speed.Label, speed.Fast).
@@ -233,6 +254,7 @@ func TestTLSMissingCACrtKey(t *testing.T) {
 
 func TestTLSInsecureSkipVerifyWithCABundleConflict(t *testing.T) {
 	t.Parallel()
+	testCAPEM, _ := generateTestCACert(t)
 	feature := features.New("TLS validation rejects insecureSkipVerify with caBundleSecret").
 		WithLabel(category.Label, category.Resilience).
 		WithLabel(speed.Label, speed.Fast).
@@ -324,13 +346,14 @@ func TestTLSRecoveryFromMissingCASecret(t *testing.T) {
 			ns := server.Namespace
 			r := cfg.Client().Resources()
 
+			caPEM, _ := generateTestCACert(t)
 			secret := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "recovery-ca",
 					Namespace: ns,
 				},
 				Data: map[string][]byte{
-					"ca.crt": testCAPEM,
+					"ca.crt": caPEM,
 				},
 			}
 			if err := r.Create(ctx, secret); err != nil {
@@ -354,6 +377,7 @@ func TestTLSRecoveryFromMissingCASecret(t *testing.T) {
 
 func TestTLSNonCertificatePEM(t *testing.T) {
 	t.Parallel()
+	_, testPrivKeyPEM := generateTestCACert(t)
 	feature := features.New("TLS validation rejects non-certificate PEM block").
 		WithLabel(category.Label, category.Resilience).
 		WithLabel(speed.Label, speed.Fast).
