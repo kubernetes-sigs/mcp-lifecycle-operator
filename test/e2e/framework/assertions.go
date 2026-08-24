@@ -46,6 +46,14 @@ func AssertAddressURL(t *testing.T, server *mcpv1alpha1.MCPServer, port int32) {
 	}
 }
 
+// AssertAddressUnset verifies status.address.url is not published (issue #302).
+func AssertAddressUnset(t *testing.T, server *mcpv1alpha1.MCPServer) {
+	t.Helper()
+	if server.Status.Address != nil && server.Status.Address.URL != "" {
+		t.Fatalf("expected status.address.url to be unset, got %q", server.Status.Address.URL)
+	}
+}
+
 // AssertConditionStable re-fetches the MCPServer repeatedly for the given duration
 // and fails if the condition ever deviates from the expected status.
 func AssertConditionStable(ctx context.Context, t *testing.T, r *resources.Resources,

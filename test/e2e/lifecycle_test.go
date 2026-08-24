@@ -150,7 +150,7 @@ func TestMCPServerUpdatePort(t *testing.T) {
 				t.Fatalf("failed to get MCPServer: %v", err)
 			}
 
-			f.AssertAddressURL(t, server, 3002)
+			f.AssertAddressUnset(t, server)
 
 			svc := &corev1.Service{}
 			if err := r.Get(ctx, server.Name, server.Namespace, svc); err != nil {
@@ -184,8 +184,8 @@ func TestMCPServerUpdatePort(t *testing.T) {
 				t.Fatal("expected a container port 3002 in the Deployment")
 			}
 
-			t.Logf("port update verified: address=%s, servicePort=%d, containerPort=3002",
-				server.Status.Address.URL, svc.Spec.Ports[0].Port)
+			t.Logf("port update verified: address unset (not Ready), servicePort=%d, containerPort=3002",
+				svc.Spec.Ports[0].Port)
 
 			return ctx
 		}).
