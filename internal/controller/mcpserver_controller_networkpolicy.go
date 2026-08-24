@@ -175,6 +175,9 @@ func buildEgressRules(mcpServer *mcpv1alpha1.MCPServer) []networkingv1.NetworkPo
 				NamespaceSelector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{"kubernetes.io/metadata.name": "kube-system"},
 				},
+				PodSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"k8s-app": "kube-dns"},
+				},
 			},
 		},
 		Ports: []networkingv1.NetworkPolicyPort{
