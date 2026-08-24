@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"crypto/tls"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"strings"
@@ -39,8 +40,8 @@ import (
 )
 
 func generateSelfSignedCAPEMOnly() []byte {
-	pem, _ := generateSelfSignedCAPEM()
-	return pem
+	caPEM, _ := generateSelfSignedCAPEM()
+	return caPEM
 }
 
 var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
@@ -1569,7 +1570,7 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 				Namespace: "default",
 			},
 			Data: map[string][]byte{
-				"ca.crt": []byte("-----BEGIN PRIVATE KEY-----\nYWJj\n-----END PRIVATE KEY-----\n"),
+				"ca.crt": pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte("not-a-cert")}),
 			},
 		}
 		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
