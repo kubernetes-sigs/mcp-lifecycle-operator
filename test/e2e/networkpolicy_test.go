@@ -119,7 +119,7 @@ func TestNetworkPolicyCreated(t *testing.T) {
 				t.Fatalf("expected owner %s, got %s", server.Name, netpol.OwnerReferences[0].Name)
 			}
 
-			t.Logf("NetworkPolicy %s exists with correct spec: podSelector={mcp-server: %s}, port=3001/TCP, ingress+egress",
+			t.Logf("NetworkPolicy %s exists with correct spec: podSelector={mcp-server: %s}, port=8080/TCP, ingress+egress",
 				netpol.Name, server.Name)
 			return ctx
 		}).
@@ -139,7 +139,7 @@ func TestNetworkPolicyPortUpdate(t *testing.T) {
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "netpol-port", true)
 		}).
-		Assess("update port from 3001 to 3002", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("update port from 8080 to 3002", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 

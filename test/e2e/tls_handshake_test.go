@@ -154,7 +154,6 @@ func TestTLSHandshake(t *testing.T) {
 			t.Log("created CA bundle Secret")
 
 			return f.SetupMCPServer(ctx, t, cfg, serverName, false,
-				f.WithImage(f.KubernetesMCPServerImage),
 				f.WithPort(serverPort),
 				f.WithArguments(
 					"--port", fmt.Sprintf("%d", serverPort),

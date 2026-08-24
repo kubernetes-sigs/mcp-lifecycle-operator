@@ -21,6 +21,7 @@ package e2e
 import (
 	"context"
 	"testing"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -428,8 +429,8 @@ func TestCustomPort(t *testing.T) {
 		WithLabel(speed.Label, speed.Fast).
 		WithLabel(scenario.Label, scenario.Port).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			// Use port 9090 at creation time. The test image only listens on 3001,
-			// so the pod won't pass readiness, but we verify port propagation.
+			// Use port 9090 at creation time. The default args tell the image to
+			// listen on 8080, so the pod won't pass readiness; we verify port propagation.
 			return f.SetupMCPServer(ctx, t, cfg, "custom-port", false,
 				f.WithPort(9090),
 			)
@@ -477,13 +478,11 @@ func TestCustomPort(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
+			f.WaitForMCPServerCondition(ctx, t, r, server,
+				"Ready", metav1.ConditionFalse, 3*time.Minute)
+
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
 				t.Fatalf("failed to get MCPServer: %v", err)
-			}
-
-			ready := f.GetMCPServerCondition(server, "Ready")
-			if ready == nil || ready.Status != metav1.ConditionFalse {
-				t.Fatalf("expected Ready=False when container port mismatches image, got %v", ready)
 			}
 
 			f.AssertAddressUnset(t, server)
@@ -540,8 +539,8 @@ func TestSamePortDifferentNamespaces(t *testing.T) {
 				if err := r.Get(ctx, server.Name, server.Namespace, dep); err != nil {
 					t.Fatalf("Deployment not found for %s/%s: %v", server.Namespace, server.Name, err)
 				}
-				if dep.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort != 3001 {
-					t.Fatalf("expected container port 3001 for %s, got %d",
+				if dep.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort != 8080 {
+					t.Fatalf("expected container port 8080 for %s, got %d",
 						server.Name, dep.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort)
 				}
 
@@ -549,13 +548,13 @@ func TestSamePortDifferentNamespaces(t *testing.T) {
 				if err := r.Get(ctx, server.Name, server.Namespace, svc); err != nil {
 					t.Fatalf("Service not found for %s/%s: %v", server.Namespace, server.Name, err)
 				}
-				if svc.Spec.Ports[0].Port != 3001 {
-					t.Fatalf("expected Service port 3001 for %s, got %d",
+				if svc.Spec.Ports[0].Port != 8080 {
+					t.Fatalf("expected Service port 8080 for %s, got %d",
 						server.Name, svc.Spec.Ports[0].Port)
 				}
 			}
 
-			t.Log("both servers have independent Deployments and Services with port 3001")
+			t.Log("both servers have independent Deployments and Services with port 8080")
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {

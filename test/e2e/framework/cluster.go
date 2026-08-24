@@ -73,14 +73,9 @@ type ClusterPredicate func(ctx context.Context, cfg *envconf.Config) (bool, erro
 
 // imageSkipPredicates maps a container image ref to the ClusterPredicate that
 // determines whether tests using that image must be skipped on the target
-// cluster. quay.io/matzew/mcp-everything only publishes an amd64 manifest,
-// so it crash-loops on arm64 nodes.
-//
-// FIXME: kubernetes-sigs/mcp-lifecycle-operator#326
-var imageSkipPredicates = map[string]ClusterPredicate{
-	DefaultMCPServerImage:   ClusterHasARM64,
-	AlternateMCPServerImage: ClusterHasARM64,
-}
+// cluster. All current test images publish multi-arch manifests, so this
+// map is empty.
+var imageSkipPredicates = map[string]ClusterPredicate{}
 
 // imageUnsupported reports whether imageRef is unsupported on the target
 // cluster per imageSkipPredicates. Returns false for unregistered images.

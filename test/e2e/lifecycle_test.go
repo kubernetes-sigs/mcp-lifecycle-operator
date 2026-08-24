@@ -92,7 +92,7 @@ func TestMCPServerHappyPath(t *testing.T) {
 			}
 
 			// address URL is correct
-			f.AssertAddressURL(t, server, 3001)
+			f.AssertAddressURL(t, server, 8080)
 
 			// Accepted condition is True
 			accepted := f.GetMCPServerCondition(server, "Accepted")
@@ -122,7 +122,7 @@ func TestMCPServerUpdatePort(t *testing.T) {
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "test-server", true)
 		}).
-		Assess("update port from 3001 to 3002", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("update port from 8080 to 3002", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 

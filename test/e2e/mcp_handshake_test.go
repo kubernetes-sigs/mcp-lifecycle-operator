@@ -38,9 +38,9 @@ import (
 
 func TestMCPHandshake(t *testing.T) {
 	t.Parallel()
-	const mcpServerPort = 3001
+	const mcpServerPort = 8080
 
-	feature := features.New("MCP handshake with everything-mcp-server").
+	feature := features.New("MCP handshake with kubernetes-mcp-server").
 		WithLabel(category.Label, category.Networking).
 		WithLabel(speed.Label, speed.Moderate).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -118,7 +118,7 @@ func TestMCPHandshake(t *testing.T) {
 				t.Fatalf("failed to list MCP tools: %v", err)
 			}
 			if toolsResult == nil || len(toolsResult.Tools) == 0 {
-				t.Fatal("expected the everything-mcp-server to expose at least one tool")
+				t.Fatal("expected the kubernetes-mcp-server to expose at least one tool")
 			}
 
 			t.Logf("found %d tools:", len(toolsResult.Tools))
