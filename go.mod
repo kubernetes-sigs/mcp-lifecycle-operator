@@ -8,7 +8,7 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/onsi/ginkgo/v2 v2.32.1
-	github.com/onsi/gomega v1.42.0
+	github.com/onsi/gomega v1.42.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.12.1
 	k8s.io/api v0.36.4
