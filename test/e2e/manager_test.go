@@ -87,7 +87,15 @@ func TestMetricsEndpoint(t *testing.T) {
 				if !apierrors.IsAlreadyExists(err) {
 					t.Fatalf("failed to create ClusterRoleBinding: %v", err)
 				}
-				t.Log("ClusterRoleBinding for metrics access already exists")
+				existing := &rbacv1.ClusterRoleBinding{}
+				if err := r.Get(ctx, metricsRoleBinding, "", existing); err != nil {
+					t.Fatalf("failed to get existing ClusterRoleBinding: %v", err)
+				}
+				existing.Subjects = crb.Subjects
+				if err := r.Update(ctx, existing); err != nil {
+					t.Fatalf("failed to update stale ClusterRoleBinding: %v", err)
+				}
+				t.Log("updated stale ClusterRoleBinding to match current operator")
 			} else {
 				t.Log("created ClusterRoleBinding for metrics access")
 			}
