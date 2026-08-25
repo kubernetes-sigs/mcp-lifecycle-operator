@@ -1,0 +1,52 @@
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+#
+# NOTE: Dependabot groups cannot span ecosystems, so the Docker `golang` image
+# and the go.mod `go`/`toolchain` directives are updated by separate PRs and can
+# drift apart. The risk is one-directional: if go.mod asks for a newer Go than
+# the builder image ships, the build pulls a toolchain over the network at image
+# build time, and fails outright when offline or under GOTOOLCHAIN=local. The
+# reverse (image newer than go.mod) is fine, since a newer toolchain builds an
+# older `go` directive. `make verify-go-version` enforces that ordering.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    groups:
+      k8s.io:
+        patterns:
+          - "k8s.io/*"
+      sigs.k8s.io:
+        patterns:
+          - "sigs.k8s.io/*"
+
+  # Keeps the `golang` builder image current.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+
+  # Dockerfile for the mkdocs image used to build the docs site.
+  - package-ecosystem: docker
+    directory: /hack/mkdocs/image
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    groups:
+      github-actions:
+        patterns:
+          - "*"

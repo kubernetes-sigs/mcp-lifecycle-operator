@@ -62,6 +62,10 @@ func TestImagePullFailure(t *testing.T) {
 			ready := f.GetMCPServerCondition(server, "Ready")
 			t.Logf("Ready condition: status=%s reason=%s message=%q", ready.Status, ready.Reason, ready.Message)
 
+			if server.Status.Address != nil && server.Status.Address.URL != "" {
+				t.Fatalf("expected status.address.url to be unset when Ready=False, got %q", server.Status.Address.URL)
+			}
+
 			return ctx
 		}).
 		Assess("Accepted condition is True", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -125,6 +129,10 @@ func TestContainerCrashLoop(t *testing.T) {
 
 			if !strings.Contains(ready.Message, "exit code") {
 				t.Errorf("expected message to contain exit code details, got %q", ready.Message)
+			}
+
+			if server.Status.Address != nil && server.Status.Address.URL != "" {
+				t.Fatalf("expected status.address.url to be unset when Ready=False, got %q", server.Status.Address.URL)
 			}
 
 			return ctx

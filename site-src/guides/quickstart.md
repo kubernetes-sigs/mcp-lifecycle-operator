@@ -211,6 +211,7 @@ EOF
 ```
 
 This creates:
+
 1. **ServiceAccount** (`mcp-viewer`) - Identity for the MCP server pods
 2. **ClusterRoleBinding** - Binds the ServiceAccount to the built-in `view` ClusterRole
 3. **ConfigMap** - Server configuration with read-only mode and specific toolsets

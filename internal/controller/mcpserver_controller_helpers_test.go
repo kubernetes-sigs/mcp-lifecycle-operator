@@ -504,5 +504,62 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 			names := extractSecretNames(mcpServer)
 			Expect(names).To(BeEmpty())
 		})
+
+		It("should include TLS CA bundle Secret", func() {
+			mcpServer := &mcpv1alpha1.MCPServer{
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+					},
+					Transport: &mcpv1alpha1.TransportConfig{
+						TLS: &mcpv1alpha1.TLSClientConfig{
+							Enabled: true,
+							CABundleSecret: &mcpv1alpha1.SecretReference{
+								Name: "my-ca",
+							},
+						},
+					},
+				},
+			}
+
+			names := extractSecretNames(mcpServer)
+			Expect(names).To(ContainElement("my-ca"))
+		})
+
+		It("should deduplicate TLS CA Secret with other Secret references", func() {
+			mcpServer := &mcpv1alpha1.MCPServer{
+				Spec: mcpv1alpha1.MCPServerSpec{
+					Config: mcpv1alpha1.ServerConfig{
+						Port: 8080,
+						EnvFrom: []corev1.EnvFromSource{
+							{
+								SecretRef: &corev1.SecretEnvSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "shared-secret",
+									},
+								},
+							},
+						},
+					},
+					Transport: &mcpv1alpha1.TransportConfig{
+						TLS: &mcpv1alpha1.TLSClientConfig{
+							Enabled: true,
+							CABundleSecret: &mcpv1alpha1.SecretReference{
+								Name: "shared-secret",
+							},
+						},
+					},
+				},
+			}
+
+			names := extractSecretNames(mcpServer)
+			count := 0
+			for _, n := range names {
+				if n == "shared-secret" {
+					count++
+				}
+			}
+			Expect(count).To(Equal(1))
+		})
 	})
 })

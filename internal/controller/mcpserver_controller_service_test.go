@@ -66,8 +66,14 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 				Client:    k8sClient,
 				Scheme:    k8sClient.Scheme(),
 				APIReader: k8sClient,
+				MCPDialer: testMCPDialerNoop,
 			}
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			simulateDeploymentAvailable(ctx, typeNamespacedName)
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -87,8 +93,14 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 				Client:    k8sClient,
 				Scheme:    k8sClient.Scheme(),
 				APIReader: k8sClient,
+				MCPDialer: testMCPDialerNoop,
 			}
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			simulateDeploymentAvailable(ctx, typeNamespacedName)
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -108,8 +120,14 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 				Client:    k8sClient,
 				Scheme:    k8sClient.Scheme(),
 				APIReader: k8sClient,
+				MCPDialer: testMCPDialerNoop,
 			}
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			simulateDeploymentAvailable(ctx, typeNamespacedName)
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -129,9 +147,16 @@ var _ = Describe("MCPServer Controller - Address URL", func() {
 				Client:    k8sClient,
 				Scheme:    k8sClient.Scheme(),
 				APIReader: k8sClient,
+				MCPDialer: testMCPDialerNoop,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			simulateDeploymentAvailable(ctx, typeNamespacedName)
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())

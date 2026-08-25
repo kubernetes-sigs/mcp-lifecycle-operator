@@ -22,6 +22,10 @@ spec:
     type: ContainerImage
     containerImage:
       ref: quay.io/containers/kubernetes_mcp_server:latest
+      # Optional image pull behavior and credentials for private registries.
+      # pullPolicy: IfNotPresent
+      # imagePullSecrets:
+      #   - name: registry-credentials
 
   # Config defines how the MCP server is configured.
   config:

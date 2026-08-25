@@ -23,11 +23,16 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
+	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 )
 
 var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
@@ -39,10 +44,14 @@ var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
 		var mgrCtx context.Context
 		mgrCtx, mgrCancel = context.WithCancel(ctx)
 
+		cacheOptions, err := CacheOptions()
+		Expect(err).NotTo(HaveOccurred())
+
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 scheme.Scheme,
 			Metrics:                metricsserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress: "0",
+			Cache:                  cacheOptions,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -145,5 +154,65 @@ var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
 			}
 			return dep.Spec.Template.Spec.Containers[0].Image
 		}, 10*time.Second).Should(Equal("docker.io/library/updated-image:latest"))
+	})
+
+	It("should surface pod-level failure detail on the Ready condition", func() {
+		mcpServer := newTestMCPServer("predicate-pod-diagnostics")
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		serverKey := types.NamespacedName{Name: mcpServer.Name, Namespace: mcpServer.Namespace}
+
+		dep := &appsv1.Deployment{}
+		Eventually(func() error {
+			return k8sClient.Get(ctx, serverKey, dep)
+		}, 10*time.Second).Should(Succeed())
+
+		By("Reporting the Deployment as rolling out with no ready replicas")
+		dep.Status.Conditions = []appsv1.DeploymentCondition{{
+			Type:   appsv1.DeploymentProgressing,
+			Status: corev1.ConditionTrue,
+		}}
+		Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
+
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      mcpServer.Name + "-pod",
+				Namespace: mcpServer.Namespace,
+				Labels:    managedWorkloadSelector(mcpServer.Name),
+			},
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{{Name: "c", Image: "ghcr.io/bad/image:v1"}},
+			},
+		}
+		Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+
+		By("Reporting an image pull failure on the pod")
+		pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+			Name:  "c",
+			Image: "ghcr.io/bad/image:v1",
+			State: corev1.ContainerState{
+				Waiting: &corev1.ContainerStateWaiting{
+					Reason:  WaitingReasonImagePullBackOff,
+					Message: `Back-off pulling image "ghcr.io/bad/image:v1"`,
+				},
+			},
+		}}
+		Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+		By("Expecting the specific pod failure rather than the generic Deployment message")
+		Eventually(func() string {
+			server := &mcpv1alpha1.MCPServer{}
+			if err := k8sClient.Get(ctx, serverKey, server); err != nil {
+				return ""
+			}
+			cond := meta.FindStatusCondition(server.Status.Conditions, ConditionTypeReady)
+			if cond == nil {
+				return ""
+			}
+			return cond.Message
+		}, 15*time.Second).Should(ContainSubstring("Image pull failed"))
 	})
 })

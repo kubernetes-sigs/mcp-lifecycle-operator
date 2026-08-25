@@ -51,11 +51,8 @@ patches:
 #  target:
 #    kind: Deployment
 
-# [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
-# crd/kustomization.yaml
-#- path: manager_webhook_patch.yaml
-#  target:
-#    kind: Deployment
+# [WEBHOOK] To enable the admission webhook, use the config/default-with-webhook overlay:
+#   kustomize build config/default-with-webhook | kubectl apply -f -
 
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
 # Uncomment the following replacements to add the cert-manager CA injection annotations
@@ -120,11 +117,11 @@ patches:
 #         index: 1
 #         create: true
 
-# - source: # Uncomment the following block if you have any webhook
+# - source: # Webhook service DNS name into cert-manager Certificate
 #     kind: Service
 #     version: v1
 #     name: webhook-service
-#     fieldPath: .metadata.name # Name of the service
+#     fieldPath: .metadata.name
 #   targets:
 #     - select:
 #         kind: Certificate
@@ -142,7 +139,7 @@ patches:
 #     kind: Service
 #     version: v1
 #     name: webhook-service
-#     fieldPath: .metadata.namespace # Namespace of the service
+#     fieldPath: .metadata.namespace
 #   targets:
 #     - select:
 #         kind: Certificate
@@ -157,12 +154,12 @@ patches:
 #         index: 1
 #         create: true
 
-# - source: # Uncomment the following block if you have a ValidatingWebhook (--programmatic-validation)
+# - source: # Inject cert-manager CA into ValidatingWebhookConfiguration
 #     kind: Certificate
 #     group: cert-manager.io
 #     version: v1
-#     name: serving-cert # This name should match the one in certificate.yaml
-#     fieldPath: .metadata.namespace # Namespace of the certificate CR
+#     name: serving-cert
+#     fieldPath: .metadata.namespace
 #   targets:
 #     - select:
 #         kind: ValidatingWebhookConfiguration

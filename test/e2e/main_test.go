@@ -64,6 +64,7 @@ func TestMain(m *testing.M) {
 		f.DefaultMCPServerImage,
 		f.AlternateMCPServerImage,
 		f.BusyboxImage,
+		f.KubernetesMCPServerImage,
 	)
 	if err != nil {
 		panic(err)

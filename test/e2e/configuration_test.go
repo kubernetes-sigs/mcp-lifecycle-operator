@@ -473,7 +473,7 @@ func TestCustomPort(t *testing.T) {
 			t.Log("Service has port 9090")
 			return ctx
 		}).
-		Assess("status address URL contains port 9090", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("status address is unset when not Ready", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
@@ -481,8 +481,13 @@ func TestCustomPort(t *testing.T) {
 				t.Fatalf("failed to get MCPServer: %v", err)
 			}
 
-			f.AssertAddressURL(t, server, 9090)
-			t.Logf("status address URL: %s", server.Status.Address.URL)
+			ready := f.GetMCPServerCondition(server, "Ready")
+			if ready == nil || ready.Status != metav1.ConditionFalse {
+				t.Fatalf("expected Ready=False when container port mismatches image, got %v", ready)
+			}
+
+			f.AssertAddressUnset(t, server)
+			t.Log("status.address.url is unset while Ready=False")
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {

@@ -25,6 +25,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -62,7 +63,7 @@ func (r *MCPServerReconciler) computeConfigHash(
 	mcpServer *mcpv1alpha1.MCPServer,
 ) (string, error) {
 	configMapNames := extractConfigMapNames(mcpServer)
-	secretNames := extractSecretNames(mcpServer)
+	secretNames := extractPodSecretNames(mcpServer)
 
 	if len(configMapNames) == 0 && len(secretNames) == 0 {
 		return "", nil
@@ -181,6 +182,17 @@ func (r *MCPServerReconciler) findMCPServersForSecret(ctx context.Context, secre
 	return r.findMCPServersForResource(ctx, secret.GetName(), secret.GetNamespace(), secretIndexKey)
 }
 
+func (r *MCPServerReconciler) findMCPServersForPod(ctx context.Context, pod client.Object) []reconcile.Request {
+	name, ok := pod.GetLabels()[LabelKeyMCPServer]
+	if !ok || name == "" {
+		return nil
+	}
+
+	return []reconcile.Request{{
+		NamespacedName: types.NamespacedName{Name: name, Namespace: pod.GetNamespace()},
+	}}
+}
+
 // extractConfigMapNames is an index extractor that returns all ConfigMap names
 // referenced by an MCPServer. Used for efficient ConfigMap watch lookups.
 // This returns both required and optional ConfigMap references, matching Kubernetes
@@ -227,16 +239,37 @@ func extractConfigMapNames(obj client.Object) []string {
 	return configMaps
 }
 
-// extractSecretNames is an index extractor that returns all Secret names
-// referenced by an MCPServer. Used for efficient Secret watch lookups.
-// This returns both required and optional Secret references, matching Kubernetes
-// semantics where optional resources are still used when available.
+// extractSecretNames returns all Secret names referenced by an MCPServer,
+// including pod-mounted secrets and the TLS CA bundle. Used as the field
+// index extractor for Secret watch lookups.
 func extractSecretNames(obj client.Object) []string {
+	secrets := extractPodSecretNames(obj)
+	seen := make(map[string]bool, len(secrets))
+	for _, s := range secrets {
+		seen[s] = true
+	}
+
+	mcpServer := obj.(*mcpv1alpha1.MCPServer)
+	if mcpServer.Spec.Transport != nil &&
+		mcpServer.Spec.Transport.TLS != nil &&
+		mcpServer.Spec.Transport.TLS.CABundleSecret != nil {
+		name := mcpServer.Spec.Transport.TLS.CABundleSecret.Name
+		if !seen[name] {
+			secrets = append(secrets, name)
+		}
+	}
+
+	return secrets
+}
+
+// extractPodSecretNames returns Secret names that the pod actually mounts
+// or references via env. Used for the deployment config hash so that CA
+// bundle rotation (an operator-only concern) does not roll pods.
+func extractPodSecretNames(obj client.Object) []string {
 	mcpServer := obj.(*mcpv1alpha1.MCPServer)
 	var secrets []string
 	seen := make(map[string]bool)
 
-	// Extract from storage mounts
 	for _, storage := range mcpServer.Spec.Config.Storage {
 		if storage.Source.Type == mcpv1alpha1.StorageTypeSecret &&
 			storage.Source.Secret != nil {
@@ -248,7 +281,6 @@ func extractSecretNames(obj client.Object) []string {
 		}
 	}
 
-	// Extract from envFrom
 	for _, envFrom := range mcpServer.Spec.Config.EnvFrom {
 		if envFrom.SecretRef != nil {
 			name := envFrom.SecretRef.Name
@@ -259,7 +291,6 @@ func extractSecretNames(obj client.Object) []string {
 		}
 	}
 
-	// Extract from env valueFrom
 	for _, env := range mcpServer.Spec.Config.Env {
 		if env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
 			name := env.ValueFrom.SecretKeyRef.Name
