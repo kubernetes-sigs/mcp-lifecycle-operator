@@ -35,6 +35,9 @@ const (
 	Security = "security"
 	Metadata = "metadata"
 
+	// BYO scenarios.
+	BYO = "byo"
+
 	// Resilience scenarios.
 	Failure  = "failure"
 	Recovery = "recovery"

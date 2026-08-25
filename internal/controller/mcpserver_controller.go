@@ -151,6 +151,10 @@ const (
 	configMapIndexKey = "spec.configMapRefs"
 	// secretIndexKey is the index key for finding MCPServers by Secret reference.
 	secretIndexKey = "spec.secretRefs"
+	// workloadRefIndexKey is the index key for finding MCPServers by workloadRef name.
+	workloadRefIndexKey = "spec.workloadRef"
+	// serviceRefIndexKey is the index key for finding MCPServers by serviceRef name.
+	serviceRefIndexKey = "spec.serviceRef"
 )
 
 // Custom metadata annotations
@@ -184,6 +188,8 @@ type MCPServerReconciler struct {
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -263,6 +269,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		r.emitConfigurationAccepted(mcpServer)
 	}
 
+	// BYO workload path: skip Deployment/NetworkPolicy creation, read status from referenced workload.
+	if mcpServer.Spec.WorkloadRef != nil {
+		return r.reconcileBYO(ctx, mcpServer, acceptedCondition, pendingServerReadyEvent)
+	}
+
 	// Configuration is valid, proceed with deployment reconciliation
 	deploymentStart := time.Now()
 	existingDeployment, err := r.reconcileDeployment(ctx, mcpServer)
@@ -290,9 +301,14 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			r.emitDeploymentReconcileFailed(mcpServer, readyCondition.Message)
 		}
 
+		deployErrServiceName := mcpServer.Name
+		if mcpServer.Spec.ServiceRef != nil {
+			deployErrServiceName = mcpServer.Spec.ServiceRef.Name
+		}
+
 		status := acv1alpha1.MCPServerStatus().
 			WithObservedGeneration(mcpServer.Generation).
-			WithServiceName(mcpServer.Name).
+			WithServiceName(deployErrServiceName).
 			WithHandshakeRetryCount(0).
 			WithReplicas(mcpServer.Status.Replicas).
 			WithReadyReplicas(mcpServer.Status.ReadyReplicas).
@@ -311,11 +327,10 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	// Reconcile Service
-	serviceStart := time.Now()
-	if err := r.reconcileService(ctx, mcpServer); err != nil {
-		reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
-		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
+	// Reconcile Service - skip when using BYO serviceRef
+	serviceName, resolvedPort, svcErr := r.reconcileServiceOrBYO(ctx, mcpServer)
+	if svcErr != nil {
+		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, svcErr, resourceFailureParams{
 			counter:     serviceFailuresTotal,
 			reason:      ReasonServiceUnavailable,
 			resource:    "Service",
@@ -323,8 +338,6 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			emitEvent:   r.emitServiceReconcileFailed,
 		})
 	}
-
-	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
 
 	// Reconcile NetworkPolicy
 	networkPolicyStart := time.Now()
@@ -362,7 +375,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	mcpURL := fmt.Sprintf("%s://%s.%s.svc.cluster.local:%d%s",
-		urlScheme(mcpServer), mcpServer.Name, mcpServer.Namespace, mcpServer.Spec.Config.Port, path)
+		urlScheme(mcpServer), serviceName, mcpServer.Namespace, resolvedPort, path)
 
 	// Compute current TLS CA bundle hash so the handshake is re-verified
 	// when the CA bundle Secret content changes (which does not bump generation).
@@ -384,10 +397,16 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	handshakeRetryCount := r.reconcileHandshakeEventsAndRetryCount(mcpServer, readyCondition)
 
+	var workloadSummary string
+	if mcpServer.Spec.Source.ContainerImage != nil {
+		workloadSummary = mcpServer.Spec.Source.ContainerImage.Ref
+	}
+
 	status := acv1alpha1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
 		WithDeploymentName(existingDeployment.Name).
-		WithServiceName(mcpServer.Name).
+		WithServiceName(serviceName).
+		WithWorkloadSummary(workloadSummary).
 		WithHandshakeRetryCount(handshakeRetryCount).
 		WithReplicas(ptr.Deref(existingDeployment.Spec.Replicas, 1)).
 		WithReadyReplicas(existingDeployment.Status.ReadyReplicas).
@@ -620,6 +639,30 @@ func (r *MCPServerReconciler) emitServiceReconcileFailed(mcpServer *mcpv1alpha1.
 		"MCPServer %s: %s", mcpServer.Name, message)
 }
 
+// reconcileServiceOrBYO either reconciles the operator-managed Service or
+// resolves the BYO Service name and port. Returns serviceName, port, error.
+func (r *MCPServerReconciler) reconcileServiceOrBYO(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+) (string, int32, error) {
+	if mcpServer.Spec.ServiceRef != nil {
+		serviceName := mcpServer.Spec.ServiceRef.Name
+		port, err := resolveServicePort(ctx, r.APIReader, serviceName, mcpServer.Namespace, mcpServer.Spec.Config.Port)
+		if err != nil {
+			return "", 0, fmt.Errorf("resolving BYO service port: %w", err)
+		}
+		return serviceName, port, nil
+	}
+
+	serviceStart := time.Now()
+	if err := r.reconcileService(ctx, mcpServer); err != nil {
+		reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
+		return "", 0, err
+	}
+	reconcileDuration.With(prometheus.Labels{"phase": ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
+	return mcpServer.Name, mcpServer.Spec.Config.Port, nil
+}
+
 type resourceFailureParams struct {
 	counter     *prometheus.CounterVec
 	reason      string
@@ -761,6 +804,26 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to setup Secret index: %w", err)
 	}
 
+	// Register workloadRef index for BYO workload lookups
+	if err := mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&mcpv1alpha1.MCPServer{},
+		workloadRefIndexKey,
+		extractWorkloadRefNames,
+	); err != nil {
+		return fmt.Errorf("failed to setup workloadRef index: %w", err)
+	}
+
+	// Register serviceRef index for BYO Service lookups
+	if err := mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&mcpv1alpha1.MCPServer{},
+		serviceRefIndexKey,
+		extractServiceRefNames,
+	); err != nil {
+		return fmt.Errorf("failed to setup serviceRef index: %w", err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.MCPServer{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
@@ -783,6 +846,26 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		WatchesMetadata(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForSecret),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		WatchesMetadata(
+			&appsv1.Deployment{},
+			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForWorkload),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		WatchesMetadata(
+			&appsv1.DaemonSet{},
+			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForWorkload),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		WatchesMetadata(
+			&appsv1.StatefulSet{},
+			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForWorkload),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		WatchesMetadata(
+			&corev1.Service{},
+			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForBYOService),
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
 		).
 		Named("mcpserver").

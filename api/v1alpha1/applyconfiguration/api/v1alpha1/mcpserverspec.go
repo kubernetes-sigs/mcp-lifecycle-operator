@@ -28,9 +28,18 @@ type MCPServerSpecApplyConfiguration struct {
 	ExtraLabels map[string]string `json:"extraLabels,omitempty"`
 	// ExtraAnnotations are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
 	ExtraAnnotations map[string]string `json:"extraAnnotations,omitempty"`
-	// Source is a required field that defines where the MCP server should be sourced from.
+	// WorkloadRef references an external Deployment, DaemonSet, or StatefulSet
+	// in the same namespace. When set, the operator monitors the referenced
+	// workload read-only and never creates its own Deployment.
+	// Mutually exclusive with source and operator-managed workload fields.
+	WorkloadRef *WorkloadReferenceApplyConfiguration `json:"workloadRef,omitempty"`
+	// ServiceRef references an external Service in the same namespace.
+	// When set, the operator skips Service creation and uses the referenced
+	// Service for the MCP endpoint URL.
+	ServiceRef *ServiceReferenceApplyConfiguration `json:"serviceRef,omitempty"`
+	// Source defines where the MCP server should be sourced from.
 	// Currently supports container images, with potential for additional source types in the future.
-	// This configuration determines how the MCP server will be deployed and run.
+	// Required when workloadRef is not set.
 	Source *SourceApplyConfiguration `json:"source,omitempty"`
 	// Config is a required field that defines how the MCP server should be configured when it runs.
 	// This includes runtime settings such as the server port, command-line arguments,
@@ -81,6 +90,22 @@ func (b *MCPServerSpecApplyConfiguration) WithExtraAnnotations(entries map[strin
 	for k, v := range entries {
 		b.ExtraAnnotations[k] = v
 	}
+	return b
+}
+
+// WithWorkloadRef sets the WorkloadRef field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the WorkloadRef field is set to the value of the last call.
+func (b *MCPServerSpecApplyConfiguration) WithWorkloadRef(value *WorkloadReferenceApplyConfiguration) *MCPServerSpecApplyConfiguration {
+	b.WorkloadRef = value
+	return b
+}
+
+// WithServiceRef sets the ServiceRef field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ServiceRef field is set to the value of the last call.
+func (b *MCPServerSpecApplyConfiguration) WithServiceRef(value *ServiceReferenceApplyConfiguration) *MCPServerSpecApplyConfiguration {
+	b.ServiceRef = value
 	return b
 }
 

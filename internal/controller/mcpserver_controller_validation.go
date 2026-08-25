@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -49,24 +50,39 @@ func (r *MCPServerReconciler) validateConfig(
 	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
 ) error {
-	// Validate storage mounts
-	for i, storage := range mcpServer.Spec.Config.Storage {
-		if err := r.validateStorageMount(ctx, mcpServer, storage, i); err != nil {
+	if mcpServer.Spec.WorkloadRef != nil {
+		if err := r.validateWorkloadRef(ctx, mcpServer); err != nil {
 			return err
 		}
 	}
 
-	// Validate envFrom references
-	for i, envFrom := range mcpServer.Spec.Config.EnvFrom {
-		if err := r.validateEnvFrom(ctx, mcpServer, envFrom, i); err != nil {
+	if mcpServer.Spec.ServiceRef != nil {
+		if err := r.validateServiceRef(ctx, mcpServer); err != nil {
 			return err
 		}
 	}
 
-	// Validate env valueFrom references
-	for i, env := range mcpServer.Spec.Config.Env {
-		if err := r.validateEnvValueFrom(ctx, mcpServer, env, i); err != nil {
-			return err
+	// Skip operator-managed config validation when BYO workload is set
+	if mcpServer.Spec.WorkloadRef == nil {
+		// Validate storage mounts
+		for i, storage := range mcpServer.Spec.Config.Storage {
+			if err := r.validateStorageMount(ctx, mcpServer, storage, i); err != nil {
+				return err
+			}
+		}
+
+		// Validate envFrom references
+		for i, envFrom := range mcpServer.Spec.Config.EnvFrom {
+			if err := r.validateEnvFrom(ctx, mcpServer, envFrom, i); err != nil {
+				return err
+			}
+		}
+
+		// Validate env valueFrom references
+		for i, env := range mcpServer.Spec.Config.Env {
+			if err := r.validateEnvValueFrom(ctx, mcpServer, env, i); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -313,6 +329,48 @@ func classifyAPIError(resourceDesc string, namespace string, err error) error {
 		}
 	}
 	return fmt.Errorf("transient error validating %s: %w", resourceDesc, err)
+}
+
+// validateWorkloadRef checks that the referenced BYO workload exists.
+func (r *MCPServerReconciler) validateWorkloadRef(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+) error {
+	ref := mcpServer.Spec.WorkloadRef
+	desc := fmt.Sprintf("referenced %s %q", ref.Kind, ref.Name)
+
+	var obj client.Object
+	switch ref.Kind {
+	case mcpv1alpha1.WorkloadKindDeployment:
+		obj = &appsv1.Deployment{}
+	case mcpv1alpha1.WorkloadKindDaemonSet:
+		obj = &appsv1.DaemonSet{}
+	case mcpv1alpha1.WorkloadKindStatefulSet:
+		obj = &appsv1.StatefulSet{}
+	default:
+		return &ValidationError{
+			Reason:  ReasonInvalid,
+			Message: fmt.Sprintf("unsupported workloadRef kind: %s", ref.Kind),
+		}
+	}
+
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: mcpServer.Namespace}, obj); err != nil {
+		return classifyAPIError(desc, mcpServer.Namespace, err)
+	}
+	return nil
+}
+
+// validateServiceRef checks that the referenced BYO Service exists.
+func (r *MCPServerReconciler) validateServiceRef(
+	ctx context.Context,
+	mcpServer *mcpv1alpha1.MCPServer,
+) error {
+	ref := mcpServer.Spec.ServiceRef
+	svc := &corev1.Service{}
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: mcpServer.Namespace}, svc); err != nil {
+		return classifyAPIError(fmt.Sprintf("referenced Service %q", ref.Name), mcpServer.Namespace, err)
+	}
+	return nil
 }
 
 // validateNetworkPolicyPort validates a single NetworkPolicyPort entry.

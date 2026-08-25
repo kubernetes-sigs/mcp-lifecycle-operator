@@ -35,6 +35,13 @@ type MCPServerStatusApplyConfiguration struct {
 	DeploymentName *string `json:"deploymentName,omitempty"`
 	// ServiceName is the name of the Service created for this MCPServer.
 	ServiceName *string `json:"serviceName,omitempty"`
+	// WorkloadName identifies the workload backing this MCPServer.
+	// For BYO: "{Kind}/{Name}" (e.g. "DaemonSet/my-ds").
+	// Empty for operator-managed workloads (use DeploymentName instead).
+	WorkloadName *string `json:"workloadName,omitempty"`
+	// WorkloadSummary is a human-readable summary for the print column.
+	// For BYO: "BYO:{Kind}/{Name}". For operator-managed: the container image ref.
+	WorkloadSummary *string `json:"workloadSummary,omitempty"`
 	// Address contains the address of the MCP server service.
 	Address *MCPServerAddressApplyConfiguration `json:"address,omitempty"`
 	// ServerInfo contains identity and capability information reported by the
@@ -99,6 +106,22 @@ func (b *MCPServerStatusApplyConfiguration) WithDeploymentName(value string) *MC
 // If called multiple times, the ServiceName field is set to the value of the last call.
 func (b *MCPServerStatusApplyConfiguration) WithServiceName(value string) *MCPServerStatusApplyConfiguration {
 	b.ServiceName = &value
+	return b
+}
+
+// WithWorkloadName sets the WorkloadName field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the WorkloadName field is set to the value of the last call.
+func (b *MCPServerStatusApplyConfiguration) WithWorkloadName(value string) *MCPServerStatusApplyConfiguration {
+	b.WorkloadName = &value
+	return b
+}
+
+// WithWorkloadSummary sets the WorkloadSummary field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the WorkloadSummary field is set to the value of the last call.
+func (b *MCPServerStatusApplyConfiguration) WithWorkloadSummary(value string) *MCPServerStatusApplyConfiguration {
+	b.WorkloadSummary = &value
 	return b
 }
 

@@ -116,6 +116,43 @@ func WithReplicas(n int32) MCPServerOption {
 	}
 }
 
+// WithServiceRef sets the BYO service reference.
+func WithServiceRef(ref *mcpv1alpha1.ServiceReference) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.ServiceRef = ref
+	}
+}
+
+// WithWorkloadRef sets the BYO workload reference and clears source
+// (workloadRef and source are mutually exclusive per CEL rules).
+func WithWorkloadRef(ref *mcpv1alpha1.WorkloadReference) MCPServerOption {
+	return func(s *mcpv1alpha1.MCPServer) {
+		s.Spec.WorkloadRef = ref
+		s.Spec.Source = mcpv1alpha1.Source{}
+	}
+}
+
+// NewBYOMCPServer creates an MCPServer with workloadRef (no source) for BYO e2e tests.
+// Defaults: port=8080, no source, no arguments.
+func NewBYOMCPServer(name, namespace string, workloadRef *mcpv1alpha1.WorkloadReference, opts ...MCPServerOption) *mcpv1alpha1.MCPServer {
+	server := &mcpv1alpha1.MCPServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: mcpv1alpha1.MCPServerSpec{
+			WorkloadRef: workloadRef,
+			Config: mcpv1alpha1.ServerConfig{
+				Port: 8080,
+			},
+		},
+	}
+	for _, opt := range opts {
+		opt(server)
+	}
+	return server
+}
+
 // NewMCPServer creates an MCPServer with sensible defaults for e2e tests.
 // Defaults: image=DefaultMCPServerImage, port=8080, args=["--port","8080","--read-only"].
 func NewMCPServer(name, namespace string, opts ...MCPServerOption) *mcpv1alpha1.MCPServer {
