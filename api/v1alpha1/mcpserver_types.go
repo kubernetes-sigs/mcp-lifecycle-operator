@@ -347,8 +347,8 @@ type NetworkConfig struct {
 	// Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,
 	// namespaceSelector, ipBlock).
 	// When empty, egress to all destinations is allowed (default).
-	// Egress to kube-dns (UDP/TCP port 53) is always permitted regardless
-	// of this setting.
+	// DNS (UDP/TCP port 53) egress is always permitted regardless of this
+	// setting.
 	// +optional
 	EgressTo []networkingv1.NetworkPolicyPeer `json:"egressTo,omitempty"`
 

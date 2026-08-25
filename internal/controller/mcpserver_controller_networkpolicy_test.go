@@ -1065,7 +1065,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		Expect(acceptedCondition.Message).To(ContainSubstring("ipBlock cannot be combined"))
 	})
 
-	It("should restrict egress to specified destinations with kube-dns rule when egressTo is set", func() {
+	It("should restrict egress to specified destinations with DNS rule when egressTo is set", func() {
 		mcpServer := newTestMCPServer("test-netpol-egress-to")
 		mcpServer.Spec.Network = &mcpv1alpha1.NetworkConfig{
 			EgressTo: []networkingv1.NetworkPolicyPeer{
@@ -1096,18 +1096,12 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 			Namespace: "default",
 		}, netpol)).To(Succeed())
 
-		By("Verifying two egress rules: kube-dns + user-configured")
+		By("Verifying two egress rules: DNS + user-configured")
 		Expect(netpol.Spec.Egress).To(HaveLen(2))
 
-		By("Verifying first rule is kube-dns (UDP/TCP 53, scoped to kube-system kube-dns pods)")
+		By("Verifying first rule allows DNS (UDP/TCP 53) to any destination")
 		dnsRule := netpol.Spec.Egress[0]
-		Expect(dnsRule.To).To(HaveLen(1))
-		Expect(dnsRule.To[0].NamespaceSelector).NotTo(BeNil())
-		Expect(dnsRule.To[0].NamespaceSelector.MatchLabels).To(
-			HaveKeyWithValue("kubernetes.io/metadata.name", "kube-system"))
-		Expect(dnsRule.To[0].PodSelector).NotTo(BeNil())
-		Expect(dnsRule.To[0].PodSelector.MatchLabels).To(
-			HaveKeyWithValue("k8s-app", "kube-dns"))
+		Expect(dnsRule.To).To(BeEmpty())
 		Expect(dnsRule.Ports).To(HaveLen(2))
 		Expect(dnsRule.Ports[0].Port.IntValue()).To(Equal(53))
 		Expect(*dnsRule.Ports[0].Protocol).To(Equal(corev1.ProtocolUDP))
@@ -1122,7 +1116,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		Expect(userRule.Ports).To(BeEmpty())
 	})
 
-	It("should restrict egress ports with kube-dns rule when egressPorts is set", func() {
+	It("should restrict egress ports with DNS rule when egressPorts is set", func() {
 		port443 := intstr.FromInt32(443)
 		protocolTCP := corev1.ProtocolTCP
 		mcpServer := newTestMCPServer("test-netpol-egress-ports")
@@ -1154,7 +1148,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 			Namespace: "default",
 		}, netpol)).To(Succeed())
 
-		By("Verifying two egress rules: kube-dns + user ports")
+		By("Verifying two egress rules: DNS + user ports")
 		Expect(netpol.Spec.Egress).To(HaveLen(2))
 
 		By("Verifying second rule has port restriction but no destination restriction")
