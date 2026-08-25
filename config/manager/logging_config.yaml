@@ -1,7 +1,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: mcp-lifecycle-operator-config
+  # namePrefix in config/default turns this into mcp-lifecycle-operator-config,
+  # which matches --logging-configmap-name and the operator flag default.
+  name: config
   labels:
     app.kubernetes.io/name: mcp-lifecycle-operator
     app.kubernetes.io/managed-by: kustomize

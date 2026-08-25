@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	uzap "go.uber.org/zap"
@@ -18,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	crzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/yaml"
 )
 
 func TestParseLogLevel(t *testing.T) {
@@ -345,4 +347,60 @@ func TestLogLevelReconciler_MissingKey(t *testing.T) {
 	if atomicLevel.Level() != uzap.InfoLevel {
 		t.Fatalf("atomic level = %v, want unchanged info", atomicLevel.Level())
 	}
+}
+
+func TestLoggingConfigMapManifestsMatchFlagDefault(t *testing.T) {
+	cmName := manifestMetadataName(t, filepath.Join("..", "config", "manager", "logging_config.yaml"))
+	prefix := kustomizeNamePrefix(t, filepath.Join("..", "config", "default", "kustomization.yaml"))
+	got := prefix + cmName
+	if got != defaultLoggingConfigMapName {
+		t.Fatalf("prefixed ConfigMap name = %q, want flag default %q", got, defaultLoggingConfigMapName)
+	}
+
+	manager, err := os.ReadFile(filepath.Join("..", "config", "manager", "manager.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read manager.yaml: %v", err)
+	}
+	wantArg := "--logging-configmap-name=" + defaultLoggingConfigMapName
+	if !strings.Contains(string(manager), wantArg) {
+		t.Fatalf("manager.yaml missing %q", wantArg)
+	}
+}
+
+func manifestMetadataName(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", path, err)
+	}
+	var obj struct {
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
+	}
+	if err := yaml.Unmarshal(data, &obj); err != nil {
+		t.Fatalf("failed to parse %s: %v", path, err)
+	}
+	if obj.Metadata.Name == "" {
+		t.Fatalf("metadata.name is empty in %s", path)
+	}
+	return obj.Metadata.Name
+}
+
+func kustomizeNamePrefix(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", path, err)
+	}
+	var obj struct {
+		NamePrefix string `json:"namePrefix"`
+	}
+	if err := yaml.Unmarshal(data, &obj); err != nil {
+		t.Fatalf("failed to parse %s: %v", path, err)
+	}
+	if obj.NamePrefix == "" {
+		t.Fatalf("namePrefix is empty in %s", path)
+	}
+	return obj.NamePrefix
 }
