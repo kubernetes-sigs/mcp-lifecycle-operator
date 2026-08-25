@@ -336,7 +336,7 @@ spec:
                     type: integer
                   storage:
                     description: |-
-                      Storage defines storage mounts for ConfigMaps, Secrets, and EmptyDirs.
+                      Storage defines storage mounts for ConfigMaps, Secrets, EmptyDirs, and PersistentVolumeClaims.
                       Each item uses native Kubernetes volume source types for consistency and feature parity.
                       If specified, must contain at least 1 item. Maximum 64 items.
                       Each storage mount must have a unique path.
@@ -344,7 +344,7 @@ spec:
                       description: |-
                         StorageMount defines a storage mount combining volume source and mount configuration.
                         The Path and Permissions fields apply to all storage types, while Source contains
-                        the type-specific configuration (ConfigMap, Secret, or EmptyDir).
+                        the type-specific configuration (ConfigMap, Secret, EmptyDir, or PersistentVolumeClaim).
                       properties:
                         path:
                           description: |-
@@ -476,6 +476,24 @@ spec:
                                   pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                                   x-kubernetes-int-or-string: true
                               type: object
+                            persistentVolumeClaim:
+                              description: |-
+                                PersistentVolumeClaim specifies a PersistentVolumeClaim volume source (when Type is PersistentVolumeClaim).
+                                Uses native Kubernetes PersistentVolumeClaimVolumeSource type for full feature parity.
+                              properties:
+                                claimName:
+                                  description: |-
+                                    claimName is the name of a PersistentVolumeClaim in the same namespace as the pod using this volume.
+                                    More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                  type: string
+                                readOnly:
+                                  description: |-
+                                    readOnly Will force the ReadOnly setting in VolumeMounts.
+                                    Default false.
+                                  type: boolean
+                              required:
+                              - claimName
+                              type: object
                             secret:
                               description: |-
                                 Secret specifies a Secret volume source (when Type is Secret).
@@ -544,12 +562,13 @@ spec:
                             type:
                               description: |-
                                 Type is a required field that specifies the type of volume source.
-                                Allowed values are: ConfigMap, Secret, EmptyDir.
-                                This determines which volume source field (configMap, secret, or emptyDir) should be configured.
+                                Allowed values are: ConfigMap, Secret, EmptyDir, PersistentVolumeClaim.
+                                This determines which volume source field (configMap, secret, emptyDir, or persistentVolumeClaim) should be configured.
                               enum:
                               - ConfigMap
                               - Secret
                               - EmptyDir
+                              - PersistentVolumeClaim
                               type: string
                           required:
                           - type
@@ -566,6 +585,10 @@ spec:
                               must not be set otherwise
                             rule: 'self.type == ''EmptyDir'' ? has(self.emptyDir)
                               : !has(self.emptyDir)'
+                          - message: persistentVolumeClaim must be set when type is
+                              PersistentVolumeClaim and must not be set otherwise
+                            rule: 'self.type == ''PersistentVolumeClaim'' ? has(self.persistentVolumeClaim)
+                              : !has(self.persistentVolumeClaim)'
                       required:
                       - path
                       - source

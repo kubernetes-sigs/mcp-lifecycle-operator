@@ -551,6 +551,96 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 	})
 
+	Context("When reconciling a resource with PVC storage type", func() {
+		const resourceName = "test-resource-pvc-storage"
+		ctx := context.Background()
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			// Create PVC
+			pvc := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pvc",
+					Namespace: "default",
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse("1Gi"),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
+
+			mcpServer := newTestMCPServer(resourceName)
+			mcpServer.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/var/lib/mcp-data",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypePersistentVolumeClaim,
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "test-pvc",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			pvc := &corev1.PersistentVolumeClaim{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test-pvc", Namespace: "default"}, pvc)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, pvc)).To(Succeed())
+			}
+		})
+
+		It("should create deployment with PersistentVolumeClaim volume", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client:    k8sClient,
+				Scheme:    k8sClient.Scheme(),
+				APIReader: k8sClient,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			deployment := &appsv1.Deployment{}
+			err = k8sClient.Get(ctx, client.ObjectKey{
+				Name:      resourceName,
+				Namespace: "default",
+			}, deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify PVC volume is created
+			Expect(deployment.Spec.Template.Spec.Volumes).To(HaveLen(1))
+			volume := deployment.Spec.Template.Spec.Volumes[0]
+			Expect(volume.Name).To(Equal("vol-0"))
+			Expect(volume.VolumeSource.PersistentVolumeClaim).NotTo(BeNil())
+			Expect(volume.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal("test-pvc"))
+
+			// Verify volume mount
+			Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
+			container := deployment.Spec.Template.Spec.Containers[0]
+			Expect(container.VolumeMounts).To(HaveLen(1))
+			volumeMount := container.VolumeMounts[0]
+			Expect(volumeMount.Name).To(Equal("vol-0"))
+			Expect(volumeMount.MountPath).To(Equal("/var/lib/mcp-data"))
+		})
+	})
+
 	Context("When reconciling a resource with mixed storage types including EmptyDir", func() {
 		const resourceName = "test-resource-mixed-storage"
 
@@ -656,6 +746,62 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(volumeMount1.Name).To(Equal("vol-1"))
 			Expect(volumeMount1.MountPath).To(Equal("/app/logs"))
 			Expect(volumeMount1.ReadOnly).To(BeFalse()) // ReadWrite
+		})
+	})
+
+	Context("When PersistentVolumeClaim reference doesn't exist", func() {
+		const resourceName = "test-resource-missing-pvc"
+		ctx := context.Background()
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			resource := newTestMCPServer(resourceName)
+			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+				{
+					Path: "/var/lib/data",
+					Source: mcpv1alpha1.StorageSource{
+						Type: mcpv1alpha1.StorageTypePersistentVolumeClaim,
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "nonexistent-pvc",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+		})
+
+		It("should set Accepted=False with 'PersistentVolumeClaim not found' message", func() {
+			controllerReconciler := &MCPServerReconciler{
+				Client:    k8sClient,
+				Scheme:    k8sClient.Scheme(),
+				APIReader: k8sClient,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred()) // Should not return error, should update status
+
+			resource := &mcpv1alpha1.MCPServer{}
+			err = k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
+
+			condition := meta.FindStatusCondition(resource.Status.Conditions, "Accepted")
+			Expect(condition).NotTo(BeNil())
+			Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(condition.Reason).To(Equal(ReasonInvalid))
+			Expect(condition.Message).To(ContainSubstring("PersistentVolumeClaim 'nonexistent-pvc' not found in namespace 'default'"))
 		})
 	})
 

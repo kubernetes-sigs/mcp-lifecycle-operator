@@ -182,6 +182,12 @@ func (r *MCPServerReconciler) findMCPServersForSecret(ctx context.Context, secre
 	return r.findMCPServersForResource(ctx, secret.GetName(), secret.GetNamespace(), secretIndexKey)
 }
 
+// findMCPServersForPVC finds all MCPServers that reference the given PersistentVolumeClaim
+// using the field index for efficient lookup.
+func (r *MCPServerReconciler) findMCPServersForPVC(ctx context.Context, pvc client.Object) []reconcile.Request {
+	return r.findMCPServersForResource(ctx, pvc.GetName(), pvc.GetNamespace(), pvcIndexKey)
+}
+
 func (r *MCPServerReconciler) findMCPServersForPod(ctx context.Context, pod client.Object) []reconcile.Request {
 	name, ok := pod.GetLabels()[LabelKeyMCPServer]
 	if !ok || name == "" {
@@ -237,6 +243,27 @@ func extractConfigMapNames(obj client.Object) []string {
 	}
 
 	return configMaps
+}
+
+// extractPVCNames returns all PersistentVolumeClaim names referenced by an MCPServer.
+// Used as the field index extractor for PVC watch lookups.
+func extractPVCNames(obj client.Object) []string {
+	mcpServer := obj.(*mcpv1alpha1.MCPServer)
+	var pvcs []string
+	seen := make(map[string]bool)
+
+	for _, storage := range mcpServer.Spec.Config.Storage {
+		if storage.Source.Type == mcpv1alpha1.StorageTypePersistentVolumeClaim &&
+			storage.Source.PersistentVolumeClaim != nil {
+			name := storage.Source.PersistentVolumeClaim.ClaimName
+			if !seen[name] {
+				pvcs = append(pvcs, name)
+				seen[name] = true
+			}
+		}
+	}
+
+	return pvcs
 }
 
 // extractSecretNames returns all Secret names referenced by an MCPServer,
