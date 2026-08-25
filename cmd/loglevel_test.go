@@ -35,10 +35,12 @@ func TestParseLogLevel(t *testing.T) {
 		{"panic", uzap.PanicLevel, false},
 		{"1", zapcore.Level(-1), false},
 		{"3", zapcore.Level(-3), false},
+		{"128", zapcore.Level(-128), false},
 		{"", 0, true},
 		{"invalid", 0, true},
 		{"0", 0, true},
 		{"-1", 0, true},
+		{"129", 0, true},
 	}
 
 	for _, tt := range tests {
@@ -88,6 +90,20 @@ func TestExtractAtomicLevel_FromPointer(t *testing.T) {
 	}
 }
 
+func TestExtractAtomicLevel_DevelopmentDefault(t *testing.T) {
+	opts := &crzap.Options{Development: true}
+	level := extractAtomicLevel(opts)
+	if level.Level() != uzap.DebugLevel {
+		t.Fatalf("development default level = %v, want debug", level.Level())
+	}
+
+	opts.Level = &level
+	logger := crzap.New(crzap.UseFlagOptions(opts))
+	if !logger.V(1).Enabled() {
+		t.Fatal("expected verbosity 1 to be enabled for --zap-devel with no --zap-log-level")
+	}
+}
+
 func TestRuntimeLogLevelChange(t *testing.T) {
 	atomicLevel := uzap.NewAtomicLevelAt(uzap.ErrorLevel)
 	opts := crzap.Options{Level: &atomicLevel}
@@ -112,6 +128,11 @@ func TestDetectOperatorNamespace(t *testing.T) {
 
 func TestDetectOperatorNamespace_NoEnvNoFile(t *testing.T) {
 	t.Setenv(podNamespaceEnvVar, "")
+
+	oldPath := serviceAccountNamespaceFile
+	serviceAccountNamespaceFile = filepath.Join(t.TempDir(), "missing-namespace")
+	t.Cleanup(func() { serviceAccountNamespaceFile = oldPath })
+
 	if got := detectOperatorNamespace(); got != "" {
 		t.Fatalf("detectOperatorNamespace() = %q, want empty string when env and SA file are absent", got)
 	}

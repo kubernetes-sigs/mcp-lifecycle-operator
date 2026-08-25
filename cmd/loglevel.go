@@ -35,7 +35,8 @@ func resolveLoggingNamespace(namespaceOverride string) string {
 }
 
 // extractAtomicLevel returns the zap.AtomicLevel used by the logger options.
-// When --zap-log-level is not set, a new Info-level AtomicLevel is created.
+// When --zap-log-level is not set, this matches controller-runtime defaults:
+// Debug in development mode (--zap-devel) and Info otherwise.
 func extractAtomicLevel(opts *crzap.Options) uzap.AtomicLevel {
 	if opts.Level != nil {
 		switch level := opts.Level.(type) {
@@ -44,6 +45,9 @@ func extractAtomicLevel(opts *crzap.Options) uzap.AtomicLevel {
 		case *uzap.AtomicLevel:
 			return *level
 		}
+	}
+	if opts.Development {
+		return uzap.NewAtomicLevelAt(uzap.DebugLevel)
 	}
 	return uzap.NewAtomicLevelAt(uzap.InfoLevel)
 }
@@ -68,7 +72,8 @@ func parseLogLevel(value string) (zapcore.Level, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid log level %q", value)
 	}
-	if logLevel <= 0 {
+	// zapcore.Level is int8; verbosity N becomes Level(-N), so N must fit in [-128, -1].
+	if logLevel <= 0 || logLevel > 128 {
 		return 0, fmt.Errorf("invalid log level %q", value)
 	}
 	return zapcore.Level(int8(-logLevel)), nil
