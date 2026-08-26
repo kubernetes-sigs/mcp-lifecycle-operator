@@ -467,6 +467,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		status = status.WithServerInfo(serverInfoToAC(serverInfo))
 	}
 
+	status = withServerCardWhenVerified(status, verifiedCondition, serverInfo, mcpURL, &mcpServer.Spec)
+
 	if err := r.applyStatus(ctx, mcpServer, status); err != nil {
 		logger.Error(err, "Failed to apply MCPServer status")
 		return ctrl.Result{}, err
@@ -530,6 +532,62 @@ func serverInfoToAC(info *mcpv1beta1.MCPServerInfo) *acv1beta1.MCPServerInfoAppl
 			WithCompletions(info.Capabilities.Completions))
 	}
 	return si
+}
+
+// buildServerCard constructs an MCPServerCard from the handshake result, the
+// cluster-internal service URL, and the MCPServer spec (for user-provided
+// labels / annotations). Returns nil when serverInfo is nil (no handshake yet).
+func buildServerCard(info *mcpv1beta1.MCPServerInfo, address string, spec *mcpv1beta1.MCPServerSpec) *mcpv1beta1.MCPServerCard {
+	if info == nil {
+		return nil
+	}
+	card := &mcpv1beta1.MCPServerCard{
+		Name:            info.Name,
+		Version:         info.Version,
+		ProtocolVersion: info.ProtocolVersion,
+		Address:         address,
+		Capabilities:    info.Capabilities,
+	}
+	if len(spec.ExtraLabels) > 0 {
+		card.Labels = spec.ExtraLabels
+	}
+	if len(spec.ExtraAnnotations) > 0 {
+		card.Annotations = spec.ExtraAnnotations
+	}
+	return card
+}
+
+// serverCardToAC converts an MCPServerCard to its apply-configuration
+// equivalent for server-side apply.
+func serverCardToAC(card *mcpv1beta1.MCPServerCard) *acv1beta1.MCPServerCardApplyConfiguration {
+	sc := acv1beta1.MCPServerCard()
+	if card.Name != "" {
+		sc = sc.WithName(card.Name)
+	}
+	if card.Version != "" {
+		sc = sc.WithVersion(card.Version)
+	}
+	if card.ProtocolVersion != "" {
+		sc = sc.WithProtocolVersion(card.ProtocolVersion)
+	}
+	if card.Address != "" {
+		sc = sc.WithAddress(card.Address)
+	}
+	if card.Capabilities != nil {
+		sc = sc.WithCapabilities(acv1beta1.MCPServerCapabilities().
+			WithTools(card.Capabilities.Tools).
+			WithResources(card.Capabilities.Resources).
+			WithPrompts(card.Capabilities.Prompts).
+			WithLogging(card.Capabilities.Logging). //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
+			WithCompletions(card.Capabilities.Completions))
+	}
+	if len(card.Labels) > 0 {
+		sc = sc.WithLabels(card.Labels)
+	}
+	if len(card.Annotations) > 0 {
+		sc = sc.WithAnnotations(card.Annotations)
+	}
+	return sc
 }
 
 // shouldSkipReconciliation returns true when the MCPServer is being deleted or
@@ -689,6 +747,28 @@ func withAddressWhenVerified(
 ) *acv1beta1.MCPServerStatusApplyConfiguration {
 	if verifiedCondition.Status == metav1.ConditionTrue {
 		return status.WithAddress(acv1beta1.MCPServerAddress().WithURL(mcpURL))
+	}
+	return status
+}
+
+// withServerCardWhenVerified sets the ServerCard on the status apply
+// configuration once the MCP endpoint has been verified reachable
+// (Verified=True) and server info from the handshake is present. It mirrors
+// withAddressWhenVerified: the card aggregates the address and handshake-derived
+// serverInfo, both of which are only published after verification, so gate on
+// Verified=True alone (both ReasonVerified and ReasonAuthSkipped are reachable).
+func withServerCardWhenVerified(
+	status *acv1beta1.MCPServerStatusApplyConfiguration,
+	verifiedCondition metav1.Condition,
+	serverInfo *mcpv1beta1.MCPServerInfo,
+	mcpURL string,
+	spec *mcpv1beta1.MCPServerSpec,
+) *acv1beta1.MCPServerStatusApplyConfiguration {
+	if verifiedCondition.Status != metav1.ConditionTrue {
+		return status
+	}
+	if card := buildServerCard(serverInfo, mcpURL, spec); card != nil {
+		return status.WithServerCard(serverCardToAC(card))
 	}
 	return status
 }

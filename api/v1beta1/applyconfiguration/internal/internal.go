@@ -131,6 +131,34 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: tools
       type:
         scalar: boolean
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerCard
+  map:
+    fields:
+    - name: address
+      type:
+        scalar: string
+    - name: annotations
+      type:
+        map:
+          elementType:
+            scalar: string
+    - name: capabilities
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerCapabilities
+    - name: labels
+      type:
+        map:
+          elementType:
+            scalar: string
+    - name: name
+      type:
+        scalar: string
+    - name: protocolVersion
+      type:
+        scalar: string
+    - name: version
+      type:
+        scalar: string
 - name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerInfo
   map:
     fields:
@@ -212,6 +240,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: replicas
       type:
         scalar: numeric
+    - name: serverCard
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerCard
     - name: serverInfo
       type:
         namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerInfo
