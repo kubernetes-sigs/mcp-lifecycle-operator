@@ -41,9 +41,10 @@ type MCPServerSpecApplyConfiguration struct {
 	// Currently supports container images, with potential for additional source types in the future.
 	// Required when workloadRef is not set.
 	Source *SourceApplyConfiguration `json:"source,omitempty"`
-	// Config is a required field that defines how the MCP server should be configured when it runs.
+	// Config defines how the MCP server should be configured when it runs.
 	// This includes runtime settings such as the server port, command-line arguments,
 	// environment variables, and storage mounts.
+	// May be omitted in BYO mode when workloadRef and serviceRef are set.
 	Config *ServerConfigApplyConfiguration `json:"config,omitempty"`
 	// Runtime defines runtime management configuration.
 	// If not specified, default runtime settings will be applied.

@@ -484,10 +484,11 @@ type MCPServerSpec struct {
 	// +optional
 	Source Source `json:"source,omitzero"`
 
-	// Config is a required field that defines how the MCP server should be configured when it runs.
+	// Config defines how the MCP server should be configured when it runs.
 	// This includes runtime settings such as the server port, command-line arguments,
 	// environment variables, and storage mounts.
-	// +kubebuilder:validation:Required
+	// May be omitted in BYO mode when workloadRef and serviceRef are set.
+	// +optional
 	Config ServerConfig `json:"config,omitzero"`
 
 	// Runtime defines runtime management configuration.

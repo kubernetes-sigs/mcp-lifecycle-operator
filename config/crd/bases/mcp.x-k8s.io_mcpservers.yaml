@@ -72,9 +72,10 @@ spec:
             properties:
               config:
                 description: |-
-                  Config is a required field that defines how the MCP server should be configured when it runs.
+                  Config defines how the MCP server should be configured when it runs.
                   This includes runtime settings such as the server port, command-line arguments,
                   environment variables, and storage mounts.
+                  May be omitted in BYO mode when workloadRef and serviceRef are set.
                 properties:
                   arguments:
                     description: |-
@@ -1986,8 +1987,6 @@ spec:
                 - kind
                 - name
                 type: object
-            required:
-            - config
             type: object
             x-kubernetes-validations:
             - message: source must not be set when workloadRef is set
