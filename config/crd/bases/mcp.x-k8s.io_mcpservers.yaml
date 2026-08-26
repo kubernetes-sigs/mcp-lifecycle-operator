@@ -2113,6 +2113,31 @@ spec:
                           and invocation.
                         type: boolean
                     type: object
+                  catalogCounts:
+                    description: |-
+                      CatalogCounts contains the number of tools, resources, and prompts
+                      reported by the server. Populated only after a successful handshake
+                      that includes list calls.
+                    properties:
+                      promptCount:
+                        description: |-
+                          PromptCount is the number of prompt templates reported by the server.
+                          Nil when the server does not support prompts.
+                        format: int32
+                        type: integer
+                      resourceCount:
+                        description: |-
+                          ResourceCount is the number of resources reported by the server.
+                          Nil when the server does not support resources.
+                        format: int32
+                        type: integer
+                      toolCount:
+                        description: |-
+                          ToolCount is the number of tools reported by the server.
+                          Nil when the server does not support tools.
+                        format: int32
+                        type: integer
+                    type: object
                   instructions:
                     description: |-
                       Instructions describes how to use the server and its features.
