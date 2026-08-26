@@ -20,6 +20,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -66,6 +67,33 @@ func newBYODeployment(name, namespace string, replicas int32) *appsv1.Deployment
 						Name:    "busybox",
 						Image:   f.BusyboxImage,
 						Command: []string{"sleep", "3600"},
+					}},
+				},
+			},
+		},
+	}
+}
+
+func newBYOMCPDeployment(name, namespace string, replicas int32, port int32) *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To(replicas),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"app": name},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": name},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Name:  "mcp-server",
+						Image: f.DefaultMCPServerImage,
+						Args:  []string{"--port", fmt.Sprintf("%d", port), "--read-only"},
 					}},
 				},
 			},
@@ -218,7 +246,7 @@ func TestBYOServiceHappyPath(t *testing.T) {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
 
-			dep := newBYODeployment(byoDeployName, ns, 1)
+			dep := newBYOMCPDeployment(byoDeployName, ns, 1, 9090)
 			if err := r.Create(ctx, dep); err != nil {
 				t.Fatalf("failed to create BYO Deployment: %v", err)
 			}
@@ -239,7 +267,7 @@ func TestBYOServiceHappyPath(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.WaitForMCPServerReconciled(ctx, t, r, server)
+			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
 
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
 				t.Fatalf("failed to get MCPServer: %v", err)
