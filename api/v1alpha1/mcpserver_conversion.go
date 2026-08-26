@@ -42,6 +42,7 @@ func (src *MCPServer) ConvertTo(dstRaw conversion.Hub) error {
 	dst.Spec.Runtime = convertRuntimeConfigTo(src.Spec.Runtime)
 	dst.Spec.MCP = convertMCPConfigTo(src.Spec.MCP)
 	dst.Spec.Network = convertNetworkConfigTo(src.Spec.Network)
+	dst.Spec.Transport = convertTransportConfigTo(src.Spec.Transport)
 
 	// Status
 	dst.Status.ObservedGeneration = src.Status.ObservedGeneration
@@ -73,6 +74,7 @@ func (dst *MCPServer) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Spec.Runtime = convertRuntimeConfigFrom(src.Spec.Runtime)
 	dst.Spec.MCP = convertMCPConfigFrom(src.Spec.MCP)
 	dst.Spec.Network = convertNetworkConfigFrom(src.Spec.Network)
+	dst.Spec.Transport = convertTransportConfigFrom(src.Spec.Transport)
 
 	// Status
 	dst.Status.ObservedGeneration = src.Status.ObservedGeneration
@@ -94,7 +96,9 @@ func convertSourceTo(in Source) v1beta1.Source {
 	}
 	if in.ContainerImage != nil {
 		out.ContainerImage = &v1beta1.ContainerImageSource{
-			Ref: in.ContainerImage.Ref,
+			Ref:              in.ContainerImage.Ref,
+			PullPolicy:       in.ContainerImage.PullPolicy,
+			ImagePullSecrets: in.ContainerImage.ImagePullSecrets,
 		}
 	}
 	return out
@@ -106,7 +110,9 @@ func convertSourceFrom(in v1beta1.Source) Source {
 	}
 	if in.ContainerImage != nil {
 		out.ContainerImage = &ContainerImageSource{
-			Ref: in.ContainerImage.Ref,
+			Ref:              in.ContainerImage.Ref,
+			PullPolicy:       in.ContainerImage.PullPolicy,
+			ImagePullSecrets: in.ContainerImage.ImagePullSecrets,
 		}
 	}
 	return out
@@ -232,6 +238,8 @@ func convertNetworkConfigTo(in *NetworkConfig) *v1beta1.NetworkConfig {
 	}
 	return &v1beta1.NetworkConfig{
 		IngressFrom: in.IngressFrom,
+		EgressTo:    in.EgressTo,
+		EgressPorts: in.EgressPorts,
 	}
 }
 
@@ -241,7 +249,47 @@ func convertNetworkConfigFrom(in *v1beta1.NetworkConfig) *NetworkConfig {
 	}
 	return &NetworkConfig{
 		IngressFrom: in.IngressFrom,
+		EgressTo:    in.EgressTo,
+		EgressPorts: in.EgressPorts,
 	}
+}
+
+func convertTransportConfigTo(in *TransportConfig) *v1beta1.TransportConfig {
+	if in == nil {
+		return nil
+	}
+	out := &v1beta1.TransportConfig{}
+	if in.TLS != nil {
+		out.TLS = &v1beta1.TLSClientConfig{
+			Enabled:            in.TLS.Enabled,
+			InsecureSkipVerify: in.TLS.InsecureSkipVerify,
+		}
+		if in.TLS.CABundleSecret != nil {
+			out.TLS.CABundleSecret = &v1beta1.SecretReference{
+				Name: in.TLS.CABundleSecret.Name,
+			}
+		}
+	}
+	return out
+}
+
+func convertTransportConfigFrom(in *v1beta1.TransportConfig) *TransportConfig {
+	if in == nil {
+		return nil
+	}
+	out := &TransportConfig{}
+	if in.TLS != nil {
+		out.TLS = &TLSClientConfig{
+			Enabled:            in.TLS.Enabled,
+			InsecureSkipVerify: in.TLS.InsecureSkipVerify,
+		}
+		if in.TLS.CABundleSecret != nil {
+			out.TLS.CABundleSecret = &SecretReference{
+				Name: in.TLS.CABundleSecret.Name,
+			}
+		}
+	}
+	return out
 }
 
 func convertAddressTo(in *MCPServerAddress) *v1beta1.MCPServerAddress {

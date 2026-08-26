@@ -78,7 +78,11 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 			Source: Source{
 				Type: SourceTypeContainerImage,
 				ContainerImage: &ContainerImageSource{
-					Ref: "ghcr.io/example/mcp-server@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+					Ref:        "ghcr.io/example/mcp-server@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+					PullPolicy: corev1.PullAlways,
+					ImagePullSecrets: []corev1.LocalObjectReference{
+						{Name: "registry-credentials"},
+					},
 				},
 			},
 			Config: ServerConfig{
@@ -173,6 +177,27 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 						PodSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"role": "client"},
 						},
+					},
+				},
+				EgressTo: []networkingv1.NetworkPolicyPeer{
+					{
+						IPBlock: &networkingv1.IPBlock{
+							CIDR: "10.0.0.0/8",
+						},
+					},
+				},
+				EgressPorts: []networkingv1.NetworkPolicyPort{
+					{
+						Port: ptr.To(intstr.FromInt32(443)), //nolint:modernize // FromInt32 is not a simple value
+					},
+				},
+			},
+			Transport: &TransportConfig{
+				TLS: &TLSClientConfig{
+					Enabled:            true,
+					InsecureSkipVerify: true,
+					CABundleSecret: &SecretReference{
+						Name: "ca-bundle",
 					},
 				},
 			},
@@ -281,7 +306,8 @@ func TestConversionRoundTrip_NilOptionalFields(t *testing.T) {
 			Config: ServerConfig{
 				Port: 8080,
 			},
-			Network: nil,
+			Network:   nil,
+			Transport: nil,
 		},
 		Status: MCPServerStatus{
 			Address:    nil,
@@ -299,6 +325,9 @@ func TestConversionRoundTrip_NilOptionalFields(t *testing.T) {
 	}
 	if hub.Spec.Network != nil {
 		t.Error("expected nil Network in hub after ConvertTo")
+	}
+	if hub.Spec.Transport != nil {
+		t.Error("expected nil Transport in hub after ConvertTo")
 	}
 	if hub.Status.Address != nil {
 		t.Error("expected nil Address in hub after ConvertTo")

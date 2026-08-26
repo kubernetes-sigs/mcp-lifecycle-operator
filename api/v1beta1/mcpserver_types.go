@@ -60,9 +60,20 @@ type ContainerImageSource struct {
 	// NOTE: the validation rules above are taken from
 	// https://github.com/operator-framework/operator-controller/blob/475e1341d0aa045c4fcb6a93a1ffeb2d16484ca7/api/v1/clustercatalog_types.go#L275-L321
 
-	// Future fields could include:
-	//   - ImagePullSecrets
-	//   - PullPolicy
+	// PullPolicy controls when the kubelet pulls the MCP server image.
+	// When omitted, Kubernetes applies its native default based on the image reference.
+	// +optional
+	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
+
+	// ImagePullSecrets specifies credentials for pulling the MCP server image
+	// from private registries.
+	// The operator passes these references to the managed Pod and does not read
+	// or copy Secret data.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:XValidation:rule="self.all(secret, secret.name != '')",message="imagePullSecrets names must not be empty"
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }
 
 // Source defines where the MCP server's container image (or other source types in the future) is located.
@@ -341,6 +352,22 @@ type NetworkConfig struct {
 	// When empty, any pod in the cluster can reach the MCP server (default).
 	// +optional
 	IngressFrom []networkingv1.NetworkPolicyPeer `json:"ingressFrom,omitempty"`
+
+	// EgressTo restricts which destinations the MCP server pod can reach.
+	// Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,
+	// namespaceSelector, ipBlock).
+	// When empty, egress to all destinations is allowed (default).
+	// DNS (UDP/TCP port 53) egress is always permitted regardless of this
+	// setting.
+	// +optional
+	EgressTo []networkingv1.NetworkPolicyPeer `json:"egressTo,omitempty"`
+
+	// EgressPorts restricts which ports the MCP server pod can connect to.
+	// When empty and EgressTo is set, all ports are allowed to the
+	// specified destinations. When set, only listed ports are allowed
+	// (in addition to DNS port 53 which is always permitted).
+	// +optional
+	EgressPorts []networkingv1.NetworkPolicyPort `json:"egressPorts,omitempty"`
 }
 
 // MCPServerSpec defines the desired state of MCPServer.
@@ -378,6 +405,48 @@ type MCPServerSpec struct {
 	// Network configures network policies for the MCP server pod.
 	// +optional
 	Network *NetworkConfig `json:"network,omitempty"`
+
+	// Transport configures transport-layer settings for
+	// operator-to-MCP-server communication.
+	// +optional
+	Transport *TransportConfig `json:"transport,omitempty"`
+}
+
+// SecretReference references a Secret in the same namespace as the MCPServer.
+type SecretReference struct {
+	// Name of the Secret.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
+// TLSClientConfig configures TLS for operator-to-MCP-server communication
+// during handshake and discovery probes.
+type TLSClientConfig struct {
+	// Enabled controls whether the operator uses HTTPS for handshake/discovery.
+	// When true, the operator connects to the MCP server using TLS.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// CABundleSecret references a Secret containing a CA certificate bundle
+	// under the key "ca.crt". Used to verify the MCP server's TLS certificate.
+	// When unset and enabled is true, system CA certificates are used.
+	// +optional
+	CABundleSecret *SecretReference `json:"caBundleSecret,omitempty"`
+
+	// InsecureSkipVerify disables TLS certificate verification.
+	// For development and testing only.
+	// +optional
+	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
+}
+
+// TransportConfig configures transport-layer settings for
+// operator-to-MCP-server communication.
+type TransportConfig struct {
+	// TLS configures TLS for operator-to-MCP-server communication
+	// during handshake and discovery probes.
+	// +optional
+	TLS *TLSClientConfig `json:"tls,omitempty"`
 }
 
 // MCPConfig defines Model Context Protocol specific properties of the server.
