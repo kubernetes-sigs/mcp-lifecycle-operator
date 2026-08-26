@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"iter"
 	"maps"
 	"net/http"
 	"strings"
@@ -213,7 +214,73 @@ func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string,
 		_ = session.Close()
 	}()
 
-	return extractServerInfo(session.InitializeResult()), nil
+	info := extractServerInfo(session.InitializeResult())
+	if info != nil {
+		info.CatalogCounts = extractCatalogCounts(ctx, session, session.InitializeResult())
+	}
+	return info, nil
+}
+
+// countCatalogItems consumes a paginated MCP list iterator (e.g. the ones
+// returned by ClientSession.Tools/Resources/Prompts) and returns the total item
+// count across all pages. The iterators automatically follow cursors, so this
+// does not undercount multi-page catalogs. Iteration stops at the first error,
+// which is returned so the caller can skip that count.
+func countCatalogItems[T any](seq iter.Seq2[*T, error]) (int32, error) {
+	var count int32
+	for _, err := range seq {
+		if err != nil {
+			return 0, err
+		}
+		count++
+	}
+	return count, nil
+}
+
+// extractCatalogCounts iterates the paginated list for each supported capability
+// and returns the item counts. Errors from individual list calls are swallowed -
+// catalog counts are best-effort metadata.
+func extractCatalogCounts(ctx context.Context, session *mcp.ClientSession, initResult *mcp.InitializeResult) *mcpv1beta1.CatalogCounts {
+	if initResult == nil || initResult.Capabilities == nil {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+	counts := &mcpv1beta1.CatalogCounts{}
+	caps := initResult.Capabilities
+	hasAnyCounts := false
+
+	if caps.Tools != nil {
+		if count, err := countCatalogItems(session.Tools(ctx, nil)); err == nil {
+			counts.ToolCount = &count
+			hasAnyCounts = true
+		} else {
+			logger.V(1).Info("Failed to list tools for catalog counts", "error", err)
+		}
+	}
+
+	if caps.Resources != nil {
+		if count, err := countCatalogItems(session.Resources(ctx, nil)); err == nil {
+			counts.ResourceCount = &count
+			hasAnyCounts = true
+		} else {
+			logger.V(1).Info("Failed to list resources for catalog counts", "error", err)
+		}
+	}
+
+	if caps.Prompts != nil {
+		if count, err := countCatalogItems(session.Prompts(ctx, nil)); err == nil {
+			counts.PromptCount = &count
+			hasAnyCounts = true
+		} else {
+			logger.V(1).Info("Failed to list prompts for catalog counts", "error", err)
+		}
+	}
+
+	if !hasAnyCounts {
+		return nil
+	}
+	return counts
 }
 
 // extractServerInfo converts an MCP InitializeResult into our CRD type.
