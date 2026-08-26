@@ -109,11 +109,18 @@ func newBYOService(name, namespace string, port int32, portName string) *corev1.
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{"app": byoDeployName},
-			Ports: []corev1.ServicePort{{
-				Name:     portName,
-				Port:     port,
-				Protocol: corev1.ProtocolTCP,
-			}},
+			Ports: []corev1.ServicePort{
+				{
+					Name:     "metrics",
+					Port:     2112,
+					Protocol: corev1.ProtocolTCP,
+				},
+				{
+					Name:     portName,
+					Port:     port,
+					Protocol: corev1.ProtocolTCP,
+				},
+			},
 		},
 	}
 }
