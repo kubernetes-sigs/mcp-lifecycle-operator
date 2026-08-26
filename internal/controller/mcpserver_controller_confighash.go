@@ -217,8 +217,8 @@ func (r *MCPServerReconciler) findMCPServersForWorkload(ctx context.Context, obj
 	return r.findMCPServersForResource(ctx, obj.GetName(), obj.GetNamespace(), workloadRefIndexKey)
 }
 
-// findMCPServersForService finds all MCPServers that reference the given Service
-// via serviceRef.
+// findMCPServersForBYOService finds all MCPServers that reference the given
+// Service via serviceRef.
 func (r *MCPServerReconciler) findMCPServersForBYOService(ctx context.Context, obj client.Object) []reconcile.Request {
 	return r.findMCPServersForResource(ctx, obj.GetName(), obj.GetNamespace(), serviceRefIndexKey)
 }

@@ -2010,6 +2010,8 @@ spec:
               rule: '!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.security)'
             - message: runtime.health must not be set when workloadRef is set
               rule: '!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.health)'
+            - message: network must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.network)'
             - message: mcp.stateless must not be set when serviceRef is set
               rule: '!has(self.serviceRef) || !has(self.mcp) || !has(self.mcp.stateless)'
             - message: config.port is required when serviceRef is not set

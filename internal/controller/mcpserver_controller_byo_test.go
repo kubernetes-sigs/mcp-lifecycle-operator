@@ -534,6 +534,9 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			Expect(mcpServer.Status.ServiceName).To(Equal("my-mcp-svc-multi"))
+			Expect(mcpServer.Status.Address).NotTo(BeNil())
+			Expect(mcpServer.Status.Address.URL).To(ContainSubstring(":3000/"),
+				"should resolve to the mcp-named port, not metrics (9090) or admin (8081)")
 		})
 	})
 

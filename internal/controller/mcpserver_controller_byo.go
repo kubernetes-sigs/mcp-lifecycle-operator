@@ -35,10 +35,11 @@ import (
 
 // WorkloadStatus normalizes status from different workload kinds.
 type WorkloadStatus struct {
-	Ready         bool
-	ReadyReplicas int32
-	TotalReplicas int32
-	Message       string
+	Ready           bool
+	ReadyReplicas   int32
+	TotalReplicas   int32
+	DesiredReplicas *int32
+	Message         string
 }
 
 // getWorkloadStatus fetches the referenced BYO workload and returns normalized status.
@@ -54,9 +55,10 @@ func getWorkloadStatus(ctx context.Context, r client.Reader, name string, kind m
 		}
 		total := ptr.Deref(dep.Spec.Replicas, 1)
 		return WorkloadStatus{
-			Ready:         dep.Status.ReadyReplicas > 0 && dep.Status.ReadyReplicas >= total,
-			ReadyReplicas: dep.Status.ReadyReplicas,
-			TotalReplicas: total,
+			Ready:           dep.Status.ReadyReplicas > 0 && dep.Status.ReadyReplicas >= total,
+			ReadyReplicas:   dep.Status.ReadyReplicas,
+			TotalReplicas:   total,
+			DesiredReplicas: dep.Spec.Replicas,
 		}, nil
 
 	case mcpv1alpha1.WorkloadKindDaemonSet:
@@ -83,9 +85,10 @@ func getWorkloadStatus(ctx context.Context, r client.Reader, name string, kind m
 		}
 		total := ptr.Deref(sts.Spec.Replicas, 1)
 		return WorkloadStatus{
-			Ready:         sts.Status.ReadyReplicas > 0 && sts.Status.ReadyReplicas >= total,
-			ReadyReplicas: sts.Status.ReadyReplicas,
-			TotalReplicas: total,
+			Ready:           sts.Status.ReadyReplicas > 0 && sts.Status.ReadyReplicas >= total,
+			ReadyReplicas:   sts.Status.ReadyReplicas,
+			TotalReplicas:   total,
+			DesiredReplicas: sts.Spec.Replicas,
 		}, nil
 
 	default:
@@ -150,9 +153,14 @@ func (r *MCPServerReconciler) reconcileBYO(
 				ref.Kind, ws.ReadyReplicas, ws.TotalReplicas),
 			mcpServer.Generation, mcpServer.Status.Conditions)
 	} else if ws.TotalReplicas == 0 && ws.ReadyReplicas == 0 {
-		readyCondition = newReadyCondition(metav1.ConditionUnknown, ReasonInitializing,
-			fmt.Sprintf("Waiting for BYO %s to report status", ref.Kind),
-			mcpServer.Generation, mcpServer.Status.Conditions)
+		reason := ReasonInitializing
+		msg := fmt.Sprintf("Waiting for BYO %s to report status", ref.Kind)
+		if ws.DesiredReplicas != nil && *ws.DesiredReplicas == 0 {
+			reason = ReasonScaledToZero
+			msg = fmt.Sprintf("BYO %s is scaled to zero", ref.Kind)
+		}
+		readyCondition = newReadyCondition(metav1.ConditionUnknown, reason,
+			msg, mcpServer.Generation, mcpServer.Status.Conditions)
 	} else {
 		msg := fmt.Sprintf("BYO %s is not ready (%d of %d instances healthy)",
 			ref.Kind, ws.ReadyReplicas, ws.TotalReplicas)

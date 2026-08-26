@@ -453,6 +453,7 @@ type TransportConfig struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.resources)",message="runtime.resources must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.security)",message="runtime.security must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.health)",message="runtime.health must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.network)",message="network must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.serviceRef) || !has(self.mcp) || !has(self.mcp.stateless)",message="mcp.stateless must not be set when serviceRef is set"
 // +kubebuilder:validation:XValidation:rule="has(self.serviceRef) || has(self.config.port)",message="config.port is required when serviceRef is not set"
 type MCPServerSpec struct {
