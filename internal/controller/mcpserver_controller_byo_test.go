@@ -28,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
@@ -657,6 +658,425 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			Expect(mcpServer.Status.Address.URL).To(ContainSubstring("7777"))
 			Expect(mcpServer.Status.Address.URL).NotTo(ContainSubstring("9090"))
 			Expect(mcpServer.Status.Address.URL).To(ContainSubstring("my-mcp-svc-port"))
+		})
+	})
+})
+
+var _ = Describe("getWorkloadStatus - unit tests", func() {
+	ctx := context.Background()
+
+	It("should return not-found error for missing DaemonSet", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
+
+		ws, err := getWorkloadStatus(ctx, fakeClient, "no-such-ds", mcpv1alpha1.WorkloadKindDaemonSet, "default")
+		Expect(err).To(HaveOccurred())
+		Expect(errors.IsNotFound(err)).To(BeTrue())
+		Expect(ws.Message).To(ContainSubstring("DaemonSet"))
+		Expect(ws.Message).To(ContainSubstring("no-such-ds"))
+	})
+
+	It("should return not-found error for missing StatefulSet", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
+
+		ws, err := getWorkloadStatus(ctx, fakeClient, "no-such-sts", mcpv1alpha1.WorkloadKindStatefulSet, "default")
+		Expect(err).To(HaveOccurred())
+		Expect(errors.IsNotFound(err)).To(BeTrue())
+		Expect(ws.Message).To(ContainSubstring("StatefulSet"))
+		Expect(ws.Message).To(ContainSubstring("no-such-sts"))
+	})
+
+	It("should return not-found error for missing Deployment", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
+
+		ws, err := getWorkloadStatus(ctx, fakeClient, "no-such-deploy", mcpv1alpha1.WorkloadKindDeployment, "default")
+		Expect(err).To(HaveOccurred())
+		Expect(errors.IsNotFound(err)).To(BeTrue())
+		Expect(ws.Message).To(ContainSubstring("Deployment"))
+		Expect(ws.Message).To(ContainSubstring("no-such-deploy"))
+	})
+
+	It("should return error for unsupported workload kind", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
+
+		_, err := getWorkloadStatus(ctx, fakeClient, "anything", mcpv1alpha1.WorkloadKind("CronJob"), "default")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unsupported workload kind"))
+		Expect(err.Error()).To(ContainSubstring("CronJob"))
+	})
+
+	It("should report not-ready Deployment when ReadyReplicas < desired", func() {
+		dep := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "partial-deploy", Namespace: "default"},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To[int32](3),
+				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "test"}},
+					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "c", Image: "img"}}},
+				},
+			},
+			Status: appsv1.DeploymentStatus{ReadyReplicas: 1, Replicas: 3},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(dep).
+			WithStatusSubresource(dep).Build()
+
+		ws, err := getWorkloadStatus(ctx, fakeClient, "partial-deploy", mcpv1alpha1.WorkloadKindDeployment, "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ws.Ready).To(BeFalse())
+		Expect(ws.ReadyReplicas).To(Equal(int32(1)))
+		Expect(ws.TotalReplicas).To(Equal(int32(3)))
+	})
+
+	It("should report not-ready DaemonSet when NumberReady < DesiredNumberScheduled", func() {
+		ds := &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{Name: "partial-ds", Namespace: "default"},
+			Spec: appsv1.DaemonSetSpec{
+				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "test"}},
+					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "c", Image: "img"}}},
+				},
+			},
+			Status: appsv1.DaemonSetStatus{NumberReady: 1, DesiredNumberScheduled: 3},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(ds).
+			WithStatusSubresource(ds).Build()
+
+		ws, err := getWorkloadStatus(ctx, fakeClient, "partial-ds", mcpv1alpha1.WorkloadKindDaemonSet, "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ws.Ready).To(BeFalse())
+		Expect(ws.ReadyReplicas).To(Equal(int32(1)))
+		Expect(ws.TotalReplicas).To(Equal(int32(3)))
+	})
+
+	It("should report not-ready StatefulSet when ReadyReplicas < desired", func() {
+		sts := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{Name: "partial-sts", Namespace: "default"},
+			Spec: appsv1.StatefulSetSpec{
+				Replicas: ptr.To[int32](3),
+				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "test"}},
+					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "c", Image: "img"}}},
+				},
+			},
+			Status: appsv1.StatefulSetStatus{ReadyReplicas: 1, Replicas: 3},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(sts).
+			WithStatusSubresource(sts).Build()
+
+		ws, err := getWorkloadStatus(ctx, fakeClient, "partial-sts", mcpv1alpha1.WorkloadKindStatefulSet, "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ws.Ready).To(BeFalse())
+		Expect(ws.ReadyReplicas).To(Equal(int32(1)))
+		Expect(ws.TotalReplicas).To(Equal(int32(3)))
+	})
+
+	It("should report zero replicas when Deployment is scaled to zero", func() {
+		dep := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "zero-deploy", Namespace: "default"},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To[int32](0),
+				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "test"}},
+					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "c", Image: "img"}}},
+				},
+			},
+			Status: appsv1.DeploymentStatus{ReadyReplicas: 0, Replicas: 0},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(dep).
+			WithStatusSubresource(dep).Build()
+
+		ws, err := getWorkloadStatus(ctx, fakeClient, "zero-deploy", mcpv1alpha1.WorkloadKindDeployment, "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ws.Ready).To(BeFalse())
+		Expect(ws.ReadyReplicas).To(Equal(int32(0)))
+		Expect(ws.TotalReplicas).To(Equal(int32(0)))
+		Expect(ws.DesiredReplicas).To(Equal(ptr.To[int32](0)))
+	})
+})
+
+var _ = Describe("resolveServicePort - unit tests", func() {
+	ctx := context.Background()
+
+	It("should return error for missing Service", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
+
+		_, err := resolveServicePort(ctx, fakeClient, "no-such-svc", "default", 0)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("referenced Service no-such-svc not found"))
+	})
+
+	It("should return error when Service has no ports", func() {
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "no-ports-svc", Namespace: "default"},
+			Spec:       corev1.ServiceSpec{Selector: map[string]string{"app": "test"}},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(svc).Build()
+
+		_, err := resolveServicePort(ctx, fakeClient, "no-ports-svc", "default", 0)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("has no ports"))
+	})
+
+	It("should return configPort when > 0 without fetching Service", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
+
+		port, err := resolveServicePort(ctx, fakeClient, "any-svc", "default", 9999)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(port).To(Equal(int32(9999)))
+	})
+
+	It("should prefer mcp-named port over others", func() {
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "multi-port-svc", Namespace: "default"},
+			Spec: corev1.ServiceSpec{
+				Ports: []corev1.ServicePort{
+					{Name: "metrics", Port: 9090},
+					{Name: "mcp", Port: 4000},
+					{Name: "admin", Port: 8081},
+				},
+				Selector: map[string]string{"app": "test"},
+			},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(svc).Build()
+
+		port, err := resolveServicePort(ctx, fakeClient, "multi-port-svc", "default", 0)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(port).To(Equal(int32(4000)))
+	})
+
+	It("should fall back to first port when no mcp-named port exists", func() {
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "single-port-svc", Namespace: "default"},
+			Spec: corev1.ServiceSpec{
+				Ports: []corev1.ServicePort{
+					{Name: "http", Port: 8080},
+				},
+				Selector: map[string]string{"app": "test"},
+			},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(svc).Build()
+
+		port, err := resolveServicePort(ctx, fakeClient, "single-port-svc", "default", 0)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(port).To(Equal(int32(8080)))
+	})
+})
+
+var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
+	ctx := context.Background()
+
+	Context("When BYO Deployment is not ready", func() {
+		const resourceName = "test-byo-not-ready"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			dep := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "not-ready-deploy",
+					Namespace: "default",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To[int32](3),
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "not-ready"},
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "not-ready"}},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{
+								Name:  "server",
+								Image: "my-mcp:latest",
+							}},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, dep)).To(Succeed())
+			dep.Status.ReadyReplicas = 1
+			dep.Status.Replicas = 3
+			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
+
+			server := newTestBYOMCPServer(resourceName, &mcpv1alpha1.WorkloadReference{
+				Name: "not-ready-deploy",
+				Kind: mcpv1alpha1.WorkloadKindDeployment,
+			}, nil)
+			Expect(k8sClient.Create(ctx, server)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			dep := &appsv1.Deployment{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "not-ready-deploy", Namespace: "default"}, dep); err == nil {
+				Expect(k8sClient.Delete(ctx, dep)).To(Succeed())
+			}
+		})
+
+		It("should set Ready=False with DeploymentUnavailable reason", func() {
+			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
+			Expect(readyCondition.Message).To(ContainSubstring("1 of 3"))
+		})
+	})
+
+	Context("When BYO Deployment is scaled to zero", func() {
+		const resourceName = "test-byo-scaled-zero"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			dep := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "zero-scale-deploy",
+					Namespace: "default",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To[int32](0),
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "zero-scale"},
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "zero-scale"}},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{
+								Name:  "server",
+								Image: "my-mcp:latest",
+							}},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, dep)).To(Succeed())
+			dep.Status.ReadyReplicas = 0
+			dep.Status.Replicas = 0
+			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
+
+			server := newTestBYOMCPServer(resourceName, &mcpv1alpha1.WorkloadReference{
+				Name: "zero-scale-deploy",
+				Kind: mcpv1alpha1.WorkloadKindDeployment,
+			}, nil)
+			Expect(k8sClient.Create(ctx, server)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			dep := &appsv1.Deployment{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "zero-scale-deploy", Namespace: "default"}, dep); err == nil {
+				Expect(k8sClient.Delete(ctx, dep)).To(Succeed())
+			}
+		})
+
+		It("should set Ready=Unknown with ScaledToZero reason", func() {
+			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionUnknown))
+			Expect(readyCondition.Reason).To(Equal(ReasonScaledToZero))
+			Expect(readyCondition.Message).To(ContainSubstring("scaled to zero"))
+		})
+	})
+
+	Context("When BYO DaemonSet has no nodes scheduled yet (initializing)", func() {
+		const resourceName = "test-byo-initializing"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			ds := &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "init-ds",
+					Namespace: "default",
+				},
+				Spec: appsv1.DaemonSetSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "init-ds"},
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "init-ds"}},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{
+								Name:  "server",
+								Image: "my-mcp:latest",
+							}},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
+
+			server := newTestBYOMCPServer(resourceName, &mcpv1alpha1.WorkloadReference{
+				Name: "init-ds",
+				Kind: mcpv1alpha1.WorkloadKindDaemonSet,
+			}, nil)
+			Expect(k8sClient.Create(ctx, server)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1alpha1.MCPServer{}
+			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			ds := &appsv1.DaemonSet{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "init-ds", Namespace: "default"}, ds); err == nil {
+				Expect(k8sClient.Delete(ctx, ds)).To(Succeed())
+			}
+		})
+
+		It("should set Ready=Unknown with Initializing reason", func() {
+			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			mcpServer := &mcpv1alpha1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+			readyCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Ready")
+			Expect(readyCondition).NotTo(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionUnknown))
+			Expect(readyCondition.Reason).To(Equal(ReasonInitializing))
+			Expect(readyCondition.Message).To(ContainSubstring("Waiting for BYO"))
 		})
 	})
 })
