@@ -33,7 +33,9 @@ type MCPServerStatusApplyConfiguration struct {
 	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// DeploymentName is the name of the Deployment created for this MCPServer.
 	DeploymentName *string `json:"deploymentName,omitempty"`
-	// ServiceName is the name of the Service created for this MCPServer.
+	// ServiceName is the name of the Service backing this MCPServer.
+	// For operator-managed mode this is the created Service; for BYO this
+	// is the serviceRef name (or the workloadRef name when serviceRef is unset).
 	ServiceName *string `json:"serviceName,omitempty"`
 	// WorkloadName identifies the workload backing this MCPServer.
 	// For BYO: "{Kind}/{Name}" (e.g. "DaemonSet/my-ds").
@@ -52,9 +54,13 @@ type MCPServerStatusApplyConfiguration struct {
 	// failures for the current generation. Reset to 0 on success, spec change,
 	// or when reconciliation does not reach the handshake phase.
 	HandshakeRetryCount *int32 `json:"handshakeRetryCount,omitempty"`
-	// Replicas is the total number of desired pods targeted by the owned Deployment.
+	// Replicas is the total number of desired instances for this MCPServer.
+	// For operator-managed mode this reflects the owned Deployment; for BYO
+	// this reflects the referenced workload (Deployment, DaemonSet, or StatefulSet).
 	Replicas *int32 `json:"replicas,omitempty"`
-	// ReadyReplicas is the number of pods targeted by the owned Deployment with a Ready condition.
+	// ReadyReplicas is the number of healthy instances for this MCPServer.
+	// For operator-managed mode this reflects the owned Deployment; for BYO
+	// this reflects the referenced workload.
 	ReadyReplicas *int32 `json:"readyReplicas,omitempty"`
 	// Conditions represent the latest available observations of the MCPServer's state.
 	//

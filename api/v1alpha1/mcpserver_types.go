@@ -596,7 +596,9 @@ type MCPServerStatus struct {
 	// +optional
 	DeploymentName string `json:"deploymentName,omitempty"`
 
-	// ServiceName is the name of the Service created for this MCPServer.
+	// ServiceName is the name of the Service backing this MCPServer.
+	// For operator-managed mode this is the created Service; for BYO this
+	// is the serviceRef name (or the workloadRef name when serviceRef is unset).
 	// +optional
 	ServiceName string `json:"serviceName,omitempty"`
 
@@ -627,11 +629,15 @@ type MCPServerStatus struct {
 	// +optional
 	HandshakeRetryCount int32 `json:"handshakeRetryCount,omitempty"`
 
-	// Replicas is the total number of desired pods targeted by the owned Deployment.
+	// Replicas is the total number of desired instances for this MCPServer.
+	// For operator-managed mode this reflects the owned Deployment; for BYO
+	// this reflects the referenced workload (Deployment, DaemonSet, or StatefulSet).
 	// +optional
 	Replicas int32 `json:"replicas,omitempty"`
 
-	// ReadyReplicas is the number of pods targeted by the owned Deployment with a Ready condition.
+	// ReadyReplicas is the number of healthy instances for this MCPServer.
+	// For operator-managed mode this reflects the owned Deployment; for BYO
+	// this reflects the referenced workload.
 	// +optional
 	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
 

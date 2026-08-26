@@ -20,6 +20,7 @@ package e2e
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -232,7 +233,7 @@ func TestBYOServiceHappyPath(t *testing.T) {
 			return f.SetupBYOMCPServer(ctx, t, cfg, "test-byo-svc", &mcpv1alpha1.WorkloadReference{
 				Name: byoDeployName,
 				Kind: mcpv1alpha1.WorkloadKindDeployment,
-			}, f.WithServiceRef(&mcpv1alpha1.ServiceReference{Name: byoServiceName}))
+			}, f.WithPort(0), f.WithServiceRef(&mcpv1alpha1.ServiceReference{Name: byoServiceName}))
 		}).
 		Assess("status uses BYO service name", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
@@ -248,7 +249,15 @@ func TestBYOServiceHappyPath(t *testing.T) {
 				t.Fatalf("expected serviceName %q, got %q", byoServiceName, server.Status.ServiceName)
 			}
 
-			t.Logf("BYO service status: serviceName=%s", server.Status.ServiceName)
+			if server.Status.Address == nil || server.Status.Address.URL == "" {
+				t.Fatal("expected address to be set")
+			}
+			expectedPort := ":9090/"
+			if !strings.Contains(server.Status.Address.URL, expectedPort) {
+				t.Fatalf("expected URL to contain %q (mcp-named port), got %q", expectedPort, server.Status.Address.URL)
+			}
+
+			t.Logf("BYO service status: serviceName=%s, url=%s", server.Status.ServiceName, server.Status.Address.URL)
 			return ctx
 		}).
 		Assess("no operator-managed Service created", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
