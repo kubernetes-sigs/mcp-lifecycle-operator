@@ -524,6 +524,36 @@ type MCPServerInfo struct {
 	Capabilities *MCPServerCapabilities `json:"capabilities,omitempty"`
 }
 
+// MCPServerCard is a structured summary of the MCP server's identity,
+// endpoint, capabilities, and user-provided metadata. It aggregates
+// information from the handshake result and spec into a single
+// discoverable object in status.
+type MCPServerCard struct {
+	// Name is the server's self-reported name from the handshake.
+	// +optional
+	Name string `json:"name,omitempty"`
+	// Version is the server's self-reported version.
+	// +optional
+	Version string `json:"version,omitempty"`
+	// ProtocolVersion is the negotiated MCP protocol version.
+	// +optional
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+	// Address is the cluster-internal service URL for the MCP server.
+	// +optional
+	Address string `json:"address,omitempty"`
+	// Capabilities lists which MCP protocol features the server supports.
+	// +optional
+	Capabilities *MCPServerCapabilities `json:"capabilities,omitempty"`
+	// Labels are the user-provided extraLabels from the MCPServer spec,
+	// surfaced here for external discovery.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+	// Annotations are the user-provided extraAnnotations from the MCPServer spec,
+	// surfaced here for external discovery.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
 // MCPServerStatus defines the observed state of MCPServer.
 type MCPServerStatus struct {
 	// ObservedGeneration reflects the generation most recently observed by the controller.
@@ -549,6 +579,12 @@ type MCPServerStatus struct {
 	// This field is populated only after a successful handshake.
 	// +optional
 	ServerInfo *MCPServerInfo `json:"serverInfo,omitempty"`
+
+	// ServerCard is a structured summary of the MCP server for external
+	// discovery. Populated after a successful handshake. Nil when the
+	// handshake has not completed.
+	// +optional
+	ServerCard *MCPServerCard `json:"serverCard,omitempty"`
 
 	// HandshakeRetryCount tracks the number of consecutive MCP handshake
 	// failures for the current generation. Reset to 0 on success, spec change,
