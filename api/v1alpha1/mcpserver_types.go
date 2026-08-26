@@ -445,17 +445,17 @@ type TransportConfig struct {
 // MCPServerSpec defines the desired state of MCPServer.
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.source)",message="source must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="has(self.workloadRef) || has(self.source)",message="either source or workloadRef must be set"
-// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config.storage)",message="config.storage must not be set when workloadRef is set"
-// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config.env)",message="config.env must not be set when workloadRef is set"
-// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config.envFrom)",message="config.envFrom must not be set when workloadRef is set"
-// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config.arguments)",message="config.arguments must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.storage)",message="config.storage must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.env)",message="config.env must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.envFrom)",message="config.envFrom must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.arguments)",message="config.arguments must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.replicas)",message="runtime.replicas must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.resources)",message="runtime.resources must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.security)",message="runtime.security must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.health)",message="runtime.health must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.network)",message="network must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.serviceRef) || !has(self.mcp) || !has(self.mcp.stateless)",message="mcp.stateless must not be set when serviceRef is set"
-// +kubebuilder:validation:XValidation:rule="has(self.serviceRef) || has(self.config.port)",message="config.port is required when serviceRef is not set"
+// +kubebuilder:validation:XValidation:rule="has(self.serviceRef) || (has(self.config) && has(self.config.port))",message="config.port is required when serviceRef is not set"
 type MCPServerSpec struct {
 	// ExtraLabels are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
 	// The operator-managed keys "app" and "mcp-server" cannot be overridden.

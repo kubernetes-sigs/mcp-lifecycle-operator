@@ -1994,13 +1994,13 @@ spec:
             - message: either source or workloadRef must be set
               rule: has(self.workloadRef) || has(self.source)
             - message: config.storage must not be set when workloadRef is set
-              rule: '!has(self.workloadRef) || !has(self.config.storage)'
+              rule: '!has(self.workloadRef) || !has(self.config) || !has(self.config.storage)'
             - message: config.env must not be set when workloadRef is set
-              rule: '!has(self.workloadRef) || !has(self.config.env)'
+              rule: '!has(self.workloadRef) || !has(self.config) || !has(self.config.env)'
             - message: config.envFrom must not be set when workloadRef is set
-              rule: '!has(self.workloadRef) || !has(self.config.envFrom)'
+              rule: '!has(self.workloadRef) || !has(self.config) || !has(self.config.envFrom)'
             - message: config.arguments must not be set when workloadRef is set
-              rule: '!has(self.workloadRef) || !has(self.config.arguments)'
+              rule: '!has(self.workloadRef) || !has(self.config) || !has(self.config.arguments)'
             - message: runtime.replicas must not be set when workloadRef is set
               rule: '!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.replicas)'
             - message: runtime.resources must not be set when workloadRef is set
@@ -2014,7 +2014,7 @@ spec:
             - message: mcp.stateless must not be set when serviceRef is set
               rule: '!has(self.serviceRef) || !has(self.mcp) || !has(self.mcp.stateless)'
             - message: config.port is required when serviceRef is not set
-              rule: has(self.serviceRef) || has(self.config.port)
+              rule: has(self.serviceRef) || (has(self.config) && has(self.config.port))
           status:
             description: status defines the observed state of MCPServer
             properties:
