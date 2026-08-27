@@ -621,3 +621,99 @@ func TestConversionRoundTrip_ZeroReplicas(t *testing.T) {
 		t.Errorf("round-trip mismatch (-original +roundTripped):\n%s", diff)
 	}
 }
+
+// TestConversionRoundTrip_ReadyConditionReasons verifies that Ready conditions
+// survive a v1alpha1 -> v1beta1 -> v1alpha1 round-trip with their reason and
+// message intact. ScaledToZero is a Ready=True state with a non-"Available"
+// reason, which is the case that previously got flattened to "Available".
+func TestConversionRoundTrip_ReadyConditionReasons(t *testing.T) {
+	tests := []struct {
+		name      string
+		condition metav1.Condition
+	}{
+		{
+			name: "ScaledToZero preserves reason and message",
+			condition: metav1.Condition{
+				Type:    "Ready",
+				Status:  metav1.ConditionTrue,
+				Reason:  "ScaledToZero",
+				Message: "Server is ready (scaled to 0 replicas)",
+			},
+		},
+		{
+			name: "Available round-trips",
+			condition: metav1.Condition{
+				Type:    "Ready",
+				Status:  metav1.ConditionTrue,
+				Reason:  "Available",
+				Message: "Server is ready",
+			},
+		},
+		{
+			name: "DeploymentUnavailable round-trips",
+			condition: metav1.Condition{
+				Type:    "Ready",
+				Status:  metav1.ConditionFalse,
+				Reason:  "DeploymentUnavailable",
+				Message: "Deployment is not available",
+			},
+		},
+		{
+			name: "MCPEndpointUnavailable round-trips",
+			condition: metav1.Condition{
+				Type:    "Ready",
+				Status:  metav1.ConditionFalse,
+				Reason:  "MCPEndpointUnavailable",
+				Message: "connection refused",
+			},
+		},
+		{
+			name: "Initializing round-trips",
+			condition: metav1.Condition{
+				Type:    "Ready",
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Initializing",
+				Message: "Waiting for Deployment to report status",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := &MCPServer{
+				ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+				Spec: MCPServerSpec{
+					Source: Source{Type: SourceTypeContainerImage, ContainerImage: &ContainerImageSource{Ref: "test:v1"}},
+					Config: ServerConfig{Port: 8080},
+				},
+				Status: MCPServerStatus{
+					Conditions: []metav1.Condition{tt.condition},
+				},
+			}
+
+			hub := &v1beta1.MCPServer{}
+			if err := original.ConvertTo(hub); err != nil {
+				t.Fatalf("ConvertTo failed: %v", err)
+			}
+
+			roundTripped := &MCPServer{}
+			if err := roundTripped.ConvertFrom(hub); err != nil {
+				t.Fatalf("ConvertFrom failed: %v", err)
+			}
+
+			if len(roundTripped.Status.Conditions) != 1 {
+				t.Fatalf("expected 1 Ready condition after round-trip, got %d", len(roundTripped.Status.Conditions))
+			}
+			got := roundTripped.Status.Conditions[0]
+			if got.Status != tt.condition.Status {
+				t.Errorf("Ready.Status = %v, want %v", got.Status, tt.condition.Status)
+			}
+			if got.Reason != tt.condition.Reason {
+				t.Errorf("Ready.Reason = %q, want %q", got.Reason, tt.condition.Reason)
+			}
+			if got.Message != tt.condition.Message {
+				t.Errorf("Ready.Message = %q, want %q", got.Message, tt.condition.Message)
+			}
+		})
+	}
+}

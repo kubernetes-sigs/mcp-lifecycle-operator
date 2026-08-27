@@ -525,17 +525,27 @@ func mergeAvailableAndVerifiedToReady(available, verified *metav1.Condition) met
 		}
 	}
 
-	// Verified is unknown or nil, workload available - still initializing handshake.
-	src := available
-	if src == nil {
-		src = verified
+	// Verified is unknown or nil, workload available. Preserve the workload
+	// reason/message (e.g. ScaledToZero) so it round-trips faithfully rather
+	// than being flattened to a generic "Available" state.
+	if available != nil {
+		return metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionTrue,
+			Reason:             available.Reason,
+			Message:            available.Message,
+			ObservedGeneration: available.ObservedGeneration,
+			LastTransitionTime: available.LastTransitionTime,
+		}
 	}
+
+	// Only Verified is present - workload availability unknown, handshake pending.
 	return metav1.Condition{
 		Type:               conditionTypeReady,
 		Status:             metav1.ConditionTrue,
 		Reason:             "Available",
 		Message:            "Workload is running, handshake pending",
-		ObservedGeneration: src.ObservedGeneration,
-		LastTransitionTime: src.LastTransitionTime,
+		ObservedGeneration: verified.ObservedGeneration,
+		LastTransitionTime: verified.LastTransitionTime,
 	}
 }
