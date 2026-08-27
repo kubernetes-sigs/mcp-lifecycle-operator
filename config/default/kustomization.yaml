@@ -54,6 +54,10 @@ patches:
 - path: manager_webhook_patch.yaml
   target:
     kind: Deployment
+# [WEBHOOK] Enable the admission webhook via an additive args patch (composes with metrics patch).
+- path: manager_webhook_args_patch.yaml
+  target:
+    kind: Deployment
 
 # [CERTMANAGER] cert-manager CA injection annotations
 replacements:
@@ -133,36 +137,36 @@ replacements:
         index: 1
         create: true
 
-# - source: # Inject cert-manager CA into ValidatingWebhookConfiguration
-#     kind: Certificate
-#     group: cert-manager.io
-#     version: v1
-#     name: serving-cert
-#     fieldPath: .metadata.namespace
-#   targets:
-#     - select:
-#         kind: ValidatingWebhookConfiguration
-#       fieldPaths:
-#         - .metadata.annotations.[cert-manager.io/inject-ca-from]
-#       options:
-#         delimiter: '/'
-#         index: 0
-#         create: true
-# - source:
-#     kind: Certificate
-#     group: cert-manager.io
-#     version: v1
-#     name: serving-cert
-#     fieldPath: .metadata.name
-#   targets:
-#     - select:
-#         kind: ValidatingWebhookConfiguration
-#       fieldPaths:
-#         - .metadata.annotations.[cert-manager.io/inject-ca-from]
-#       options:
-#         delimiter: '/'
-#         index: 1
-#         create: true
+- source: # Inject cert-manager CA into ValidatingWebhookConfiguration
+    kind: Certificate
+    group: cert-manager.io
+    version: v1
+    name: serving-cert
+    fieldPath: .metadata.namespace
+  targets:
+    - select:
+        kind: ValidatingWebhookConfiguration
+      fieldPaths:
+        - .metadata.annotations.[cert-manager.io/inject-ca-from]
+      options:
+        delimiter: '/'
+        index: 0
+        create: true
+- source:
+    kind: Certificate
+    group: cert-manager.io
+    version: v1
+    name: serving-cert
+    fieldPath: .metadata.name
+  targets:
+    - select:
+        kind: ValidatingWebhookConfiguration
+      fieldPaths:
+        - .metadata.annotations.[cert-manager.io/inject-ca-from]
+      options:
+        delimiter: '/'
+        index: 1
+        create: true
 
 # - source: # Uncomment the following block if you have a DefaultingWebhook (--defaulting )
 #     kind: Certificate
