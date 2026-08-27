@@ -24,7 +24,8 @@ package v1beta1
 // MCPServerAddress contains the address information for the MCPServer.
 type MCPServerAddressApplyConfiguration struct {
 	// URL is the cluster-internal address of the MCP server service.
-	// Format: http://<servicename>.<namespace>.svc.cluster.local:<port>/<path>
+	// Format: <scheme>://<servicename>.<namespace>.svc.cluster.local:<port>/<path>
+	// The scheme is "https" when TLS is enabled, "http" otherwise.
 	URL *string `json:"url,omitempty"`
 }
 
