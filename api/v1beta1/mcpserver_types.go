@@ -63,6 +63,7 @@ type ContainerImageSource struct {
 	// PullPolicy controls when the kubelet pulls the MCP server image.
 	// When omitted, Kubernetes applies its native default based on the image reference.
 	// +optional
+	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
 	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
 
 	// ImagePullSecrets specifies credentials for pulling the MCP server image

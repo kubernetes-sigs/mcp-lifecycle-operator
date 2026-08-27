@@ -4179,6 +4179,10 @@ spec:
                         description: |-
                           PullPolicy controls when the kubelet pulls the MCP server image.
                           When omitted, Kubernetes applies its native default based on the image reference.
+                        enum:
+                        - Always
+                        - IfNotPresent
+                        - Never
                         type: string
                       ref:
                         description: |-
