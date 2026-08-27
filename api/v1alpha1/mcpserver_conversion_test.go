@@ -191,6 +191,11 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 						Port: ptr.To(intstr.FromInt32(443)), //nolint:modernize // FromInt32 is not a simple value
 					},
 				},
+				DNSEgressPeer: &networkingv1.NetworkPolicyPeer{
+					NamespaceSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"kubernetes.io/metadata.name": "kube-system"},
+					},
+				},
 			},
 			Transport: &TransportConfig{
 				TLS: &TLSClientConfig{

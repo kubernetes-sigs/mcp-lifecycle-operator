@@ -44,6 +44,15 @@ type NetworkConfigApplyConfiguration struct {
 	// specified destinations. When set, only listed ports are allowed
 	// (in addition to DNS port 53 which is always permitted).
 	EgressPorts []v1.NetworkPolicyPort `json:"egressPorts,omitempty"`
+	// DNSEgressPeer scopes the automatically-added DNS (UDP/TCP port 53)
+	// egress rule to a specific destination instead of allowing DNS to
+	// any destination. Uses a standard Kubernetes NetworkPolicyPeer
+	// selector (podSelector, namespaceSelector, ipBlock).
+	// This field only takes effect when EgressTo or EgressPorts is set;
+	// it does not by itself activate egress restrictions.
+	// When EgressTo or EgressPorts is set and DNSEgressPeer is empty,
+	// DNS egress remains permitted to any destination (default).
+	DNSEgressPeer *v1.NetworkPolicyPeer `json:"dnsEgressPeer,omitempty"`
 }
 
 // NetworkConfigApplyConfiguration constructs a declarative configuration of the NetworkConfig type for use with
@@ -79,5 +88,13 @@ func (b *NetworkConfigApplyConfiguration) WithEgressPorts(values ...v1.NetworkPo
 	for i := range values {
 		b.EgressPorts = append(b.EgressPorts, values[i])
 	}
+	return b
+}
+
+// WithDNSEgressPeer sets the DNSEgressPeer field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DNSEgressPeer field is set to the value of the last call.
+func (b *NetworkConfigApplyConfiguration) WithDNSEgressPeer(value v1.NetworkPolicyPeer) *NetworkConfigApplyConfiguration {
+	b.DNSEgressPeer = &value
 	return b
 }

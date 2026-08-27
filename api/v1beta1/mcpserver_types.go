@@ -369,6 +369,17 @@ type NetworkConfig struct {
 	// (in addition to DNS port 53 which is always permitted).
 	// +optional
 	EgressPorts []networkingv1.NetworkPolicyPort `json:"egressPorts,omitempty"`
+
+	// DNSEgressPeer scopes the automatically-added DNS (UDP/TCP port 53)
+	// egress rule to a specific destination instead of allowing DNS to
+	// any destination. Uses a standard Kubernetes NetworkPolicyPeer
+	// selector (podSelector, namespaceSelector, ipBlock).
+	// This field only takes effect when EgressTo or EgressPorts is set;
+	// it does not by itself activate egress restrictions.
+	// When EgressTo or EgressPorts is set and DNSEgressPeer is empty,
+	// DNS egress remains permitted to any destination (default).
+	// +optional
+	DNSEgressPeer *networkingv1.NetworkPolicyPeer `json:"dnsEgressPeer,omitempty"`
 }
 
 // MCPServerSpec defines the desired state of MCPServer.

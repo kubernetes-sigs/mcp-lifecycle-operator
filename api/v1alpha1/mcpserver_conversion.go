@@ -237,9 +237,10 @@ func convertNetworkConfigTo(in *NetworkConfig) *v1beta1.NetworkConfig {
 		return nil
 	}
 	return &v1beta1.NetworkConfig{
-		IngressFrom: in.IngressFrom,
-		EgressTo:    in.EgressTo,
-		EgressPorts: in.EgressPorts,
+		IngressFrom:   in.IngressFrom,
+		EgressTo:      in.EgressTo,
+		EgressPorts:   in.EgressPorts,
+		DNSEgressPeer: in.DNSEgressPeer,
 	}
 }
 
@@ -248,9 +249,10 @@ func convertNetworkConfigFrom(in *v1beta1.NetworkConfig) *NetworkConfig {
 		return nil
 	}
 	return &NetworkConfig{
-		IngressFrom: in.IngressFrom,
-		EgressTo:    in.EgressTo,
-		EgressPorts: in.EgressPorts,
+		IngressFrom:   in.IngressFrom,
+		EgressTo:      in.EgressTo,
+		EgressPorts:   in.EgressPorts,
+		DNSEgressPeer: in.DNSEgressPeer,
 	}
 }
 

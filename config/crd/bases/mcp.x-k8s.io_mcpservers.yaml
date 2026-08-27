@@ -2949,6 +2949,144 @@ spec:
                 description: Network configures network policies for the MCP server
                   pod.
                 properties:
+                  dnsEgressPeer:
+                    description: |-
+                      DNSEgressPeer scopes the automatically-added DNS (UDP/TCP port 53)
+                      egress rule to a specific destination instead of allowing DNS to
+                      any destination. Uses a standard Kubernetes NetworkPolicyPeer
+                      selector (podSelector, namespaceSelector, ipBlock).
+                      This field only takes effect when EgressTo or EgressPorts is set;
+                      it does not by itself activate egress restrictions.
+                      When EgressTo or EgressPorts is set and DNSEgressPeer is empty,
+                      DNS egress remains permitted to any destination (default).
+                    properties:
+                      ipBlock:
+                        description: |-
+                          ipBlock defines policy on a particular IPBlock. If this field is set then
+                          neither of the other fields can be.
+                        properties:
+                          cidr:
+                            description: |-
+                              cidr is a string representing the IPBlock
+                              Valid examples are "192.168.1.0/24" or "2001:db8::/64"
+                            type: string
+                          except:
+                            description: |-
+                              except is a slice of CIDRs that should not be included within an IPBlock
+                              Valid examples are "192.168.1.0/24" or "2001:db8::/64"
+                              Except values will be rejected if they are outside the cidr range
+                            items:
+                              type: string
+                            type: array
+                            x-kubernetes-list-type: atomic
+                        required:
+                        - cidr
+                        type: object
+                      namespaceSelector:
+                        description: |-
+                          namespaceSelector selects namespaces using cluster-scoped labels. This field follows
+                          standard label selector semantics; if present but empty, it selects all namespaces.
+
+                          If podSelector is also set, then the NetworkPolicyPeer as a whole selects
+                          the pods matching podSelector in the namespaces selected by namespaceSelector.
+                          Otherwise it selects all pods in the namespaces selected by namespaceSelector.
+                        properties:
+                          matchExpressions:
+                            description: matchExpressions is a list of label selector
+                              requirements. The requirements are ANDed.
+                            items:
+                              description: |-
+                                A label selector requirement is a selector that contains values, a key, and an operator that
+                                relates the key and values.
+                              properties:
+                                key:
+                                  description: key is the label key that the selector
+                                    applies to.
+                                  type: string
+                                operator:
+                                  description: |-
+                                    operator represents a key's relationship to a set of values.
+                                    Valid operators are In, NotIn, Exists and DoesNotExist.
+                                  type: string
+                                values:
+                                  description: |-
+                                    values is an array of string values. If the operator is In or NotIn,
+                                    the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                    the values array must be empty. This array is replaced during a strategic
+                                    merge patch.
+                                  items:
+                                    type: string
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                              required:
+                              - key
+                              - operator
+                              type: object
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          matchLabels:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                              map is equivalent to an element of matchExpressions, whose key field is "key", the
+                              operator is "In", and the values array contains only "value". The requirements are ANDed.
+                            type: object
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      podSelector:
+                        description: |-
+                          podSelector is a label selector which selects pods. This field follows standard label
+                          selector semantics; if present but empty, it selects all pods.
+
+                          If namespaceSelector is also set, then the NetworkPolicyPeer as a whole selects
+                          the pods matching podSelector in the Namespaces selected by NamespaceSelector.
+                          Otherwise it selects the pods matching podSelector in the policy's own namespace.
+                        properties:
+                          matchExpressions:
+                            description: matchExpressions is a list of label selector
+                              requirements. The requirements are ANDed.
+                            items:
+                              description: |-
+                                A label selector requirement is a selector that contains values, a key, and an operator that
+                                relates the key and values.
+                              properties:
+                                key:
+                                  description: key is the label key that the selector
+                                    applies to.
+                                  type: string
+                                operator:
+                                  description: |-
+                                    operator represents a key's relationship to a set of values.
+                                    Valid operators are In, NotIn, Exists and DoesNotExist.
+                                  type: string
+                                values:
+                                  description: |-
+                                    values is an array of string values. If the operator is In or NotIn,
+                                    the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                    the values array must be empty. This array is replaced during a strategic
+                                    merge patch.
+                                  items:
+                                    type: string
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                              required:
+                              - key
+                              - operator
+                              type: object
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          matchLabels:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                              map is equivalent to an element of matchExpressions, whose key field is "key", the
+                              operator is "In", and the values array contains only "value". The requirements are ANDed.
+                            type: object
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    type: object
                   egressPorts:
                     description: |-
                       EgressPorts restricts which ports the MCP server pod can connect to.
