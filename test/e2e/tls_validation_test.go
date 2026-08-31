@@ -36,7 +36,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scenario"
@@ -84,10 +84,10 @@ func TestTLSMissingCABundleSecret(t *testing.T) {
 		WithLabel(scenario.Label, scenario.Failure).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "tls-missing-ca", false,
-				f.WithTransport(&mcpv1alpha1.TransportConfig{
-					TLS: &mcpv1alpha1.TLSClientConfig{
+				f.WithTransport(&mcpv1beta1.TransportConfig{
+					TLS: &mcpv1beta1.TLSClientConfig{
 						Enabled:        true,
-						CABundleSecret: &mcpv1alpha1.SecretReference{Name: "nonexistent-ca-secret"},
+						CABundleSecret: &mcpv1beta1.SecretReference{Name: "nonexistent-ca-secret"},
 					},
 				}),
 			)
@@ -113,12 +113,12 @@ func TestTLSMissingCABundleSecret(t *testing.T) {
 
 			return ctx
 		}).
-		Assess("Ready=False with reason ConfigurationInvalid", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("Available=False with reason ConfigurationInvalid", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
 			f.WaitForMCPServerConditionReason(ctx, t, r, server,
-				"Ready", metav1.ConditionFalse, "ConfigurationInvalid",
+				"Available", metav1.ConditionFalse, "ConfigurationInvalid",
 				30*time.Second)
 
 			return ctx
@@ -158,10 +158,10 @@ func TestTLSInvalidPEMInCABundle(t *testing.T) {
 			}
 
 			return f.SetupMCPServer(ctx, t, cfg, "tls-bad-pem", false,
-				f.WithTransport(&mcpv1alpha1.TransportConfig{
-					TLS: &mcpv1alpha1.TLSClientConfig{
+				f.WithTransport(&mcpv1beta1.TransportConfig{
+					TLS: &mcpv1beta1.TLSClientConfig{
 						Enabled:        true,
-						CABundleSecret: &mcpv1alpha1.SecretReference{Name: "bad-pem-ca"},
+						CABundleSecret: &mcpv1beta1.SecretReference{Name: "bad-pem-ca"},
 					},
 				}),
 			)
@@ -219,10 +219,10 @@ func TestTLSMissingCACrtKey(t *testing.T) {
 			}
 
 			return f.SetupMCPServer(ctx, t, cfg, "tls-wrong-key", false,
-				f.WithTransport(&mcpv1alpha1.TransportConfig{
-					TLS: &mcpv1alpha1.TLSClientConfig{
+				f.WithTransport(&mcpv1beta1.TransportConfig{
+					TLS: &mcpv1beta1.TLSClientConfig{
 						Enabled:        true,
-						CABundleSecret: &mcpv1alpha1.SecretReference{Name: "wrong-key-ca"},
+						CABundleSecret: &mcpv1beta1.SecretReference{Name: "wrong-key-ca"},
 					},
 				}),
 			)
@@ -280,11 +280,11 @@ func TestTLSInsecureSkipVerifyWithCABundleConflict(t *testing.T) {
 			}
 
 			return f.SetupMCPServer(ctx, t, cfg, "tls-conflict", false,
-				f.WithTransport(&mcpv1alpha1.TransportConfig{
-					TLS: &mcpv1alpha1.TLSClientConfig{
+				f.WithTransport(&mcpv1beta1.TransportConfig{
+					TLS: &mcpv1beta1.TLSClientConfig{
 						Enabled:            true,
 						InsecureSkipVerify: true,
-						CABundleSecret:     &mcpv1alpha1.SecretReference{Name: "conflict-ca"},
+						CABundleSecret:     &mcpv1beta1.SecretReference{Name: "conflict-ca"},
 					},
 				}),
 			)
@@ -322,10 +322,10 @@ func TestTLSRecoveryFromMissingCASecret(t *testing.T) {
 		WithLabel(scenario.Label, scenario.Recovery).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "tls-recovery", false,
-				f.WithTransport(&mcpv1alpha1.TransportConfig{
-					TLS: &mcpv1alpha1.TLSClientConfig{
+				f.WithTransport(&mcpv1beta1.TransportConfig{
+					TLS: &mcpv1beta1.TLSClientConfig{
 						Enabled:        true,
-						CABundleSecret: &mcpv1alpha1.SecretReference{Name: "recovery-ca"},
+						CABundleSecret: &mcpv1beta1.SecretReference{Name: "recovery-ca"},
 					},
 				}),
 			)
@@ -403,10 +403,10 @@ func TestTLSNonCertificatePEM(t *testing.T) {
 			}
 
 			return f.SetupMCPServer(ctx, t, cfg, "tls-privkey", false,
-				f.WithTransport(&mcpv1alpha1.TransportConfig{
-					TLS: &mcpv1alpha1.TLSClientConfig{
+				f.WithTransport(&mcpv1beta1.TransportConfig{
+					TLS: &mcpv1beta1.TLSClientConfig{
 						Enabled:        true,
-						CABundleSecret: &mcpv1alpha1.SecretReference{Name: "privkey-as-ca"},
+						CABundleSecret: &mcpv1beta1.SecretReference{Name: "privkey-as-ca"},
 					},
 				}),
 			)
@@ -444,10 +444,10 @@ func TestTLSDisabledIgnoresStaleCARef(t *testing.T) {
 		WithLabel(scenario.Label, scenario.Deploy).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "tls-disabled", true,
-				f.WithTransport(&mcpv1alpha1.TransportConfig{
-					TLS: &mcpv1alpha1.TLSClientConfig{
+				f.WithTransport(&mcpv1beta1.TransportConfig{
+					TLS: &mcpv1beta1.TLSClientConfig{
 						Enabled:        false,
-						CABundleSecret: &mcpv1alpha1.SecretReference{Name: "nonexistent-ignored"},
+						CABundleSecret: &mcpv1beta1.SecretReference{Name: "nonexistent-ignored"},
 					},
 				}),
 			)
@@ -467,12 +467,12 @@ func TestTLSDisabledIgnoresStaleCARef(t *testing.T) {
 
 			return ctx
 		}).
-		Assess("Ready=True with HTTP handshake", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("Verified=True with HTTP handshake", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
 			f.WaitForMCPServerCondition(ctx, t, r, server,
-				"Ready", metav1.ConditionTrue, 2*time.Minute)
+				"Verified", metav1.ConditionTrue, 2*time.Minute)
 
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
 				t.Fatalf("failed to get MCPServer: %v", err)
