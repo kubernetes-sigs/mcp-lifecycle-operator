@@ -417,7 +417,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			conditionToAC(verifiedCondition),
 		)
 
-	status = withAddressWhenAvailable(status, availableCondition, mcpURL)
+	status = withAddressWhenVerified(status, verifiedCondition, mcpURL)
 
 	capDiff := capabilityChangeMessage(mcpServer, serverInfo)
 
@@ -616,12 +616,20 @@ func (r *MCPServerReconciler) maybeEmitDeploymentUnavailableEvent(
 	}
 }
 
-func withAddressWhenAvailable(
+// withAddressWhenVerified publishes status.address only once the MCP endpoint
+// has completed its protocol handshake (Verified=True). Before the
+// Available/Verified split the single Ready condition was overwritten by the
+// handshake result, so gating on it also required a successful handshake; the
+// address must now key off Verified explicitly so an unverified endpoint (e.g.
+// after a port change that breaks the handshake) does not leak an address
+// (issue #302). Verification only runs when the workload is Available, so
+// Verified=True implies Available=True.
+func withAddressWhenVerified(
 	status *acv1beta1.MCPServerStatusApplyConfiguration,
-	readyCondition metav1.Condition,
+	verifiedCondition metav1.Condition,
 	mcpURL string,
 ) *acv1beta1.MCPServerStatusApplyConfiguration {
-	if readyCondition.Status == metav1.ConditionTrue && readyCondition.Reason == ReasonAvailable {
+	if verifiedCondition.Status == metav1.ConditionTrue && verifiedCondition.Reason == ReasonVerified {
 		return status.WithAddress(acv1beta1.MCPServerAddress().WithURL(mcpURL))
 	}
 	return status
