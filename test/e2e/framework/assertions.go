@@ -26,11 +26,11 @@ import (
 
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 // AssertAddressURL verifies the MCPServer's status address URL matches the expected port and path.
-func AssertAddressURL(t *testing.T, server *mcpv1alpha1.MCPServer, port int32) {
+func AssertAddressURL(t *testing.T, server *mcpv1beta1.MCPServer, port int32) {
 	t.Helper()
 	path := server.Spec.Config.Path
 	if path == "" {
@@ -47,7 +47,7 @@ func AssertAddressURL(t *testing.T, server *mcpv1alpha1.MCPServer, port int32) {
 }
 
 // AssertAddressUnset verifies status.address.url is not published (issue #302).
-func AssertAddressUnset(t *testing.T, server *mcpv1alpha1.MCPServer) {
+func AssertAddressUnset(t *testing.T, server *mcpv1beta1.MCPServer) {
 	t.Helper()
 	if server.Status.Address != nil && server.Status.Address.URL != "" {
 		t.Fatalf("expected status.address.url to be unset, got %q", server.Status.Address.URL)
@@ -57,7 +57,7 @@ func AssertAddressUnset(t *testing.T, server *mcpv1alpha1.MCPServer) {
 // AssertConditionStable re-fetches the MCPServer repeatedly for the given duration
 // and fails if the condition ever deviates from the expected status.
 func AssertConditionStable(ctx context.Context, t *testing.T, r *resources.Resources,
-	server *mcpv1alpha1.MCPServer, condType string, status metav1.ConditionStatus, duration ...time.Duration) {
+	server *mcpv1beta1.MCPServer, condType string, status metav1.ConditionStatus, duration ...time.Duration) {
 	t.Helper()
 	d := 10 * time.Second
 	if len(duration) > 0 {
@@ -85,7 +85,7 @@ func AssertConditionStable(ctx context.Context, t *testing.T, r *resources.Resou
 }
 
 // GetMCPServerCondition returns a pointer to the named condition, or nil.
-func GetMCPServerCondition(server *mcpv1alpha1.MCPServer, condType string) *metav1.Condition {
+func GetMCPServerCondition(server *mcpv1beta1.MCPServer, condType string) *metav1.Condition {
 	for i := range server.Status.Conditions {
 		if server.Status.Conditions[i].Type == condType {
 			return &server.Status.Conditions[i]

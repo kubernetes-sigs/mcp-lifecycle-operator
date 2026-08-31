@@ -42,7 +42,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
@@ -161,36 +161,36 @@ func TestTLSHandshake(t *testing.T) {
 					"--tls-cert", "/certs/tls.crt",
 					"--tls-key", "/certs/tls.key",
 				),
-				f.WithStorage(mcpv1alpha1.StorageMount{
+				f.WithStorage(mcpv1beta1.StorageMount{
 					Path: "/certs",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeSecret,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeSecret,
 						Secret: &corev1.SecretVolumeSource{
 							SecretName: tlsSecretName,
 						},
 					},
 				}),
-				f.WithTransport(&mcpv1alpha1.TransportConfig{
-					TLS: &mcpv1alpha1.TLSClientConfig{
+				f.WithTransport(&mcpv1beta1.TransportConfig{
+					TLS: &mcpv1beta1.TLSClientConfig{
 						Enabled:        true,
-						CABundleSecret: &mcpv1alpha1.SecretReference{Name: caSecretName},
+						CABundleSecret: &mcpv1beta1.SecretReference{Name: caSecretName},
 					},
 				}),
 			)
 		}).
-		Assess("Ready=True with successful TLS handshake", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("Verified=True with successful TLS handshake", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
 			f.WaitForMCPServerCondition(ctx, t, r, server,
-				"Ready", metav1.ConditionTrue, 5*time.Minute)
+				"Verified", metav1.ConditionTrue, 5*time.Minute)
 
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
 				t.Fatalf("failed to get MCPServer: %v", err)
 			}
 
-			ready := f.GetMCPServerCondition(server, "Ready")
-			t.Logf("Ready condition: status=%s reason=%s", ready.Status, ready.Reason)
+			verified := f.GetMCPServerCondition(server, "Verified")
+			t.Logf("Verified condition: status=%s reason=%s", verified.Status, verified.Reason)
 
 			return ctx
 		}).

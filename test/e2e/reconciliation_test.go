@@ -35,7 +35,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scenario"
@@ -66,7 +66,7 @@ func TestImageUpdate(t *testing.T) {
 				t.Fatalf("test misconfigured: initial image %q is the same as update target", oldImage)
 			}
 
-			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
+			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1beta1.MCPServer) {
 				s.Spec.Source.ContainerImage.Ref = imageRef
 			})
 			t.Logf("updated image from %s to %s", oldImage, imageRef)
@@ -136,13 +136,13 @@ func TestStorageAddition(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
-				s.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1beta1.MCPServer) {
+				s.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 					{
 						Path:        "/etc/added-config",
-						Permissions: mcpv1alpha1.MountPermissionsReadOnly,
-						Source: mcpv1alpha1.StorageSource{
-							Type: mcpv1alpha1.StorageTypeConfigMap,
+						Permissions: mcpv1beta1.MountPermissionsReadOnly,
+						Source: mcpv1beta1.StorageSource{
+							Type: mcpv1beta1.StorageTypeConfigMap,
 							ConfigMap: &corev1.ConfigMapVolumeSource{
 								LocalObjectReference: corev1.LocalObjectReference{Name: "add-config"},
 							},
@@ -220,11 +220,11 @@ func TestStorageRemoval(t *testing.T) {
 			}
 
 			return f.SetupMCPServer(ctx, t, cfg, "storage-rm", true,
-				f.WithStorage(mcpv1alpha1.StorageMount{
+				f.WithStorage(mcpv1beta1.StorageMount{
 					Path:        "/etc/remove-config",
-					Permissions: mcpv1alpha1.MountPermissionsReadOnly,
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeConfigMap,
+					Permissions: mcpv1beta1.MountPermissionsReadOnly,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{Name: "remove-config"},
 						},
@@ -236,7 +236,7 @@ func TestStorageRemoval(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
+			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1beta1.MCPServer) {
 				s.Spec.Config.Storage = nil
 			})
 			t.Log("removed storage mount")
@@ -468,8 +468,8 @@ func TestDeploymentDeletion(t *testing.T) {
 				t.Fatalf("controller did not recreate Deployment: %v", err)
 			}
 
-			f.WaitForMCPServerCondition(ctx, t, r, server, "Ready", metav1.ConditionTrue)
-			t.Logf("Deployment recreated with new UID=%s, MCPServer is Ready", newDep.UID)
+			f.WaitForMCPServerCondition(ctx, t, r, server, "Available", metav1.ConditionTrue)
+			t.Logf("Deployment recreated with new UID=%s, MCPServer is Available", newDep.UID)
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -519,8 +519,8 @@ func TestServiceDeletion(t *testing.T) {
 				t.Fatalf("controller did not recreate Service: %v", err)
 			}
 
-			f.WaitForMCPServerCondition(ctx, t, r, server, "Ready", metav1.ConditionTrue)
-			t.Logf("Service recreated with new UID=%s, MCPServer is Ready", newSvc.UID)
+			f.WaitForMCPServerCondition(ctx, t, r, server, "Available", metav1.ConditionTrue)
+			t.Logf("Service recreated with new UID=%s, MCPServer is Available", newSvc.UID)
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -720,8 +720,8 @@ func TestConfigMapDataUpdateTriggersRestart(t *testing.T) {
 			newHash := dep.Spec.Template.Annotations[configHashAnnotation]
 			t.Logf("config hash changed from %s to %s", initialHash, newHash)
 
-			f.WaitForMCPServerCondition(ctx, t, r, server, "Ready", metav1.ConditionTrue)
-			t.Log("MCPServer is Ready after config hash update")
+			f.WaitForMCPServerCondition(ctx, t, r, server, "Available", metav1.ConditionTrue)
+			t.Log("MCPServer is Available after config hash update")
 
 			return ctx
 		}).

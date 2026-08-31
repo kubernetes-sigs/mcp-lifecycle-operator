@@ -53,9 +53,14 @@ func TestMCPHandshake(t *testing.T) {
 			t.Logf("MCP server pod %s is Running", pod.Name)
 			return ctx
 		}).
-		Assess("Accepted and Ready conditions are True", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("Accepted, Available, and Verified conditions are True", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
+
+			// Setup only waits for Available=True, so Verified may still be
+			// transitioning. Wait for full readiness (Available + Verified)
+			// before asserting the conditions to avoid a flake.
+			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server, 3*time.Minute)
 
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
 				t.Fatalf("failed to get MCPServer: %v", err)
@@ -66,13 +71,21 @@ func TestMCPHandshake(t *testing.T) {
 				t.Fatal("Accepted condition is not True")
 			}
 
-			ready := f.GetMCPServerCondition(server, "Ready")
-			if ready == nil || ready.Status != metav1.ConditionTrue {
-				t.Fatal("Ready condition is not True")
+			// Full readiness is the two-condition contract: Available (workload
+			// up) and Verified (MCP handshake succeeded). Assert both, not just
+			// Verified, so a regression in either condition is caught.
+			available := f.GetMCPServerCondition(server, "Available")
+			if available == nil || available.Status != metav1.ConditionTrue {
+				t.Fatal("Available condition is not True")
+			}
+
+			verified := f.GetMCPServerCondition(server, "Verified")
+			if verified == nil || verified.Status != metav1.ConditionTrue {
+				t.Fatal("Verified condition is not True")
 			}
 
 			f.AssertAddressURL(t, server, mcpServerPort)
-			t.Logf("MCPServer status: address=%s, Accepted=True, Ready=True", server.Status.Address.URL)
+			t.Logf("MCPServer status: address=%s, Accepted=True, Available=True, Verified=True", server.Status.Address.URL)
 
 			return ctx
 		}).
