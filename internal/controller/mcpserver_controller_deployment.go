@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -112,8 +113,15 @@ func (r *MCPServerReconciler) reconcileDeployment(
 	if needsUpdate {
 		logger.Info("Updating Deployment", "name", existingDeployment.Name)
 		existingDeployment.Spec.Replicas = deployment.Spec.Replicas
-		existingDeployment.Spec.Template.Labels = deployment.Spec.Template.Labels
-		existingDeployment.Spec.Template.Annotations = deployment.Spec.Template.Annotations
+		// Merge rather than assign. Another controller may co-manage this
+		// Deployment - adding workload labels that trigger sidecar injection,
+		// for example - and assigning the maps wholesale would delete its keys
+		// on every reconcile, leaving the two controllers overwriting each
+		// other indefinitely. The pod spec itself stays a wholesale assignment:
+		// it is generated entirely from the MCPServer, and replacing it is what
+		// lets fields be removed when the spec drops them.
+		mergeIntoMap(&existingDeployment.Spec.Template.Labels, deployment.Spec.Template.Labels)
+		mergeManagedAnnotations(&existingDeployment.Spec.Template.Annotations, deployment.Spec.Template.Annotations)
 		existingDeployment.Spec.Template.Spec = deployment.Spec.Template.Spec
 		if err := applyCustomDeploymentMetadata(mcpServer, existingDeployment); err != nil {
 			return nil, fmt.Errorf("applying custom metadata failed; %w", err)
@@ -167,8 +175,16 @@ func deploymentNeedsUpdate(mcpServer *mcpv1alpha1.MCPServer, existing, desired *
 		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].ReadinessProbe, newPodSpec.Containers[0].ReadinessProbe) ||
 		oldPodSpec.ServiceAccountName != newPodSpec.ServiceAccountName ||
 		!equality.Semantic.DeepEqual(existing.Spec.Replicas, desired.Spec.Replicas) ||
-		!equality.Semantic.DeepEqual(existing.Spec.Template.Labels, desired.Spec.Template.Labels) ||
-		!equality.Semantic.DeepEqual(existing.Spec.Template.Annotations, desired.Spec.Template.Annotations) ||
+		// Only the operator's own keys are compared. Comparing the whole map
+		// would treat a co-managing controller's label as drift, and since the
+		// desired object never contains that label the comparison could never
+		// come out equal - every reconcile would rewrite the Deployment
+		// forever. Keys the operator manages through extraLabels and
+		// extraAnnotations are handled by the two checks below, which know
+		// which keys it previously owned and so can still detect a removal.
+		!mapContainsAll(existing.Spec.Template.Labels, desired.Spec.Template.Labels) ||
+		!mapContainsAll(existing.Spec.Template.Annotations, desired.Spec.Template.Annotations) ||
+		!reservedAnnotationsMatch(existing.Spec.Template.Annotations, desired.Spec.Template.Annotations) ||
 		deploymentAnnotationsChanged(mcpServer, existing) ||
 		deploymentLabelsChanged(mcpServer, existing) ||
 		ownershipChanged
@@ -220,6 +236,62 @@ func tlsEnvVarOverridden(name string, tlsVars []corev1.EnvVar) bool {
 		}
 	}
 	return false
+}
+
+// mergeIntoMap copies src over dst, allocating dst when it is nil. Keys present
+// in dst but not in src are left alone: they belong to somebody else.
+func mergeIntoMap(dst *map[string]string, src map[string]string) {
+	if len(src) == 0 {
+		return
+	}
+	if *dst == nil {
+		*dst = make(map[string]string, len(src))
+	}
+	maps.Copy(*dst, src)
+}
+
+// mapContainsAll reports whether m holds every entry of want with the same
+// value. Extra entries in m are ignored - they are not this operator's to
+// reconcile.
+func mapContainsAll(m, want map[string]string) bool {
+	for key, wantValue := range want {
+		if value, ok := m[key]; !ok || value != wantValue {
+			return false
+		}
+	}
+	return true
+}
+
+// mergeManagedAnnotations merges src into dst, and additionally drops keys under
+// the reserved mcp.x-k8s.io/ prefix that src no longer sets. That prefix belongs
+// to this operator outright, so unlike foreign annotations those keys have to be
+// removable: it is how the config hash disappears once the last ConfigMap or
+// Secret reference is dropped from the MCPServer.
+func mergeManagedAnnotations(dst *map[string]string, src map[string]string) {
+	for key := range *dst {
+		if !strings.HasPrefix(key, reservedAnnotationPrefix) {
+			continue
+		}
+		if _, ok := src[key]; !ok {
+			delete(*dst, key)
+		}
+	}
+	mergeIntoMap(dst, src)
+}
+
+// reservedAnnotationsMatch reports whether existing carries any reserved
+// annotation that desired no longer sets, which mapContainsAll cannot see
+// because it only looks at keys the desired object still has.
+func reservedAnnotationsMatch(existing, desired map[string]string) bool {
+	for key := range existing {
+		if !strings.HasPrefix(key, reservedAnnotationPrefix) {
+			continue
+		}
+		if _, ok := desired[key]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func managedWorkloadLabels(mcpServerName string) map[string]string {
