@@ -309,6 +309,13 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
 GOLANGCI_LINT_VERSION ?= v2.10.1
+
+# GO_TOOLCHAIN is the toolchain declared in go.mod. Tools installed via
+# go-install-tool are built with it so their bundled go/types can parse the
+# project's Go version. Without this, 'go install' picks the minimum toolchain
+# satisfying the tool's own go directive (e.g. go1.26.x for controller-tools),
+# whose go/types cannot parse newer stdlib source and fails 'make generate'.
+GO_TOOLCHAIN ?= $(shell awk '/^toolchain /{print $$2; exit}' go.mod)
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
@@ -347,7 +354,7 @@ set -e; \
 package=$(2)@$(3) ;\
 echo "Downloading $${package}" ;\
 rm -f "$(1)" ;\
-GOBIN="$(LOCALBIN)" go install $${package} ;\
+GOBIN="$(LOCALBIN)" $(if $(GO_TOOLCHAIN),GOTOOLCHAIN=$(GO_TOOLCHAIN)) go install $${package} ;\
 mv "$(LOCALBIN)/$$(basename "$(1)")" "$(1)-$(3)" ;\
 } ;\
 ln -sf "$$(realpath "$(1)-$(3)")" "$(1)"
