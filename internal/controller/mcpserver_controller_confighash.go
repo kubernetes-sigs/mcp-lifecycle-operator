@@ -193,6 +193,36 @@ func (r *MCPServerReconciler) findMCPServersForPod(ctx context.Context, pod clie
 	}}
 }
 
+// extractWorkloadRefNames returns the BYO workloadRef name for field indexing.
+func extractWorkloadRefNames(obj client.Object) []string {
+	mcpServer := obj.(*mcpv1alpha1.MCPServer)
+	if mcpServer.Spec.WorkloadRef != nil {
+		return []string{mcpServer.Spec.WorkloadRef.Name}
+	}
+	return nil
+}
+
+// extractServiceRefNames returns the BYO serviceRef name for field indexing.
+func extractServiceRefNames(obj client.Object) []string {
+	mcpServer := obj.(*mcpv1alpha1.MCPServer)
+	if mcpServer.Spec.ServiceRef != nil {
+		return []string{mcpServer.Spec.ServiceRef.Name}
+	}
+	return nil
+}
+
+// findMCPServersForWorkload finds all MCPServers that reference the given workload
+// (Deployment, DaemonSet, or StatefulSet) via workloadRef.
+func (r *MCPServerReconciler) findMCPServersForWorkload(ctx context.Context, obj client.Object) []reconcile.Request {
+	return r.findMCPServersForResource(ctx, obj.GetName(), obj.GetNamespace(), workloadRefIndexKey)
+}
+
+// findMCPServersForBYOService finds all MCPServers that reference the given
+// Service via serviceRef.
+func (r *MCPServerReconciler) findMCPServersForBYOService(ctx context.Context, obj client.Object) []reconcile.Request {
+	return r.findMCPServersForResource(ctx, obj.GetName(), obj.GetNamespace(), serviceRefIndexKey)
+}
+
 // extractConfigMapNames is an index extractor that returns all ConfigMap names
 // referenced by an MCPServer. Used for efficient ConfigMap watch lookups.
 // This returns both required and optional ConfigMap references, matching Kubernetes

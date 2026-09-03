@@ -80,6 +80,43 @@ func SetupMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config, name
 	return context.WithValue(ctx, ServerKey, server)
 }
 
+// SetupBYOMCPServer creates a BYO MCPServer (with workloadRef, no source) and stores it in context.
+func SetupBYOMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config, name string, workloadRef *mcpv1alpha1.WorkloadReference, opts ...MCPServerOption) context.Context {
+	t.Helper()
+	ns, ok := ctx.Value(NsKey).(string)
+	if !ok || ns == "" {
+		t.Fatal("namespace not found in context; ensure BeforeEachTest has run")
+	}
+	r := cfg.Client().Resources()
+
+	server := NewBYOMCPServer(name, ns, workloadRef, opts...)
+	if err := r.Create(ctx, server); err != nil {
+		t.Fatalf("failed to create BYO MCPServer: %v", err)
+	}
+	t.Logf("created BYO MCPServer %s/%s", ns, server.Name)
+
+	return context.WithValue(ctx, ServerKey, server)
+}
+
+// TeardownBYOMCPServer deletes the MCPServer without waiting for Deployment/Service GC
+// (BYO resources have no ownerRef, so no garbage collection happens).
+func TeardownBYOMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+	t.Helper()
+	server := ServerFromContext(ctx)
+	if server == nil {
+		t.Log("no MCPServer found in context, skipping teardown")
+		return ctx
+	}
+	r := cfg.Client().Resources()
+
+	if err := r.Delete(ctx, server); err != nil && !apierrors.IsNotFound(err) {
+		t.Fatalf("failed to delete MCPServer: %v", err)
+	}
+	t.Logf("deleted BYO MCPServer %s/%s", server.Namespace, server.Name)
+
+	return ctx
+}
+
 // WaitForMCPServerCondition polls until the named condition reaches the desired status.
 // An optional timeout can be provided; defaults to 3 minutes.
 func WaitForMCPServerCondition(ctx context.Context, t *testing.T, r *resources.Resources,

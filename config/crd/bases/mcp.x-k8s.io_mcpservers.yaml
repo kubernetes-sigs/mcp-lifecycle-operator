@@ -21,8 +21,8 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Accepted")].status
       name: Accepted
       type: string
-    - jsonPath: .spec.source.containerImage.ref
-      name: Image
+    - jsonPath: .status.workloadSummary
+      name: Workload
       type: string
     - jsonPath: .spec.config.port
       name: Port
@@ -72,9 +72,10 @@ spec:
             properties:
               config:
                 description: |-
-                  Config is a required field that defines how the MCP server should be configured when it runs.
+                  Config defines how the MCP server should be configured when it runs.
                   This includes runtime settings such as the server port, command-line arguments,
                   environment variables, and storage mounts.
+                  May be omitted in BYO mode when workloadRef and serviceRef are set.
                 properties:
                   arguments:
                     description: |-
@@ -328,10 +329,10 @@ spec:
                       rule: '!self.contains(''\n'') && !self.contains(''\r'') && !self.contains(''\t'')'
                   port:
                     description: |-
-                      Port is a required field that specifies the port number on which the MCP server listens for connections.
+                      Port specifies the port number on which the MCP server listens for connections.
                       Must be between 1 and 65535.
-                      This should match the port that the MCP server container exposes and will be used for
-                      configuring the Kubernetes Service.
+                      Required when serviceRef is not set. When serviceRef is set and port is omitted,
+                      the port is resolved from the referenced Service.
                     format: int32
                     maximum: 65535
                     minimum: 1
@@ -618,8 +619,6 @@ spec:
                     x-kubernetes-list-map-keys:
                     - path
                     x-kubernetes-list-type: map
-                required:
-                - port
                 type: object
               extraAnnotations:
                 additionalProperties:
@@ -2001,11 +2000,24 @@ spec:
                           rule: self == '' || !format.dns1123Subdomain().validate(self).hasValue()
                     type: object
                 type: object
+              serviceRef:
+                description: |-
+                  ServiceRef references an external Service in the same namespace.
+                  When set, the operator skips Service creation and uses the referenced
+                  Service for the MCP endpoint URL.
+                properties:
+                  name:
+                    description: Name of the Service resource.
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
               source:
                 description: |-
-                  Source is a required field that defines where the MCP server should be sourced from.
+                  Source defines where the MCP server should be sourced from.
                   Currently supports container images, with potential for additional source types in the future.
-                  This configuration determines how the MCP server will be deployed and run.
+                  Required when workloadRef is not set.
                 properties:
                   containerImage:
                     description: ContainerImage specifies container image details
@@ -2154,10 +2166,56 @@ spec:
                         type: boolean
                     type: object
                 type: object
-            required:
-            - config
-            - source
+              workloadRef:
+                description: |-
+                  WorkloadRef references an external Deployment, DaemonSet, or StatefulSet
+                  in the same namespace. When set, the operator monitors the referenced
+                  workload read-only and never creates its own Deployment.
+                  Mutually exclusive with source and operator-managed workload fields.
+                properties:
+                  kind:
+                    description: Kind of the workload resource.
+                    enum:
+                    - Deployment
+                    - DaemonSet
+                    - StatefulSet
+                    type: string
+                  name:
+                    description: Name of the workload resource.
+                    minLength: 1
+                    type: string
+                required:
+                - kind
+                - name
+                type: object
             type: object
+            x-kubernetes-validations:
+            - message: source must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.source)'
+            - message: either source or workloadRef must be set
+              rule: has(self.workloadRef) || has(self.source)
+            - message: config.storage must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.config) || !has(self.config.storage)'
+            - message: config.env must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.config) || !has(self.config.env)'
+            - message: config.envFrom must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.config) || !has(self.config.envFrom)'
+            - message: config.arguments must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.config) || !has(self.config.arguments)'
+            - message: runtime.replicas must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.replicas)'
+            - message: runtime.resources must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.resources)'
+            - message: runtime.security must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.security)'
+            - message: runtime.health must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.health)'
+            - message: network must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.network)'
+            - message: mcp.stateless must not be set when serviceRef is set
+              rule: '!has(self.serviceRef) || !has(self.mcp) || !has(self.mcp.stateless)'
+            - message: config.port is required when serviceRef is not set
+              rule: has(self.serviceRef) || (has(self.config) && has(self.config.port))
           status:
             description: status defines the observed state of MCPServer
             properties:
@@ -2262,13 +2320,17 @@ spec:
                 format: int64
                 type: integer
               readyReplicas:
-                description: ReadyReplicas is the number of pods targeted by the owned
-                  Deployment with a Ready condition.
+                description: |-
+                  ReadyReplicas is the number of healthy instances for this MCPServer.
+                  For operator-managed mode this reflects the owned Deployment; for BYO
+                  this reflects the referenced workload.
                 format: int32
                 type: integer
               replicas:
-                description: Replicas is the total number of desired pods targeted
-                  by the owned Deployment.
+                description: |-
+                  Replicas is the total number of desired instances for this MCPServer.
+                  For operator-managed mode this reflects the owned Deployment; for BYO
+                  this reflects the referenced workload (Deployment, DaemonSet, or StatefulSet).
                 format: int32
                 type: integer
               serverInfo:
@@ -2326,8 +2388,21 @@ spec:
                     type: string
                 type: object
               serviceName:
-                description: ServiceName is the name of the Service created for this
-                  MCPServer.
+                description: |-
+                  ServiceName is the name of the Service backing this MCPServer.
+                  For operator-managed mode this is the created Service; for BYO this
+                  is the serviceRef name (or the workloadRef name when serviceRef is unset).
+                type: string
+              workloadName:
+                description: |-
+                  WorkloadName identifies the workload backing this MCPServer.
+                  For BYO: "{Kind}/{Name}" (e.g. "DaemonSet/my-ds").
+                  Empty for operator-managed workloads (use DeploymentName instead).
+                type: string
+              workloadSummary:
+                description: |-
+                  WorkloadSummary is a human-readable summary for the print column.
+                  For BYO: "BYO:{Kind}/{Name}". For operator-managed: the container image ref.
                 type: string
             type: object
         required:

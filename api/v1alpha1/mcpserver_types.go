@@ -28,6 +28,39 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// WorkloadKind defines the type of workload resource for BYO workloads.
+// +kubebuilder:validation:Enum=Deployment;DaemonSet;StatefulSet
+type WorkloadKind string
+
+const (
+	// WorkloadKindDeployment indicates a Deployment workload.
+	WorkloadKindDeployment WorkloadKind = "Deployment"
+	// WorkloadKindDaemonSet indicates a DaemonSet workload.
+	WorkloadKindDaemonSet WorkloadKind = "DaemonSet"
+	// WorkloadKindStatefulSet indicates a StatefulSet workload.
+	WorkloadKindStatefulSet WorkloadKind = "StatefulSet"
+)
+
+// WorkloadReference references an external workload resource in the same namespace.
+type WorkloadReference struct {
+	// Name of the workload resource.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// Kind of the workload resource.
+	// +kubebuilder:validation:Required
+	Kind WorkloadKind `json:"kind"`
+}
+
+// ServiceReference references an external Service in the same namespace.
+type ServiceReference struct {
+	// Name of the Service resource.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
 // SourceType defines the type of source for the MCP server.
 // +kubebuilder:validation:Enum=ContainerImage
 type SourceType string
@@ -180,11 +213,11 @@ type StorageMount struct {
 
 // ServerConfig defines how the MCP server should be configured when it runs.
 type ServerConfig struct {
-	// Port is a required field that specifies the port number on which the MCP server listens for connections.
+	// Port specifies the port number on which the MCP server listens for connections.
 	// Must be between 1 and 65535.
-	// This should match the port that the MCP server container exposes and will be used for
-	// configuring the Kubernetes Service.
-	// +kubebuilder:validation:Required
+	// Required when serviceRef is not set. When serviceRef is set and port is omitted,
+	// the port is resolved from the referenced Service.
+	// +optional
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
 	Port int32 `json:"port,omitempty"`
@@ -421,6 +454,19 @@ type TransportConfig struct {
 }
 
 // MCPServerSpec defines the desired state of MCPServer.
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.source)",message="source must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="has(self.workloadRef) || has(self.source)",message="either source or workloadRef must be set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.storage)",message="config.storage must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.env)",message="config.env must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.envFrom)",message="config.envFrom must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.arguments)",message="config.arguments must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.replicas)",message="runtime.replicas must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.resources)",message="runtime.resources must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.security)",message="runtime.security must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.health)",message="runtime.health must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.network)",message="network must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.serviceRef) || !has(self.mcp) || !has(self.mcp.stateless)",message="mcp.stateless must not be set when serviceRef is set"
+// +kubebuilder:validation:XValidation:rule="has(self.serviceRef) || (has(self.config) && has(self.config.port))",message="config.port is required when serviceRef is not set"
 type MCPServerSpec struct {
 	// ExtraLabels are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
 	// The operator-managed keys "app" and "mcp-server" cannot be overridden.
@@ -429,16 +475,31 @@ type MCPServerSpec struct {
 	// ExtraAnnotations are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
 	// +optional
 	ExtraAnnotations map[string]string `json:"extraAnnotations,omitempty"`
-	// Source is a required field that defines where the MCP server should be sourced from.
+
+	// WorkloadRef references an external Deployment, DaemonSet, or StatefulSet
+	// in the same namespace. When set, the operator monitors the referenced
+	// workload read-only and never creates its own Deployment.
+	// Mutually exclusive with source and operator-managed workload fields.
+	// +optional
+	WorkloadRef *WorkloadReference `json:"workloadRef,omitempty"`
+
+	// ServiceRef references an external Service in the same namespace.
+	// When set, the operator skips Service creation and uses the referenced
+	// Service for the MCP endpoint URL.
+	// +optional
+	ServiceRef *ServiceReference `json:"serviceRef,omitempty"`
+
+	// Source defines where the MCP server should be sourced from.
 	// Currently supports container images, with potential for additional source types in the future.
-	// This configuration determines how the MCP server will be deployed and run.
-	// +kubebuilder:validation:Required
+	// Required when workloadRef is not set.
+	// +optional
 	Source Source `json:"source,omitzero"`
 
-	// Config is a required field that defines how the MCP server should be configured when it runs.
+	// Config defines how the MCP server should be configured when it runs.
 	// This includes runtime settings such as the server port, command-line arguments,
 	// environment variables, and storage mounts.
-	// +kubebuilder:validation:Required
+	// May be omitted in BYO mode when workloadRef and serviceRef are set.
+	// +optional
 	Config ServerConfig `json:"config,omitzero"`
 
 	// Runtime defines runtime management configuration.
@@ -547,9 +608,22 @@ type MCPServerStatus struct {
 	// +optional
 	DeploymentName string `json:"deploymentName,omitempty"`
 
-	// ServiceName is the name of the Service created for this MCPServer.
+	// ServiceName is the name of the Service backing this MCPServer.
+	// For operator-managed mode this is the created Service; for BYO this
+	// is the serviceRef name (or the workloadRef name when serviceRef is unset).
 	// +optional
 	ServiceName string `json:"serviceName,omitempty"`
+
+	// WorkloadName identifies the workload backing this MCPServer.
+	// For BYO: "{Kind}/{Name}" (e.g. "DaemonSet/my-ds").
+	// Empty for operator-managed workloads (use DeploymentName instead).
+	// +optional
+	WorkloadName string `json:"workloadName,omitempty"`
+
+	// WorkloadSummary is a human-readable summary for the print column.
+	// For BYO: "BYO:{Kind}/{Name}". For operator-managed: the container image ref.
+	// +optional
+	WorkloadSummary string `json:"workloadSummary,omitempty"`
 
 	// Address contains the address of the MCP server service.
 	// +optional
@@ -567,11 +641,15 @@ type MCPServerStatus struct {
 	// +optional
 	HandshakeRetryCount int32 `json:"handshakeRetryCount,omitempty"`
 
-	// Replicas is the total number of desired pods targeted by the owned Deployment.
+	// Replicas is the total number of desired instances for this MCPServer.
+	// For operator-managed mode this reflects the owned Deployment; for BYO
+	// this reflects the referenced workload (Deployment, DaemonSet, or StatefulSet).
 	// +optional
 	Replicas int32 `json:"replicas,omitempty"`
 
-	// ReadyReplicas is the number of pods targeted by the owned Deployment with a Ready condition.
+	// ReadyReplicas is the number of healthy instances for this MCPServer.
+	// For operator-managed mode this reflects the owned Deployment; for BYO
+	// this reflects the referenced workload.
 	// +optional
 	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
 
@@ -600,7 +678,7 @@ type MCPServerStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Accepted",type=string,JSONPath=`.status.conditions[?(@.type=="Accepted")].status`
-// +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.source.containerImage.ref`
+// +kubebuilder:printcolumn:name="Workload",type=string,JSONPath=`.status.workloadSummary`
 // +kubebuilder:printcolumn:name="Port",type=integer,JSONPath=`.spec.config.port`
 // +kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.status.address.url`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
