@@ -2271,6 +2271,70 @@ spec:
                   by the owned Deployment.
                 format: int32
                 type: integer
+              serverCard:
+                description: |-
+                  ServerCard is a structured summary of the MCP server for external
+                  discovery. Populated after a successful handshake. Nil when the
+                  handshake has not completed.
+                properties:
+                  address:
+                    description: Address is the cluster-internal service URL for the
+                      MCP server.
+                    type: string
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Annotations are the user-provided extraAnnotations from the MCPServer spec,
+                      surfaced here for external discovery.
+                    type: object
+                  capabilities:
+                    description: Capabilities lists which MCP protocol features the
+                      server supports.
+                    properties:
+                      completions:
+                        description: Completions indicates the server supports argument
+                          autocompletion.
+                        type: boolean
+                      logging:
+                        description: |-
+                          Logging indicates the server supports sending log messages.
+
+                          Deprecated: logging capability is deprecated as of MCP protocol version
+                          2026-07-28 (SEP-2577) and will be removed after the 12-month deprecation
+                          window. The field remains functional during the transition period.
+                        type: boolean
+                      prompts:
+                        description: Prompts indicates the server supports prompt
+                          templates.
+                        type: boolean
+                      resources:
+                        description: Resources indicates the server supports resource
+                          listing and reading.
+                        type: boolean
+                      tools:
+                        description: Tools indicates the server supports tool listing
+                          and invocation.
+                        type: boolean
+                    type: object
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are the user-provided extraLabels from the MCPServer spec,
+                      surfaced here for external discovery.
+                    type: object
+                  name:
+                    description: Name is the server's self-reported name from the
+                      handshake.
+                    type: string
+                  protocolVersion:
+                    description: ProtocolVersion is the negotiated MCP protocol version.
+                    type: string
+                  version:
+                    description: Version is the server's self-reported version.
+                    type: string
+                type: object
               serverInfo:
                 description: |-
                   ServerInfo contains identity and capability information reported by the
