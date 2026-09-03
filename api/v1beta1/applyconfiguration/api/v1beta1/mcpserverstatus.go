@@ -47,31 +47,18 @@ type MCPServerStatusApplyConfiguration struct {
 	ReadyReplicas *int32 `json:"readyReplicas,omitempty"`
 	// Conditions represent the latest available observations of the MCPServer's state.
 	//
-	// Standard condition types:
+	// Standard condition types (the stable part of the contract):
 	//
 	// - "Accepted": Configuration is valid and all referenced resources exist.
-	// Reasons: Valid (True), Invalid (False with details in message).
-	//
 	// - "Available": Workload is running and dependent resources (Deployment,
 	// Service, NetworkPolicy) are reconciled.
-	// Reasons:
-	// - Available: At least one replica is ready (Status=True)
-	// - DeploymentUnavailable: No healthy instances
-	// - ServiceUnavailable: Service could not be reconciled
-	// - NetworkPolicyUnavailable: NetworkPolicy could not be reconciled
-	// - ScaledToZero: Deployment scaled to 0 replicas
-	// - Initializing: Waiting for initial status
-	// - ConfigurationInvalid: Accepted=False, cannot proceed
-	//
 	// - "Verified": MCP endpoint completed the protocol handshake.
-	// Reasons:
-	// - Verified: Handshake succeeded (Status=True)
-	// - NotVerified: Handshake has not been attempted yet (Status=Unknown)
-	// - EndpointUnavailable: Handshake failed (Status=False)
-	// - AuthSkipped: Endpoint returned 401/403, treated as reachable
 	//
-	// Specific failure details (ImagePullBackOff, OOMKilled, CrashLoop, etc.)
-	// are included in the condition message, not the reason.
+	// Each condition carries a Reason and a human-readable Message. The set of
+	// reasons is an implementation detail of the controller and is intentionally
+	// not enumerated here to avoid drift; specific failure details
+	// (ImagePullBackOff, OOMKilled, CrashLoop, etc.) are reported in the message,
+	// not the reason.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
 
