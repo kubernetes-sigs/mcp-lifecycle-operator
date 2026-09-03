@@ -22,6 +22,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -491,6 +492,50 @@ func TestConversionRoundTrip_HubToSpoke_WithConditions(t *testing.T) {
 
 	if diff := cmp.Diff(hub, hubRoundTripped); diff != "" {
 		t.Errorf("hub round-trip mismatch (-original +roundTripped):\n%s", diff)
+	}
+}
+
+// A native v1beta1 object may carry a Verified condition without an Available
+// condition (e.g. very early in reconciliation). Availability is then genuinely
+// unknown, so the merged v1alpha1 Ready condition must be Unknown, not True.
+func TestConversion_HubToSpoke_VerifiedUnknownNoAvailable(t *testing.T) {
+	hub := &v1beta1.MCPServer{
+		ObjectMeta: metav1.ObjectMeta{Name: "verified-unknown", Namespace: "test-ns"},
+		Spec: v1beta1.MCPServerSpec{
+			Source: v1beta1.Source{
+				Type:           v1beta1.SourceTypeContainerImage,
+				ContainerImage: &v1beta1.ContainerImageSource{Ref: "test:v1"},
+			},
+			Config: v1beta1.ServerConfig{Port: 8080},
+		},
+		Status: v1beta1.MCPServerStatus{
+			ObservedGeneration: 2,
+			Conditions: []metav1.Condition{
+				{
+					Type:               "Verified",
+					Status:             metav1.ConditionUnknown,
+					Reason:             "NotVerified",
+					Message:            "Handshake has not been attempted",
+					ObservedGeneration: 2,
+				},
+			},
+		},
+	}
+
+	spoke := &MCPServer{}
+	if err := spoke.ConvertFrom(hub); err != nil {
+		t.Fatalf("ConvertFrom failed: %v", err)
+	}
+
+	ready := meta.FindStatusCondition(spoke.Status.Conditions, "Ready")
+	if ready == nil {
+		t.Fatal("missing Ready condition")
+	}
+	if ready.Status != metav1.ConditionUnknown {
+		t.Errorf("Ready.Status = %v, want %v (availability is unknown)", ready.Status, metav1.ConditionUnknown)
+	}
+	if ready.Reason != "NotVerified" {
+		t.Errorf("Ready.Reason = %q, want %q", ready.Reason, "NotVerified")
 	}
 }
 

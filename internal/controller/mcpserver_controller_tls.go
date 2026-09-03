@@ -28,12 +28,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 const caBundleKey = "ca.crt"
 
-func urlScheme(mcpServer *mcpv1alpha1.MCPServer) string {
+func urlScheme(mcpServer *mcpv1beta1.MCPServer) string {
 	if mcpServer.Spec.Transport != nil &&
 		mcpServer.Spec.Transport.TLS != nil &&
 		mcpServer.Spec.Transport.TLS.Enabled {
@@ -46,7 +46,7 @@ func cloneDefaultTransport() *http.Transport {
 	return http.DefaultTransport.(*http.Transport).Clone()
 }
 
-func buildTLSTransport(ctx context.Context, reader client.Reader, namespace string, tlsConfig *mcpv1alpha1.TLSClientConfig) (*http.Transport, error) {
+func buildTLSTransport(ctx context.Context, reader client.Reader, namespace string, tlsConfig *mcpv1beta1.TLSClientConfig) (*http.Transport, error) {
 	if tlsConfig == nil || !tlsConfig.Enabled {
 		return nil, nil
 	}
@@ -97,7 +97,7 @@ func buildTLSTransport(ctx context.Context, reader client.Reader, namespace stri
 // status write succeeded and the handshake passed. A failed handshake preserves
 // the previous hash so re-verification is forced on the next reconcile.
 func (r *MCPServerReconciler) updateTLSCABundleHash(
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 	hash string,
 	readyCondition metav1.Condition,
 ) {
@@ -110,7 +110,7 @@ func (r *MCPServerReconciler) updateTLSCABundleHash(
 	}
 }
 
-func computeTLSCABundleHash(ctx context.Context, reader client.Reader, namespace string, tlsConfig *mcpv1alpha1.TLSClientConfig) string {
+func computeTLSCABundleHash(ctx context.Context, reader client.Reader, namespace string, tlsConfig *mcpv1beta1.TLSClientConfig) string {
 	if tlsConfig == nil || !tlsConfig.Enabled || tlsConfig.InsecureSkipVerify || tlsConfig.CABundleSecret == nil {
 		return ""
 	}

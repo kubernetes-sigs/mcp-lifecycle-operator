@@ -29,7 +29,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scenario"
@@ -45,12 +45,12 @@ func TestMCPServerHappyPath(t *testing.T) {
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			return f.SetupMCPServer(ctx, t, cfg, "test-server", false)
 		}).
-		Assess("MCPServer becomes Ready", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("MCPServer becomes Available", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.WaitForMCPServerCondition(ctx, t, r, server, "Ready", metav1.ConditionTrue)
-			t.Log("MCPServer is Ready")
+			f.WaitForMCPServerCondition(ctx, t, r, server, "Available", metav1.ConditionTrue)
+			t.Log("MCPServer is Available")
 
 			return ctx
 		}).
@@ -126,7 +126,7 @@ func TestMCPServerUpdatePort(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1alpha1.MCPServer) {
+			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1beta1.MCPServer) {
 				s.Spec.Config.Port = 3002
 			})
 			t.Log("updated MCPServer port to 3002")
@@ -184,7 +184,7 @@ func TestMCPServerUpdatePort(t *testing.T) {
 				t.Fatal("expected a container port 3002 in the Deployment")
 			}
 
-			t.Logf("port update verified: address unset (not Ready), servicePort=%d, containerPort=3002",
+			t.Logf("port update verified: address unset (not Available), servicePort=%d, containerPort=3002",
 				svc.Spec.Ports[0].Port)
 
 			return ctx

@@ -35,7 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 func generateSelfSignedCAPEM() ([]byte, *x509.Certificate) {
@@ -76,7 +76,7 @@ var _ = Describe("buildTLSTransport", func() {
 
 	It("should return nil transport when Enabled is false", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
-		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1beta1.TLSClientConfig{
 			Enabled:            false,
 			InsecureSkipVerify: true,
 		})
@@ -86,7 +86,7 @@ var _ = Describe("buildTLSTransport", func() {
 
 	It("should set InsecureSkipVerify with TLS 1.2 minimum", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
-		transport, err := buildTLSTransport(context.Background(), c, "default", &mcpv1alpha1.TLSClientConfig{
+		transport, err := buildTLSTransport(context.Background(), c, "default", &mcpv1beta1.TLSClientConfig{
 			Enabled:            true,
 			InsecureSkipVerify: true,
 		})
@@ -99,7 +99,7 @@ var _ = Describe("buildTLSTransport", func() {
 
 	It("should use system CAs when no CABundleSecret is set", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
-		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1beta1.TLSClientConfig{
 			Enabled: true,
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -115,9 +115,9 @@ var _ = Describe("buildTLSTransport", func() {
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 
-		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1beta1.TLSClientConfig{
 			Enabled:        true,
-			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "my-ca"},
+			CABundleSecret: &mcpv1beta1.SecretReference{Name: "my-ca"},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(transport).NotTo(BeNil())
@@ -144,9 +144,9 @@ var _ = Describe("buildTLSTransport", func() {
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 
-		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1beta1.TLSClientConfig{
 			Enabled:        true,
-			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "my-ca"},
+			CABundleSecret: &mcpv1beta1.SecretReference{Name: "my-ca"},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		subjects := transport.TLSClientConfig.RootCAs.Subjects() //nolint:staticcheck // x509.CertPool.Subjects is the only way to inspect pool contents
@@ -155,9 +155,9 @@ var _ = Describe("buildTLSTransport", func() {
 
 	It("should error when Secret is missing", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
-		_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+		_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1beta1.TLSClientConfig{
 			Enabled:        true,
-			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "nonexistent"},
+			CABundleSecret: &mcpv1beta1.SecretReference{Name: "nonexistent"},
 		})
 		Expect(err).To(HaveOccurred())
 	})
@@ -168,9 +168,9 @@ var _ = Describe("buildTLSTransport", func() {
 			Data:       map[string][]byte{"wrong-key": []byte("data")},
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
-		_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+		_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1beta1.TLSClientConfig{
 			Enabled:        true,
-			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "bad-secret"},
+			CABundleSecret: &mcpv1beta1.SecretReference{Name: "bad-secret"},
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("ca.crt"))
@@ -182,9 +182,9 @@ var _ = Describe("buildTLSTransport", func() {
 			Data:       map[string][]byte{"ca.crt": []byte("not-a-valid-pem")},
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
-		_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+		_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1beta1.TLSClientConfig{
 			Enabled:        true,
-			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "bad-pem"},
+			CABundleSecret: &mcpv1beta1.SecretReference{Name: "bad-pem"},
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("no valid PEM"))
@@ -192,7 +192,7 @@ var _ = Describe("buildTLSTransport", func() {
 
 	It("should clone http.DefaultTransport preserving proxy and timeout settings", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
-		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1alpha1.TLSClientConfig{
+		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1beta1.TLSClientConfig{
 			Enabled: true,
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -202,15 +202,15 @@ var _ = Describe("buildTLSTransport", func() {
 
 var _ = Describe("urlScheme", func() {
 	It("should return http when no transport config", func() {
-		mcpServer := &mcpv1alpha1.MCPServer{}
+		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(urlScheme(mcpServer)).To(Equal("http"))
 	})
 
 	It("should return http when TLS is not enabled", func() {
-		mcpServer := &mcpv1alpha1.MCPServer{
-			Spec: mcpv1alpha1.MCPServerSpec{
-				Transport: &mcpv1alpha1.TransportConfig{
-					TLS: &mcpv1alpha1.TLSClientConfig{Enabled: false},
+		mcpServer := &mcpv1beta1.MCPServer{
+			Spec: mcpv1beta1.MCPServerSpec{
+				Transport: &mcpv1beta1.TransportConfig{
+					TLS: &mcpv1beta1.TLSClientConfig{Enabled: false},
 				},
 			},
 		}
@@ -218,10 +218,10 @@ var _ = Describe("urlScheme", func() {
 	})
 
 	It("should return https when TLS is enabled", func() {
-		mcpServer := &mcpv1alpha1.MCPServer{
-			Spec: mcpv1alpha1.MCPServerSpec{
-				Transport: &mcpv1alpha1.TransportConfig{
-					TLS: &mcpv1alpha1.TLSClientConfig{Enabled: true},
+		mcpServer := &mcpv1beta1.MCPServer{
+			Spec: mcpv1beta1.MCPServerSpec{
+				Transport: &mcpv1beta1.TransportConfig{
+					TLS: &mcpv1beta1.TLSClientConfig{Enabled: true},
 				},
 			},
 		}
@@ -239,23 +239,23 @@ var _ = Describe("computeTLSCABundleHash", func() {
 
 	It("should return empty when TLS is disabled", func() {
 		cli := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
-		cfg := &mcpv1alpha1.TLSClientConfig{Enabled: false}
+		cfg := &mcpv1beta1.TLSClientConfig{Enabled: false}
 		Expect(computeTLSCABundleHash(ctx, cli, "default", cfg)).To(BeEmpty())
 	})
 
 	It("should return empty when insecureSkipVerify is set", func() {
 		cli := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
-		cfg := &mcpv1alpha1.TLSClientConfig{
+		cfg := &mcpv1beta1.TLSClientConfig{
 			Enabled:            true,
 			InsecureSkipVerify: true,
-			CABundleSecret:     &mcpv1alpha1.SecretReference{Name: "ca"},
+			CABundleSecret:     &mcpv1beta1.SecretReference{Name: "ca"},
 		}
 		Expect(computeTLSCABundleHash(ctx, cli, "default", cfg)).To(BeEmpty())
 	})
 
 	It("should return empty when no caBundleSecret is set", func() {
 		cli := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
-		cfg := &mcpv1alpha1.TLSClientConfig{Enabled: true}
+		cfg := &mcpv1beta1.TLSClientConfig{Enabled: true}
 		Expect(computeTLSCABundleHash(ctx, cli, "default", cfg)).To(BeEmpty())
 	})
 
@@ -263,9 +263,9 @@ var _ = Describe("computeTLSCABundleHash", func() {
 		sch := runtime.NewScheme()
 		Expect(corev1.AddToScheme(sch)).To(Succeed())
 		cli := fake.NewClientBuilder().WithScheme(sch).Build()
-		cfg := &mcpv1alpha1.TLSClientConfig{
+		cfg := &mcpv1beta1.TLSClientConfig{
 			Enabled:        true,
-			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "missing"},
+			CABundleSecret: &mcpv1beta1.SecretReference{Name: "missing"},
 		}
 		Expect(computeTLSCABundleHash(ctx, cli, "default", cfg)).To(BeEmpty())
 	})
@@ -278,9 +278,9 @@ var _ = Describe("computeTLSCABundleHash", func() {
 			Data:       map[string][]byte{"ca.crt": []byte("test-ca-data")},
 		}
 		cli := fake.NewClientBuilder().WithScheme(sch).WithObjects(secret).Build()
-		cfg := &mcpv1alpha1.TLSClientConfig{
+		cfg := &mcpv1beta1.TLSClientConfig{
 			Enabled:        true,
-			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "ca-bundle"},
+			CABundleSecret: &mcpv1beta1.SecretReference{Name: "ca-bundle"},
 		}
 		hash1 := computeTLSCABundleHash(ctx, cli, "default", cfg)
 		hash2 := computeTLSCABundleHash(ctx, cli, "default", cfg)
@@ -297,9 +297,9 @@ var _ = Describe("computeTLSCABundleHash", func() {
 			Data:       map[string][]byte{"ca.crt": []byte("original-ca")},
 		}
 		cli := fake.NewClientBuilder().WithScheme(sch).WithObjects(secret).Build()
-		cfg := &mcpv1alpha1.TLSClientConfig{
+		cfg := &mcpv1beta1.TLSClientConfig{
 			Enabled:        true,
-			CABundleSecret: &mcpv1alpha1.SecretReference{Name: "ca-bundle"},
+			CABundleSecret: &mcpv1beta1.SecretReference{Name: "ca-bundle"},
 		}
 		hash1 := computeTLSCABundleHash(ctx, cli, "default", cfg)
 

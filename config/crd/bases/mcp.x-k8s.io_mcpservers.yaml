@@ -33,6 +33,8 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
+    deprecated: true
+    deprecationWarning: mcp.x-k8s.io/v1alpha1 MCPServer is deprecated; use mcp.x-k8s.io/v1beta1
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -2334,7 +2336,7 @@ spec:
         - spec
         type: object
     served: true
-    storage: true
+    storage: false
     subresources:
       status: {}
   - additionalPrinterColumns:
@@ -4657,6 +4659,6 @@ spec:
         - spec
         type: object
     served: true
-    storage: false
+    storage: true
     subresources:
       status: {}

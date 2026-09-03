@@ -32,7 +32,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
@@ -108,7 +108,7 @@ var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
 			if err := k8sClient.Get(ctx, serverKey, mcpServer); err != nil {
 				return err
 			}
-			mcpServer.Status.HandshakeRetryCount = 99
+			mcpServer.Status.Replicas = 99
 			return k8sClient.Status().Update(ctx, mcpServer)
 		}, 10*time.Second).Should(Succeed())
 
@@ -204,11 +204,11 @@ var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
 
 		By("Expecting the specific pod failure rather than the generic Deployment message")
 		Eventually(func() string {
-			server := &mcpv1alpha1.MCPServer{}
+			server := &mcpv1beta1.MCPServer{}
 			if err := k8sClient.Get(ctx, serverKey, server); err != nil {
 				return ""
 			}
-			cond := meta.FindStatusCondition(server.Status.Conditions, ConditionTypeReady)
+			cond := meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAvailable)
 			if cond == nil {
 				return ""
 			}

@@ -36,7 +36,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 var _ = Describe("MCPServer Controller - Storage Mounts", func() {
@@ -64,11 +64,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path: "/etc/config",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeConfigMap,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
 								Name: "test-configmap",
@@ -81,7 +81,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -151,11 +151,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path: "/etc/secret",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeSecret,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeSecret,
 						Secret: &corev1.SecretVolumeSource{
 							SecretName: "test-secret",
 						},
@@ -166,7 +166,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -248,11 +248,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path: "/etc/config",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeConfigMap,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
 								Name: "test-multi-configmap",
@@ -262,8 +262,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 				{
 					Path: "/etc/secret",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeSecret,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeSecret,
 						Secret: &corev1.SecretVolumeSource{
 							SecretName: "test-multi-secret",
 						},
@@ -274,7 +274,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -361,12 +361,12 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path:        "/etc/config",
-					Permissions: mcpv1alpha1.MountPermissionsReadWrite, // Explicitly set to read-write
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeConfigMap,
+					Permissions: mcpv1beta1.MountPermissionsReadWrite, // Explicitly set to read-write
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
 								Name: "test-configmap-rw",
@@ -379,7 +379,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -432,12 +432,12 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path:        "/app/logs",
-					Permissions: mcpv1alpha1.MountPermissionsReadWrite,
-					Source: mcpv1alpha1.StorageSource{
-						Type:     mcpv1alpha1.StorageTypeEmptyDir,
+					Permissions: mcpv1beta1.MountPermissionsReadWrite,
+					Source: mcpv1beta1.StorageSource{
+						Type:     mcpv1beta1.StorageTypeEmptyDir,
 						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
 				},
@@ -446,7 +446,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -501,12 +501,12 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		BeforeEach(func() {
 			sizeLimit := resource.MustParse("100Mi")
 			mcpServer := newTestMCPServer(resourceName)
-			mcpServer.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			mcpServer.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path:        "/tmp/cache",
-					Permissions: mcpv1alpha1.MountPermissionsReadWrite,
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeEmptyDir,
+					Permissions: mcpv1beta1.MountPermissionsReadWrite,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeEmptyDir,
 						EmptyDir: &corev1.EmptyDirVolumeSource{
 							SizeLimit: &sizeLimit,
 						},
@@ -517,7 +517,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -575,11 +575,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
 			mcpServer := newTestMCPServer(resourceName)
-			mcpServer.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			mcpServer.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path: "/etc/config",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeConfigMap,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
 								Name: "test-mixed-configmap",
@@ -589,9 +589,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 				{
 					Path:        "/app/logs",
-					Permissions: mcpv1alpha1.MountPermissionsReadWrite,
-					Source: mcpv1alpha1.StorageSource{
-						Type:     mcpv1alpha1.StorageTypeEmptyDir,
+					Permissions: mcpv1beta1.MountPermissionsReadWrite,
+					Source: mcpv1beta1.StorageSource{
+						Type:     mcpv1beta1.StorageTypeEmptyDir,
 						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
 				},
@@ -600,7 +600,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -669,11 +669,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path: "/etc/config",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeConfigMap,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
 								Name: "nonexistent-configmap",
@@ -686,7 +686,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -707,7 +707,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify MCPServer status has Accepted=False
-			mcpServer := &mcpv1alpha1.MCPServer{}
+			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
@@ -729,11 +729,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path: "/etc/secret",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeSecret,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeSecret,
 						Secret: &corev1.SecretVolumeSource{
 							SecretName: "nonexistent-secret",
 						},
@@ -744,7 +744,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -765,7 +765,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify MCPServer status has Accepted=False
-			mcpServer := &mcpv1alpha1.MCPServer{}
+			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
@@ -788,11 +788,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		BeforeEach(func() {
 			// Don't create the ConfigMap - it should be optional
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path: "/etc/config",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeConfigMap,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
 								Name: "optional-configmap",
@@ -806,7 +806,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -854,11 +854,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		BeforeEach(func() {
 			// Don't create the Secret - it should be optional
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path: "/etc/secret",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeSecret,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeSecret,
 						Secret: &corev1.SecretVolumeSource{
 							SecretName: "optional-secret",
 							Optional:   new(true),
@@ -870,7 +870,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -917,11 +917,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path: "/etc/config",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeConfigMap,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
 								Name: "", // Empty name
@@ -934,7 +934,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -955,7 +955,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify MCPServer status has Accepted=False
-			mcpServer := &mcpv1alpha1.MCPServer{}
+			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
@@ -977,11 +977,11 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1alpha1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
 				{
 					Path: "/etc/secret",
-					Source: mcpv1alpha1.StorageSource{
-						Type: mcpv1alpha1.StorageTypeSecret,
+					Source: mcpv1beta1.StorageSource{
+						Type: mcpv1beta1.StorageTypeSecret,
 						Secret: &corev1.SecretVolumeSource{
 							SecretName: "", // Empty name
 						},
@@ -992,7 +992,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1alpha1.MCPServer{}
+			resource := &mcpv1beta1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -1013,7 +1013,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify MCPServer status has Accepted=False
-			mcpServer := &mcpv1alpha1.MCPServer{}
+			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
@@ -1030,7 +1030,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should reject EmptyDir with nil EmptyDir configuration", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -1040,19 +1040,19 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: k8sClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
-						Storage: []mcpv1alpha1.StorageMount{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
+						Storage: []mcpv1beta1.StorageMount{
 							{
 								Path: "/data",
-								Source: mcpv1alpha1.StorageSource{
-									Type:     mcpv1alpha1.StorageTypeEmptyDir,
+								Source: mcpv1beta1.StorageSource{
+									Type:     mcpv1beta1.StorageTypeEmptyDir,
 									EmptyDir: nil, // Intentionally nil
 								},
 							},
@@ -1071,7 +1071,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should reject unknown storage type", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -1081,18 +1081,18 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: k8sClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
-						Storage: []mcpv1alpha1.StorageMount{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
+						Storage: []mcpv1beta1.StorageMount{
 							{
 								Path: "/data",
-								Source: mcpv1alpha1.StorageSource{
+								Source: mcpv1beta1.StorageSource{
 									Type: "UnknownType", // Invalid storage type
 								},
 							},
@@ -1112,7 +1112,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should reject env valueFrom with missing ConfigMap", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -1122,14 +1122,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: k8sClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
 							{
 								Name: "MY_VAR",
@@ -1156,7 +1156,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should reject env valueFrom with missing Secret", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -1166,14 +1166,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: k8sClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
 							{
 								Name: "SECRET_VAR",
@@ -1200,7 +1200,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should accept env valueFrom with optional missing ConfigMap", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -1211,14 +1211,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			optional := true
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
 							{
 								Name: "MY_VAR",
@@ -1241,7 +1241,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should accept env valueFrom with optional missing Secret", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -1252,14 +1252,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			optional := true
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
 							{
 								Name: "SECRET_VAR",
@@ -1282,7 +1282,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should accept env with literal value (no valueFrom)", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -1292,14 +1292,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: k8sClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
 							{
 								Name:  "SIMPLE_VAR",
@@ -1316,7 +1316,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should return transient error for ConfigMap timeout without marking invalid", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			// Create a fake client that returns timeout error for ConfigMap Get
@@ -1343,19 +1343,19 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: fakeClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
-						Storage: []mcpv1alpha1.StorageMount{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
+						Storage: []mcpv1beta1.StorageMount{
 							{
 								Path: "/data",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
+								Source: mcpv1beta1.StorageSource{
+									Type: mcpv1beta1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
 										LocalObjectReference: corev1.LocalObjectReference{
 											Name: "test-config",
@@ -1378,7 +1378,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should return transient error for Secret timeout without marking invalid", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			// Create a fake client that returns timeout error for Secret Get
@@ -1405,19 +1405,19 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: fakeClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
-						Storage: []mcpv1alpha1.StorageMount{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
+						Storage: []mcpv1beta1.StorageMount{
 							{
 								Path: "/secret",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeSecret,
+								Source: mcpv1beta1.StorageSource{
+									Type: mcpv1beta1.StorageTypeSecret,
 									Secret: &corev1.SecretVolumeSource{
 										SecretName: "test-secret",
 									},
@@ -1438,7 +1438,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should return transient error for envFrom ConfigMap timeout", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
@@ -1464,14 +1464,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: fakeClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								ConfigMapRef: &corev1.ConfigMapEnvSource{
@@ -1495,7 +1495,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should return transient error for env valueFrom Secret timeout", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
@@ -1521,14 +1521,14 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: fakeClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
 							{
 								Name: "MY_SECRET",
@@ -1556,7 +1556,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should return transient error for Forbidden", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
@@ -1582,19 +1582,19 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: fakeClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
-						Storage: []mcpv1alpha1.StorageMount{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
+						Storage: []mcpv1beta1.StorageMount{
 							{
 								Path: "/data",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
+								Source: mcpv1beta1.StorageSource{
+									Type: mcpv1beta1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
 										LocalObjectReference: corev1.LocalObjectReference{
 											Name: "test-config",
@@ -1617,7 +1617,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should return transient error for Unauthorized", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
@@ -1643,19 +1643,19 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: fakeClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
-						Storage: []mcpv1alpha1.StorageMount{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
+						Storage: []mcpv1beta1.StorageMount{
 							{
 								Path: "/data",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
+								Source: mcpv1beta1.StorageSource{
+									Type: mcpv1beta1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
 										LocalObjectReference: corev1.LocalObjectReference{
 											Name: "test-config",
@@ -1678,7 +1678,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 		It("should return ValidationError for BadRequest (permanent error)", func() {
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).
@@ -1704,19 +1704,19 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: fakeClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{
-						Storage: []mcpv1alpha1.StorageMount{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
+						Storage: []mcpv1beta1.StorageMount{
 							{
 								Path: "/data",
-								Source: mcpv1alpha1.StorageSource{
-									Type: mcpv1alpha1.StorageTypeConfigMap,
+								Source: mcpv1beta1.StorageSource{
+									Type: mcpv1beta1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
 										LocalObjectReference: corev1.LocalObjectReference{
 											Name: "test-config",
@@ -1741,7 +1741,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		It("should accept valid CA bundle Secret with TLS enabled", func() {
 			caPEM, _ := generateSelfSignedCAPEM()
 			scheme := runtime.NewScheme()
-			Expect(mcpv1alpha1.AddToScheme(scheme)).To(Succeed())
+			Expect(mcpv1beta1.AddToScheme(scheme)).To(Succeed())
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			secret := &corev1.Secret{
@@ -1755,18 +1755,18 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				APIReader: fakeClient,
 			}
 
-			mcpServer := &mcpv1alpha1.MCPServer{
+			mcpServer := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-server",
 					Namespace:  "default",
 					Generation: 1,
 				},
-				Spec: mcpv1alpha1.MCPServerSpec{
-					Config: mcpv1alpha1.ServerConfig{Port: 8080},
-					Transport: &mcpv1alpha1.TransportConfig{
-						TLS: &mcpv1alpha1.TLSClientConfig{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{Port: 8080},
+					Transport: &mcpv1beta1.TransportConfig{
+						TLS: &mcpv1beta1.TLSClientConfig{
 							Enabled:        true,
-							CABundleSecret: &mcpv1alpha1.SecretReference{Name: "valid-ca"},
+							CABundleSecret: &mcpv1beta1.SecretReference{Name: "valid-ca"},
 						},
 					},
 				},

@@ -53,7 +53,7 @@ func TestMCPHandshake(t *testing.T) {
 			t.Logf("MCP server pod %s is Running", pod.Name)
 			return ctx
 		}).
-		Assess("Accepted and Ready conditions are True", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("Accepted and Verified conditions are True", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
@@ -66,13 +66,13 @@ func TestMCPHandshake(t *testing.T) {
 				t.Fatal("Accepted condition is not True")
 			}
 
-			ready := f.GetMCPServerCondition(server, "Ready")
-			if ready == nil || ready.Status != metav1.ConditionTrue {
-				t.Fatal("Ready condition is not True")
+			verified := f.GetMCPServerCondition(server, "Verified")
+			if verified == nil || verified.Status != metav1.ConditionTrue {
+				t.Fatal("Verified condition is not True")
 			}
 
 			f.AssertAddressURL(t, server, mcpServerPort)
-			t.Logf("MCPServer status: address=%s, Accepted=True, Ready=True", server.Status.Address.URL)
+			t.Logf("MCPServer status: address=%s, Accepted=True, Verified=True", server.Status.Address.URL)
 
 			return ctx
 		}).
