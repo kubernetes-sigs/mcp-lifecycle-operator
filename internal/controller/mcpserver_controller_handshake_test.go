@@ -924,6 +924,182 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Completions).To(BeFalse())
 	})
 
+	It("should populate catalog counts in status when handshake returns them", func() {
+		toolCount := int32(5)
+		resourceCount := int32(3)
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
+				return &mcpv1alpha1.MCPServerInfo{
+					Name:            "catalog-test-server",
+					Version:         "1.0.0",
+					ProtocolVersion: "2025-03-26",
+					Capabilities: &mcpv1alpha1.MCPServerCapabilities{
+						Tools:     true,
+						Resources: true,
+					},
+					CatalogCounts: &mcpv1alpha1.CatalogCounts{
+						ToolCount:     &toolCount,
+						ResourceCount: &resourceCount,
+					},
+				}, nil
+			},
+			APIReader: k8sClient,
+		}
+
+		By("Initial reconciliation creates deployment")
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Simulating deployment becoming available")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		By("Reconciling with successful handshake that includes catalog counts")
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying status.serverInfo.catalogCounts is populated")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil())
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts).NotTo(BeNil())
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.ToolCount).NotTo(BeNil())
+		Expect(*mcpServer.Status.ServerInfo.CatalogCounts.ToolCount).To(Equal(int32(5)))
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.ResourceCount).NotTo(BeNil())
+		Expect(*mcpServer.Status.ServerInfo.CatalogCounts.ResourceCount).To(Equal(int32(3)))
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.PromptCount).To(BeNil(),
+			"PromptCount should be nil when server does not support prompts")
+	})
+
+	It("should handle zero catalog counts correctly", func() {
+		toolCount := int32(0)
+		resourceCount := int32(0)
+		promptCount := int32(0)
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
+				return &mcpv1alpha1.MCPServerInfo{
+					Name:            "empty-catalog-server",
+					Version:         "1.0.0",
+					ProtocolVersion: "2025-03-26",
+					Capabilities: &mcpv1alpha1.MCPServerCapabilities{
+						Tools:     true,
+						Resources: true,
+						Prompts:   true,
+					},
+					CatalogCounts: &mcpv1alpha1.CatalogCounts{
+						ToolCount:     &toolCount,
+						ResourceCount: &resourceCount,
+						PromptCount:   &promptCount,
+					},
+				}, nil
+			},
+			APIReader: k8sClient,
+		}
+
+		By("Initial reconciliation creates deployment")
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Simulating deployment becoming available")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		By("Reconciling with successful handshake")
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying zero counts are preserved (not nil)")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil())
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts).NotTo(BeNil())
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.ToolCount).NotTo(BeNil())
+		Expect(*mcpServer.Status.ServerInfo.CatalogCounts.ToolCount).To(Equal(int32(0)))
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.ResourceCount).NotTo(BeNil())
+		Expect(*mcpServer.Status.ServerInfo.CatalogCounts.ResourceCount).To(Equal(int32(0)))
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.PromptCount).NotTo(BeNil())
+		Expect(*mcpServer.Status.ServerInfo.CatalogCounts.PromptCount).To(Equal(int32(0)))
+	})
+
+	It("should not populate catalog counts when no capabilities are supported", func() {
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1alpha1.MCPServerInfo, error) {
+				return &mcpv1alpha1.MCPServerInfo{
+					Name:            "no-caps-server",
+					Version:         "1.0.0",
+					ProtocolVersion: "2025-03-26",
+				}, nil
+			},
+			APIReader: k8sClient,
+		}
+
+		By("Initial reconciliation creates deployment")
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Simulating deployment becoming available")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		By("Reconciling with successful handshake")
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying catalog counts are nil when no capabilities")
+		mcpServer := &mcpv1alpha1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil())
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts).To(BeNil())
+	})
+
 	It("should carry forward serverInfo when handshake is skipped", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,

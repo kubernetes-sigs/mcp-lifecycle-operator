@@ -196,7 +196,60 @@ func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string,
 		_ = session.Close()
 	}()
 
-	return extractServerInfo(session.InitializeResult()), nil
+	info := extractServerInfo(session.InitializeResult())
+	if info != nil {
+		info.CatalogCounts = extractCatalogCounts(ctx, session, session.InitializeResult())
+	}
+	return info, nil
+}
+
+// extractCatalogCounts calls list methods for each supported capability and
+// returns the item counts. Errors from individual list calls are swallowed -
+// catalog counts are best-effort metadata.
+func extractCatalogCounts(ctx context.Context, session *mcp.ClientSession, initResult *mcp.InitializeResult) *mcpv1alpha1.CatalogCounts {
+	if initResult == nil || initResult.Capabilities == nil {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+	counts := &mcpv1alpha1.CatalogCounts{}
+	caps := initResult.Capabilities
+	hasAnyCounts := false
+
+	if caps.Tools != nil {
+		if result, err := session.ListTools(ctx, nil); err == nil && result != nil {
+			count := int32(len(result.Tools))
+			counts.ToolCount = &count
+			hasAnyCounts = true
+		} else if err != nil {
+			logger.V(1).Info("Failed to list tools for catalog counts", "error", err)
+		}
+	}
+
+	if caps.Resources != nil {
+		if result, err := session.ListResources(ctx, nil); err == nil && result != nil {
+			count := int32(len(result.Resources))
+			counts.ResourceCount = &count
+			hasAnyCounts = true
+		} else if err != nil {
+			logger.V(1).Info("Failed to list resources for catalog counts", "error", err)
+		}
+	}
+
+	if caps.Prompts != nil {
+		if result, err := session.ListPrompts(ctx, nil); err == nil && result != nil {
+			count := int32(len(result.Prompts))
+			counts.PromptCount = &count
+			hasAnyCounts = true
+		} else if err != nil {
+			logger.V(1).Info("Failed to list prompts for catalog counts", "error", err)
+		}
+	}
+
+	if !hasAnyCounts {
+		return nil
+	}
+	return counts
 }
 
 // extractServerInfo converts an MCP InitializeResult into our CRD type.

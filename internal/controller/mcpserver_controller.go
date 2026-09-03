@@ -464,6 +464,19 @@ func serverInfoToAC(info *mcpv1alpha1.MCPServerInfo) *acv1alpha1.MCPServerInfoAp
 			WithLogging(info.Capabilities.Logging). //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 			WithCompletions(info.Capabilities.Completions))
 	}
+	if info.CatalogCounts != nil {
+		cc := acv1alpha1.CatalogCounts()
+		if info.CatalogCounts.ToolCount != nil {
+			cc = cc.WithToolCount(*info.CatalogCounts.ToolCount)
+		}
+		if info.CatalogCounts.ResourceCount != nil {
+			cc = cc.WithResourceCount(*info.CatalogCounts.ResourceCount)
+		}
+		if info.CatalogCounts.PromptCount != nil {
+			cc = cc.WithPromptCount(*info.CatalogCounts.PromptCount)
+		}
+		si = si.WithCatalogCounts(cc)
+	}
 	return si
 }
 
