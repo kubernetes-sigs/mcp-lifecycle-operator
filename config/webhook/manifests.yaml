@@ -12,6 +12,7 @@ webhooks:
       namespace: system
       path: /validate-mcp-x-k8s-io-v1alpha1-mcpserver
   failurePolicy: Fail
+  matchPolicy: Equivalent
   name: vmcpserver.mcp.x-k8s.io
   rules:
   - apiGroups:

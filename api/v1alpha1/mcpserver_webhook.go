@@ -27,7 +27,11 @@ import (
 	webhookpolicy "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/webhook"
 )
 
-// +kubebuilder:webhook:path=/validate-mcp-x-k8s-io-v1alpha1-mcpserver,mutating=false,failurePolicy=fail,sideEffects=none,groups=mcp.x-k8s.io,resources=mcpservers,verbs=create;update,versions=v1alpha1,name=vmcpserver.mcp.x-k8s.io,admissionReviewVersions=v1
+// matchPolicy=Equivalent lets the API server convert other served versions
+// (e.g. v1beta1) to v1alpha1 before invoking this validator, so admission
+// policy applies to every served version through a single webhook. Do not
+// switch this to Exact without registering a per-version handler.
+// +kubebuilder:webhook:path=/validate-mcp-x-k8s-io-v1alpha1-mcpserver,mutating=false,failurePolicy=fail,matchPolicy=Equivalent,sideEffects=none,groups=mcp.x-k8s.io,resources=mcpservers,verbs=create;update,versions=v1alpha1,name=vmcpserver.mcp.x-k8s.io,admissionReviewVersions=v1
 
 // +kubebuilder:object:generate=false
 
