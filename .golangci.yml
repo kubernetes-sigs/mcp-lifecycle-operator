@@ -26,6 +26,8 @@ linters:
     - unparam
     - unused
   settings:
+    goconst:
+      ignore-tests: true
     revive:
       rules:
         - name: comment-spacings

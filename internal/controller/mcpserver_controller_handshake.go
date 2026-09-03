@@ -45,8 +45,8 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	logger := log.FromContext(ctx)
 
 	metricLabels := prometheus.Labels{
-		"name":      mcpServer.Name,
-		"namespace": mcpServer.Namespace,
+		keyName:      mcpServer.Name,
+		keyNamespace: mcpServer.Namespace,
 	}
 
 	key := mcpServer.Namespace + "/" + mcpServer.Name

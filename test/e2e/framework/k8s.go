@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	netpath "path"
+	"strings"
 	"testing"
 	"time"
 
@@ -225,18 +226,18 @@ func PrewarmImages(images ...string) env.Func {
 				nsResources := cfg.Client().Resources(prewarmNs)
 				var pods corev1.PodList
 				if listErr := nsResources.List(ctx, &pods, resources.WithLabelSelector("app="+dsName)); listErr == nil {
-					var details string
+					var details strings.Builder
 					for _, pod := range pods.Items {
 						for _, cs := range pod.Status.ContainerStatuses {
 							if cs.State.Waiting != nil {
-								details += fmt.Sprintf("pod %s container %s: %s (%s); ", pod.Name, cs.Name, cs.State.Waiting.Reason, cs.State.Waiting.Message)
+								fmt.Fprintf(&details, "pod %s container %s: %s (%s); ", pod.Name, cs.Name, cs.State.Waiting.Reason, cs.State.Waiting.Message)
 							} else if cs.State.Terminated != nil {
-								details += fmt.Sprintf("pod %s container %s: %s (exit code %d); ", pod.Name, cs.Name, cs.State.Terminated.Reason, cs.State.Terminated.ExitCode)
+								fmt.Fprintf(&details, "pod %s container %s: %s (exit code %d); ", pod.Name, cs.Name, cs.State.Terminated.Reason, cs.State.Terminated.ExitCode)
 							}
 						}
 					}
-					if details != "" {
-						return ctx, fmt.Errorf("prewarm image %s: %s: %w", img, details, err)
+					if details.Len() != 0 {
+						return ctx, fmt.Errorf("prewarm image %s: %s: %w", img, details.String(), err)
 					}
 				}
 				return ctx, fmt.Errorf("prewarm image %s: %w", img, err)

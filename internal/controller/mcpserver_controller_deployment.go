@@ -60,7 +60,7 @@ func (r *MCPServerReconciler) reconcileDeployment(
 	existingDeployment := &appsv1.Deployment{}
 	err = r.Get(ctx, client.ObjectKey{Name: deployment.Name, Namespace: deployment.Namespace}, existingDeployment)
 	if err != nil && apierrors.IsNotFound(err) {
-		logger.Info("Creating Deployment", "name", deployment.Name)
+		logger.Info("Creating Deployment", keyName, deployment.Name)
 		if err := applyCustomDeploymentMetadata(mcpServer, deployment); err != nil {
 			return nil, fmt.Errorf("applying custom metadata failed; %w", err)
 		}
@@ -107,10 +107,10 @@ func (r *MCPServerReconciler) reconcileDeployment(
 
 	needsUpdate := deploymentNeedsUpdate(mcpServer, existingDeployment, deployment, ownershipChanged)
 	if needsUpdate && len(existingDeployment.Spec.Template.Spec.Containers) == 0 {
-		logger.Info("Recovering deployment with empty containers list", "name", existingDeployment.Name)
+		logger.Info("Recovering deployment with empty containers list", keyName, existingDeployment.Name)
 	}
 	if needsUpdate {
-		logger.Info("Updating Deployment", "name", existingDeployment.Name)
+		logger.Info("Updating Deployment", keyName, existingDeployment.Name)
 		existingDeployment.Spec.Replicas = deployment.Spec.Replicas
 		existingDeployment.Spec.Template.Labels = deployment.Spec.Template.Labels
 		existingDeployment.Spec.Template.Annotations = deployment.Spec.Template.Annotations
@@ -130,7 +130,7 @@ func (r *MCPServerReconciler) reconcileDeployment(
 			return nil, err
 		}
 	} else {
-		logger.Info("Deployment already exists and is up to date", "name", deployment.Name)
+		logger.Info("Deployment already exists and is up to date", keyName, deployment.Name)
 	}
 
 	return existingDeployment, nil

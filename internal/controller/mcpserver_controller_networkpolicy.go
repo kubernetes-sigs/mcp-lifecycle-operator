@@ -49,7 +49,7 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 	existingNetpol := &networkingv1.NetworkPolicy{}
 	err := r.Get(ctx, client.ObjectKey{Name: netpol.Name, Namespace: netpol.Namespace}, existingNetpol)
 	if err != nil && apierrors.IsNotFound(err) {
-		logger.Info("Creating NetworkPolicy", "name", netpol.Name)
+		logger.Info("Creating NetworkPolicy", keyName, netpol.Name)
 		if err := applyCustomNetworkPolicyMetadata(mcpServer, netpol); err != nil {
 			return fmt.Errorf("applying custom metadata failed; %w", err)
 		}
@@ -58,10 +58,10 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 			return err
 		}
 		if mcpServer.Spec.Network == nil || len(mcpServer.Spec.Network.IngressFrom) == 0 {
-			logger.Info("NetworkPolicy created without ingress source restrictions", "name", netpol.Name)
+			logger.Info("NetworkPolicy created without ingress source restrictions", keyName, netpol.Name)
 		}
 		if mcpServer.Spec.Network == nil || (len(mcpServer.Spec.Network.EgressTo) == 0 && len(mcpServer.Spec.Network.EgressPorts) == 0) {
-			logger.Info("NetworkPolicy created without egress destination restrictions", "name", netpol.Name)
+			logger.Info("NetworkPolicy created without egress destination restrictions", keyName, netpol.Name)
 		}
 		auditNetworkPolicyCreated(ctx, mcpServer, netpol.Name, hasIngressSourceRestriction(netpol), hasEgressDestinationRestriction(netpol))
 		return nil
@@ -95,7 +95,7 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 		networkPolicyAnnotationsChanged(mcpServer, existingNetpol) ||
 		ownershipChanged
 	if needsUpdate {
-		logger.Info("Updating NetworkPolicy", "name", existingNetpol.Name)
+		logger.Info("Updating NetworkPolicy", keyName, existingNetpol.Name)
 		if existingNetpol.Labels == nil {
 			existingNetpol.Labels = make(map[string]string)
 		}
@@ -110,7 +110,7 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 		}
 		auditNetworkPolicyUpdated(ctx, mcpServer, existingNetpol.Name)
 	} else {
-		logger.Info("NetworkPolicy already exists and is up to date", "name", netpol.Name)
+		logger.Info("NetworkPolicy already exists and is up to date", keyName, netpol.Name)
 	}
 
 	return nil

@@ -156,7 +156,7 @@ func (r *MCPServerReconciler) findMCPServersForResource(
 	); err != nil {
 		logger.Error(err, "Failed to list MCPServers for resource",
 			"resourceName", resourceName,
-			"namespace", namespace,
+			keyNamespace, namespace,
 			"indexKey", indexKey)
 		return []reconcile.Request{}
 	}

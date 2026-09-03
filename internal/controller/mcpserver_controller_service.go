@@ -48,7 +48,7 @@ func (r *MCPServerReconciler) reconcileService(
 	existingService := &corev1.Service{}
 	err := r.Get(ctx, client.ObjectKey{Name: service.Name, Namespace: service.Namespace}, existingService)
 	if err != nil && apierrors.IsNotFound(err) {
-		logger.Info("Creating Service", "name", service.Name)
+		logger.Info("Creating Service", keyName, service.Name)
 		if err := applyCustomServiceMetadata(mcpServer, service); err != nil {
 			return fmt.Errorf("applying custom metadata failed; %w", err)
 		}
@@ -96,7 +96,7 @@ func (r *MCPServerReconciler) reconcileService(
 		serviceAnnotationsChanged(mcpServer, existingService) ||
 		ownershipChanged
 	if needsUpdate {
-		logger.Info("Updating Service", "name", existingService.Name)
+		logger.Info("Updating Service", keyName, existingService.Name)
 		if err := applyCustomServiceMetadata(mcpServer, existingService); err != nil {
 			return fmt.Errorf("applying custom service metadata; %w", err)
 		}
@@ -108,7 +108,7 @@ func (r *MCPServerReconciler) reconcileService(
 			return err
 		}
 	} else {
-		logger.Info("Service already exists and is up to date", "name", service.Name)
+		logger.Info("Service already exists and is up to date", keyName, service.Name)
 	}
 
 	return nil
