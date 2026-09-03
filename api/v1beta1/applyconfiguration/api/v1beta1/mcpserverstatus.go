@@ -41,13 +41,6 @@ type MCPServerStatusApplyConfiguration struct {
 	// MCP server during the protocol handshake (initialize or server/discover).
 	// This field is populated only after a successful handshake.
 	ServerInfo *MCPServerInfoApplyConfiguration `json:"serverInfo,omitempty"`
-	// HandshakeRetryCount tracks the number of consecutive MCP handshake
-	// failures for the current generation. Reset to 0 on success, spec change,
-	// or when reconciliation does not reach the handshake phase.
-	//
-	// Deprecated: this field will be moved to controller-internal state in a
-	// future release. Do not rely on it for automation.
-	HandshakeRetryCount *int32 `json:"handshakeRetryCount,omitempty"`
 	// Replicas is the total number of desired pods targeted by the owned Deployment.
 	Replicas *int32 `json:"replicas,omitempty"`
 	// ReadyReplicas is the number of pods targeted by the owned Deployment with a Ready condition.
@@ -125,14 +118,6 @@ func (b *MCPServerStatusApplyConfiguration) WithAddress(value *MCPServerAddressA
 // If called multiple times, the ServerInfo field is set to the value of the last call.
 func (b *MCPServerStatusApplyConfiguration) WithServerInfo(value *MCPServerInfoApplyConfiguration) *MCPServerStatusApplyConfiguration {
 	b.ServerInfo = value
-	return b
-}
-
-// WithHandshakeRetryCount sets the HandshakeRetryCount field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the HandshakeRetryCount field is set to the value of the last call.
-func (b *MCPServerStatusApplyConfiguration) WithHandshakeRetryCount(value int32) *MCPServerStatusApplyConfiguration {
-	b.HandshakeRetryCount = &value
 	return b
 }
 

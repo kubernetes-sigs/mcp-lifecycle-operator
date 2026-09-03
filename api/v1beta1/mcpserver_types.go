@@ -560,15 +560,6 @@ type MCPServerStatus struct {
 	// +optional
 	ServerInfo *MCPServerInfo `json:"serverInfo,omitempty"`
 
-	// HandshakeRetryCount tracks the number of consecutive MCP handshake
-	// failures for the current generation. Reset to 0 on success, spec change,
-	// or when reconciliation does not reach the handshake phase.
-	//
-	// Deprecated: this field will be moved to controller-internal state in a
-	// future release. Do not rely on it for automation.
-	// +optional
-	HandshakeRetryCount int32 `json:"handshakeRetryCount,omitempty"`
-
 	// Replicas is the total number of desired pods targeted by the owned Deployment.
 	// +optional
 	Replicas int32 `json:"replicas,omitempty"`

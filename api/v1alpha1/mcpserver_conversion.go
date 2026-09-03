@@ -50,7 +50,9 @@ func (src *MCPServer) ConvertTo(dstRaw conversion.Hub) error {
 	dst.Status.ServiceName = src.Status.ServiceName
 	dst.Status.Address = convertAddressTo(src.Status.Address)
 	dst.Status.ServerInfo = convertServerInfoTo(src.Status.ServerInfo)
-	dst.Status.HandshakeRetryCount = src.Status.HandshakeRetryCount //nolint:staticcheck // deprecated field must be preserved for round-trip conversion
+	// HandshakeRetryCount is intentionally not carried to the hub (v1beta1): the
+	// field is dropped from v1beta1 and lives only in controller-internal state
+	// going forward, so the deprecated v1alpha1 value is not propagated.
 	dst.Status.Replicas = src.Status.Replicas
 	dst.Status.ReadyReplicas = src.Status.ReadyReplicas
 	dst.Status.Conditions = convertConditionsTo(src.Status.Conditions)
@@ -82,7 +84,9 @@ func (dst *MCPServer) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Status.ServiceName = src.Status.ServiceName
 	dst.Status.Address = convertAddressFrom(src.Status.Address)
 	dst.Status.ServerInfo = convertServerInfoFrom(src.Status.ServerInfo)
-	dst.Status.HandshakeRetryCount = src.Status.HandshakeRetryCount //nolint:staticcheck // deprecated field must be preserved for round-trip conversion
+	// HandshakeRetryCount does not exist on the hub (v1beta1); the deprecated
+	// v1alpha1 field stays at its zero value and is populated by the controller,
+	// not by conversion from the hub.
 	dst.Status.Replicas = src.Status.Replicas
 	dst.Status.ReadyReplicas = src.Status.ReadyReplicas
 	dst.Status.Conditions = convertConditionsFrom(src.Status.Conditions)

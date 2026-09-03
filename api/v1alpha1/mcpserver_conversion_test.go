@@ -208,12 +208,11 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 			},
 		},
 		Status: MCPServerStatus{
-			ObservedGeneration:  5,
-			DeploymentName:      "full-server",
-			ServiceName:         "full-server",
-			HandshakeRetryCount: 2,
-			Replicas:            3,
-			ReadyReplicas:       2,
+			ObservedGeneration: 5,
+			DeploymentName:     "full-server",
+			ServiceName:        "full-server",
+			Replicas:           3,
+			ReadyReplicas:      2,
 			Address: &MCPServerAddress{
 				URL: "http://full-server.production.svc.cluster.local:9090/api/v1/mcp",
 			},
@@ -262,7 +261,11 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 	}
 }
 
-func TestConversion_HandshakeRetryCountPreserved(t *testing.T) {
+func TestConversion_HandshakeRetryCountDroppedInHub(t *testing.T) {
+	// HandshakeRetryCount is a deprecated v1alpha1-only status field. It has no
+	// representation on the hub (v1beta1), so it is intentionally lost on a
+	// round-trip through v1beta1. This is acceptable: v1alpha1 makes no stability
+	// guarantee and the value is controller-managed retry state, not user data.
 	original := &MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "retry-test",
@@ -273,7 +276,7 @@ func TestConversion_HandshakeRetryCountPreserved(t *testing.T) {
 			Config: ServerConfig{Port: 8080},
 		},
 		Status: MCPServerStatus{
-			HandshakeRetryCount: 5, //nolint:staticcheck // testing deprecated field round-trip
+			HandshakeRetryCount: 5, //nolint:staticcheck // exercising deprecated field drop
 		},
 	}
 
@@ -282,18 +285,14 @@ func TestConversion_HandshakeRetryCountPreserved(t *testing.T) {
 		t.Fatalf("ConvertTo failed: %v", err)
 	}
 
-	if hub.Status.HandshakeRetryCount != 5 { //nolint:staticcheck // testing deprecated field round-trip
-		t.Errorf("expected HandshakeRetryCount=5 in hub, got %d", hub.Status.HandshakeRetryCount) //nolint:staticcheck // testing deprecated field round-trip
-	}
-
 	roundTripped := &MCPServer{}
 	if err := roundTripped.ConvertFrom(hub); err != nil {
 		t.Fatalf("ConvertFrom failed: %v", err)
 	}
 
-	if roundTripped.Status.HandshakeRetryCount != 5 {
-		t.Errorf("expected HandshakeRetryCount=5 after round-trip, got %d",
-			roundTripped.Status.HandshakeRetryCount)
+	if roundTripped.Status.HandshakeRetryCount != 0 { //nolint:staticcheck // exercising deprecated field drop
+		t.Errorf("expected HandshakeRetryCount to be dropped (0) after round-trip through hub, got %d",
+			roundTripped.Status.HandshakeRetryCount) //nolint:staticcheck // exercising deprecated field drop
 	}
 }
 
