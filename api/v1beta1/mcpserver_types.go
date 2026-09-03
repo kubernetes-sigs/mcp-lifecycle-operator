@@ -613,7 +613,6 @@ type MCPServerStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:ac:generate=true
-// +kubebuilder:storageversion
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Accepted",type=string,JSONPath=`.status.conditions[?(@.type=="Accepted")].status`
