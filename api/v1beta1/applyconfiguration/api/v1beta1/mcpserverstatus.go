@@ -50,9 +50,11 @@ type MCPServerStatusApplyConfiguration struct {
 	// Standard condition types (the stable part of the contract):
 	//
 	// - "Accepted": Configuration is valid and all referenced resources exist.
-	// - "Available": Workload is running and dependent resources (Deployment,
-	// Service, NetworkPolicy) are reconciled.
-	// - "Verified": MCP endpoint completed the protocol handshake.
+	// - "Available": Workload is running, dependent resources (Deployment,
+	// Service, NetworkPolicy) are reconciled, and at least one replica is Ready.
+	// - "Verified": The MCP endpoint completed the protocol handshake and is
+	// reachable - the signal a Gateway or client uses before routing traffic
+	// to it.
 	//
 	// Each condition carries a Reason and a human-readable Message. The set of
 	// reasons is an implementation detail of the controller and is intentionally
