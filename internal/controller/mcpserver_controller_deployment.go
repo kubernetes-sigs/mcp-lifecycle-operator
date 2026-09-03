@@ -410,6 +410,8 @@ func (r *MCPServerReconciler) processStorageMounts(
 		case mcpv1alpha1.StorageTypeEmptyDir:
 			// No validation needed - EmptyDir is created by Kubernetes
 			volume.EmptyDir = storage.Source.EmptyDir
+		case mcpv1alpha1.StorageTypePersistentVolumeClaim:
+			volume.PersistentVolumeClaim = storage.Source.PersistentVolumeClaim
 		}
 
 		volumes = append(volumes, volume)

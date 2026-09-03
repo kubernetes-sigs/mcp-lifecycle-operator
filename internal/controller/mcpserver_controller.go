@@ -151,6 +151,8 @@ const (
 	configMapIndexKey = "spec.configMapRefs"
 	// secretIndexKey is the index key for finding MCPServers by Secret reference.
 	secretIndexKey = "spec.secretRefs"
+	// pvcIndexKey is the index key for finding MCPServers by PVC reference.
+	pvcIndexKey = "spec.pvcRefs"
 )
 
 // Custom metadata annotations
@@ -760,6 +762,16 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to setup Secret index: %w", err)
 	}
 
+	// Register PVC index for efficient lookups
+	if err := mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&mcpv1alpha1.MCPServer{},
+		pvcIndexKey,
+		extractPVCNames,
+	); err != nil {
+		return fmt.Errorf("failed to setup PVC index: %w", err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.MCPServer{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
@@ -782,6 +794,11 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		WatchesMetadata(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForSecret),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		WatchesMetadata(
+			&corev1.PersistentVolumeClaim{},
+			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForPVC),
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
 		).
 		Named("mcpserver").

@@ -46,7 +46,7 @@ type ServerConfigApplyConfiguration struct {
 	// The keys become the variable names. Useful when a Secret's keys already match
 	// the expected env var names (e.g., GITHUB_TOKEN).
 	EnvFrom []v1.EnvFromSource `json:"envFrom,omitempty"`
-	// Storage defines storage mounts for ConfigMaps, Secrets, and EmptyDirs.
+	// Storage defines storage mounts for ConfigMaps, Secrets, EmptyDirs, and PersistentVolumeClaims.
 	// Each item uses native Kubernetes volume source types for consistency and feature parity.
 	// If specified, must contain at least 1 item. Maximum 64 items.
 	// Each storage mount must have a unique path.
