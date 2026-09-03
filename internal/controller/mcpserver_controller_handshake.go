@@ -298,10 +298,11 @@ func isHTTPAuthError(err error) bool {
 }
 
 // reconcileHandshakeEventsAndRetryCount emits handshake-related events and returns the updated retry count.
-// Retry state is tracked in-memory, not persisted to status.
+// Retry state is tracked in-memory, not persisted to status. When retries are exhausted it also augments
+// verifiedCondition.Message in place so the persisted status tells users that automatic retries have stopped.
 func (r *MCPServerReconciler) reconcileHandshakeEventsAndRetryCount(
 	mcpServer *mcpv1beta1.MCPServer,
-	verifiedCondition metav1.Condition,
+	verifiedCondition *metav1.Condition,
 ) int32 {
 	key := mcpServer.Namespace + "/" + mcpServer.Name
 
@@ -324,8 +325,25 @@ func (r *MCPServerReconciler) reconcileHandshakeEventsAndRetryCount(
 	}
 	r.handshakeRetries.Store(key, next)
 
+	// Once retries are exhausted the controller stops requeuing (see the backoff
+	// block in Reconcile), so surface that in the Verified condition itself -
+	// otherwise the status keeps the generic endpoint-failure text and users cannot
+	// tell automatic retries have stopped. Augment before the dedup below so the
+	// persisted message is exactly what the next reconcile recomputes: using the
+	// constant max (not the live, still-incrementing count) keeps the text stable,
+	// so duplicateHandshakeUnavailable matches and the status does not churn.
+	baseMessage := verifiedCondition.Message
+	if int(next.count) >= maxMCPHandshakeRetries {
+		verifiedCondition.Message = fmt.Sprintf(
+			"%s Automatic retries exhausted after %d attempts; not retrying until the spec or CA bundle changes.",
+			baseMessage, maxMCPHandshakeRetries)
+	}
+
+	// Dedup on the final (possibly augmented) message so the persisted status is
+	// idempotent, but emit the failure event with the base endpoint error so it is
+	// not conflated with the dedicated retries-exhausted event below.
 	if !duplicateHandshakeUnavailable(mcpServer.Status.Conditions, verifiedCondition.Message) {
-		r.emitMCPHandshakeFailed(mcpServer, verifiedCondition.Message)
+		r.emitMCPHandshakeFailed(mcpServer, baseMessage)
 	}
 	if int(next.count) >= maxMCPHandshakeRetries && int(prev.count) < maxMCPHandshakeRetries {
 		r.emitMCPHandshakeRetriesExhausted(mcpServer, next.count)

@@ -584,6 +584,15 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(exhaustedEvent).To(ContainSubstring(ReasonEndpointUnavailable))
 		Expect(exhaustedEvent).To(ContainSubstring(resourceName))
 
+		By("Verified condition surfaces that automatic retries are exhausted")
+		exhaustedServer := &mcpv1beta1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, exhaustedServer)).To(Succeed())
+		verified := meta.FindStatusCondition(exhaustedServer.Status.Conditions, ConditionTypeVerified)
+		Expect(verified).NotTo(BeNil())
+		Expect(verified.Status).To(Equal(metav1.ConditionFalse))
+		Expect(verified.Reason).To(Equal(ReasonEndpointUnavailable))
+		Expect(verified.Message).To(ContainSubstring("Automatic retries exhausted"))
+
 		By("Further reconcile — no duplicate exhausted event")
 		drainFakeRecorderEvents(fr)
 		result, err := reconciler.Reconcile(ctx, reconcile.Request{

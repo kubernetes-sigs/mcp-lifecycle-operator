@@ -403,7 +403,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		r.emitServerReady(mcpServer)
 	}
 
-	handshakeRetryCount := r.reconcileHandshakeEventsAndRetryCount(mcpServer, verifiedCondition)
+	handshakeRetryCount := r.reconcileHandshakeEventsAndRetryCount(mcpServer, &verifiedCondition)
 
 	status := acv1beta1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
