@@ -32,14 +32,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 // reconcileDeployment creates or updates the Deployment for the MCPServer
 // and returns the current state of the deployment.
 func (r *MCPServerReconciler) reconcileDeployment(
 	ctx context.Context,
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 ) (*appsv1.Deployment, error) {
 	logger := log.FromContext(ctx)
 
@@ -136,7 +136,7 @@ func (r *MCPServerReconciler) reconcileDeployment(
 	return existingDeployment, nil
 }
 
-func deploymentNeedsUpdate(mcpServer *mcpv1alpha1.MCPServer, existing, desired *appsv1.Deployment, ownershipChanged bool) bool {
+func deploymentNeedsUpdate(mcpServer *mcpv1beta1.MCPServer, existing, desired *appsv1.Deployment, ownershipChanged bool) bool {
 	oldPodSpec := existing.Spec.Template.Spec
 	newPodSpec := desired.Spec.Template.Spec
 
@@ -234,11 +234,11 @@ func managedWorkloadSelector(mcpServerName string) map[string]string {
 }
 
 // createDeployment creates a Deployment for the MCPServer
-func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1alpha1.MCPServer) (*appsv1.Deployment, error) {
+func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1beta1.MCPServer) (*appsv1.Deployment, error) {
 	// Validate source type and extract image reference
 	var imageRef string
 	switch mcpServer.Spec.Source.Type {
-	case mcpv1alpha1.SourceTypeContainerImage:
+	case mcpv1beta1.SourceTypeContainerImage:
 		if mcpServer.Spec.Source.ContainerImage == nil {
 			return nil, fmt.Errorf("containerImage must be set when source type is ContainerImage")
 		}
@@ -365,7 +365,7 @@ func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1alpha1.MCPServer)
 // processStorageMounts builds volumes and volume mounts from the MCPServer storage configuration.
 // Validation of referenced ConfigMaps and Secrets is done in validateConfig.
 func (r *MCPServerReconciler) processStorageMounts(
-	mcpServer *mcpv1alpha1.MCPServer,
+	mcpServer *mcpv1beta1.MCPServer,
 ) ([]corev1.Volume, []corev1.VolumeMount) {
 	volumes := make([]corev1.Volume, 0, len(mcpServer.Spec.Config.Storage))
 	volumeMounts := make([]corev1.VolumeMount, 0, len(mcpServer.Spec.Config.Storage))
@@ -381,15 +381,15 @@ func (r *MCPServerReconciler) processStorageMounts(
 		// Default to ReadOnly if not specified
 		permissions := storage.Permissions
 		if permissions == "" {
-			permissions = mcpv1alpha1.MountPermissionsReadOnly
+			permissions = mcpv1beta1.MountPermissionsReadOnly
 		}
 
 		switch permissions {
-		case mcpv1alpha1.MountPermissionsReadOnly:
+		case mcpv1beta1.MountPermissionsReadOnly:
 			volumeMount.ReadOnly = true
-		case mcpv1alpha1.MountPermissionsReadWrite:
+		case mcpv1beta1.MountPermissionsReadWrite:
 			volumeMount.ReadOnly = false
-		case mcpv1alpha1.MountPermissionsRecursiveReadOnly:
+		case mcpv1beta1.MountPermissionsRecursiveReadOnly:
 			volumeMount.ReadOnly = true
 			volumeMount.RecursiveReadOnly = new(corev1.RecursiveReadOnlyEnabled)
 		}
@@ -401,13 +401,13 @@ func (r *MCPServerReconciler) processStorageMounts(
 		}
 
 		switch storage.Source.Type {
-		case mcpv1alpha1.StorageTypeConfigMap:
+		case mcpv1beta1.StorageTypeConfigMap:
 			// Validation already done in validateConfig
 			volume.ConfigMap = storage.Source.ConfigMap
-		case mcpv1alpha1.StorageTypeSecret:
+		case mcpv1beta1.StorageTypeSecret:
 			// Validation already done in validateConfig
 			volume.Secret = storage.Source.Secret
-		case mcpv1alpha1.StorageTypeEmptyDir:
+		case mcpv1beta1.StorageTypeEmptyDir:
 			// No validation needed - EmptyDir is created by Kubernetes
 			volume.EmptyDir = storage.Source.EmptyDir
 		}

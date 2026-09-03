@@ -545,12 +545,25 @@ func mergeAvailableAndVerifiedToReady(available, verified *metav1.Condition) met
 		}
 	}
 
-	// Only Verified is present - workload availability unknown, handshake pending.
+	// Only Verified is present (no Available condition), so workload availability
+	// is genuinely unknown. Ready must be Unknown too: we cannot claim the workload
+	// is running when nothing tells us it is. Preserve the Verified reason/message
+	// so the source state round-trips rather than being flattened to a misleading
+	// Ready=True. In practice the controller writes Available alongside Verified,
+	// so this is a defensive fallback for hub objects that carry only Verified.
+	reason := verified.Reason
+	if reason == "" {
+		reason = "NotVerified"
+	}
+	message := verified.Message
+	if message == "" {
+		message = "Workload availability unknown"
+	}
 	return metav1.Condition{
 		Type:               conditionTypeReady,
-		Status:             metav1.ConditionTrue,
-		Reason:             conditionTypeAvailable,
-		Message:            "Workload is running, handshake pending",
+		Status:             metav1.ConditionUnknown,
+		Reason:             reason,
+		Message:            message,
 		ObservedGeneration: verified.ObservedGeneration,
 		LastTransitionTime: verified.LastTransitionTime,
 	}
