@@ -1,0 +1,6 @@
+# This patch enables the admission webhook by appending the --enable-webhook flag.
+# It is a JSON6902 patch (additive) so it composes with manager_metrics_patch.yaml
+# instead of replacing the entire args list.
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --enable-webhook

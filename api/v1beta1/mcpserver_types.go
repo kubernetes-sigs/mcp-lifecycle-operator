@@ -14,10 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Generated from kubebuilder template:
-// https://github.com/kubernetes-sigs/kubebuilder/blob/v4.11.1/pkg/plugins/golang/v4/scaffolds/internal/templates/api/types.go
+// Promoted from v1alpha1.
 
-package v1alpha1
+package v1beta1
 
 import (
 	corev1 "k8s.io/api/core/v1"
@@ -67,8 +66,8 @@ type ContainerImageSource struct {
 	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
 	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
 
-	// ImagePullSecrets references Secrets in the MCPServer namespace that contain
-	// credentials for pulling the MCP server image from a private registry.
+	// ImagePullSecrets specifies credentials for pulling the MCP server image
+	// from private registries.
 	// The operator passes these references to the managed Pod and does not read
 	// or copy Secret data.
 	// +optional
@@ -383,43 +382,6 @@ type NetworkConfig struct {
 	DNSEgressPeer *networkingv1.NetworkPolicyPeer `json:"dnsEgressPeer,omitempty"`
 }
 
-// SecretReference references a Secret in the same namespace as the MCPServer.
-type SecretReference struct {
-	// Name of the Secret.
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	Name string `json:"name"`
-}
-
-// TLSClientConfig configures TLS for operator-to-MCP-server communication
-// during handshake and discovery probes.
-type TLSClientConfig struct {
-	// Enabled controls whether the operator uses HTTPS for handshake/discovery.
-	// When true, the operator connects to the MCP server using TLS.
-	// +optional
-	Enabled bool `json:"enabled,omitempty"`
-
-	// CABundleSecret references a Secret containing a CA certificate bundle
-	// under the key "ca.crt". Used to verify the MCP server's TLS certificate.
-	// When unset and enabled is true, system CA certificates are used.
-	// +optional
-	CABundleSecret *SecretReference `json:"caBundleSecret,omitempty"`
-
-	// InsecureSkipVerify disables TLS certificate verification.
-	// For development and testing only.
-	// +optional
-	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
-}
-
-// TransportConfig configures transport-layer settings for
-// operator-to-MCP-server communication.
-type TransportConfig struct {
-	// TLS configures TLS for operator-to-MCP-server communication
-	// during handshake and discovery probes.
-	// +optional
-	TLS *TLSClientConfig `json:"tls,omitempty"`
-}
-
 // MCPServerSpec defines the desired state of MCPServer.
 type MCPServerSpec struct {
 	// ExtraLabels are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
@@ -460,6 +422,43 @@ type MCPServerSpec struct {
 	// operator-to-MCP-server communication.
 	// +optional
 	Transport *TransportConfig `json:"transport,omitempty"`
+}
+
+// SecretReference references a Secret in the same namespace as the MCPServer.
+type SecretReference struct {
+	// Name of the Secret.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
+// TLSClientConfig configures TLS for operator-to-MCP-server communication
+// during handshake and discovery probes.
+type TLSClientConfig struct {
+	// Enabled controls whether the operator uses HTTPS for handshake/discovery.
+	// When true, the operator connects to the MCP server using TLS.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// CABundleSecret references a Secret containing a CA certificate bundle
+	// under the key "ca.crt". Used to verify the MCP server's TLS certificate.
+	// When unset and enabled is true, system CA certificates are used.
+	// +optional
+	CABundleSecret *SecretReference `json:"caBundleSecret,omitempty"`
+
+	// InsecureSkipVerify disables TLS certificate verification.
+	// For development and testing only.
+	// +optional
+	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
+}
+
+// TransportConfig configures transport-layer settings for
+// operator-to-MCP-server communication.
+type TransportConfig struct {
+	// TLS configures TLS for operator-to-MCP-server communication
+	// during handshake and discovery probes.
+	// +optional
+	TLS *TLSClientConfig `json:"tls,omitempty"`
 }
 
 // MCPConfig defines Model Context Protocol specific properties of the server.
@@ -561,12 +560,6 @@ type MCPServerStatus struct {
 	// +optional
 	ServerInfo *MCPServerInfo `json:"serverInfo,omitempty"`
 
-	// HandshakeRetryCount tracks the number of consecutive MCP handshake
-	// failures for the current generation. Reset to 0 on success, spec change,
-	// or when reconciliation does not reach the handshake phase.
-	// +optional
-	HandshakeRetryCount int32 `json:"handshakeRetryCount,omitempty"`
-
 	// Replicas is the total number of desired pods targeted by the owned Deployment.
 	// +optional
 	Replicas int32 `json:"replicas,omitempty"`
@@ -580,7 +573,11 @@ type MCPServerStatus struct {
 	// Standard condition types (the stable part of the contract):
 	//
 	// - "Accepted": Configuration is valid and all referenced resources exist.
-	// - "Ready": MCP server is operational and ready to serve requests.
+	// - "Available": Workload is running, dependent resources (Deployment,
+	//   Service, NetworkPolicy) are reconciled, and at least one replica is Ready.
+	// - "Verified": The MCP endpoint completed the protocol handshake and is
+	//   reachable - the signal a Gateway or client uses before routing traffic
+	//   to it.
 	//
 	// Each condition carries a Reason and a human-readable Message. The set of
 	// reasons is an implementation detail of the controller and is intentionally
@@ -596,10 +593,11 @@ type MCPServerStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:ac:generate=true
-// +kubebuilder:storageversion
+// +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Accepted",type=string,JSONPath=`.status.conditions[?(@.type=="Accepted")].status`
+// +kubebuilder:printcolumn:name="Available",type=string,JSONPath=`.status.conditions[?(@.type=="Available")].status`
+// +kubebuilder:printcolumn:name="Verified",type=string,JSONPath=`.status.conditions[?(@.type=="Verified")].status`
 // +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.source.containerImage.ref`
 // +kubebuilder:printcolumn:name="Port",type=integer,JSONPath=`.spec.config.port`
 // +kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.status.address.url`
@@ -613,7 +611,7 @@ type MCPServerStatus struct {
 //
 // Example:
 //
-//	apiVersion: mcp.x-k8s.io/v1alpha1
+//	apiVersion: mcp.x-k8s.io/v1beta1
 //	kind: MCPServer
 //	metadata:
 //	  name: example

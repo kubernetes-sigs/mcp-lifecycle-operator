@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 	webhookpolicy "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/webhook"
 	// +kubebuilder:scaffold:imports
@@ -54,6 +55,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(mcpv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(mcpv1beta1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -246,6 +248,10 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "MCPServer")
 			os.Exit(1)
 		}
+	}
+	if err := (&mcpv1beta1.MCPServer{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "MCPServer")
+		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
 

@@ -21,6 +21,12 @@ spec:
     - ports:
         - port: 8081
           protocol: TCP
+    # Allow the kube-apiserver to reach the admission/conversion webhook on 9443.
+    # The apiserver is off the pod network with no reliably selectable source, so
+    # this rule permits 9443 from any source (same approach as the 8081 probe rule).
+    - ports:
+        - port: 9443
+          protocol: TCP
     # This allows ingress traffic from any namespace with the label metrics: enabled
     - from:
       - namespaceSelector:

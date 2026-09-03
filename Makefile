@@ -105,6 +105,12 @@ cover-clean: ## Remove cover.out and out/coverage.{txt,html} from test-cover.
 	rm -f $(COVER_PROFILE) $(COVER_OUTPUT_DIR)/coverage.txt $(COVER_OUTPUT_DIR)/coverage.html
 
 KIND_CLUSTER ?= mcp-lifecycle-operator-test-e2e
+CERT_MANAGER_VERSION ?= v1.17.2
+
+.PHONY: deploy-certmanager
+deploy-certmanager: ## Install cert-manager in the cluster (required for conversion webhooks).
+	$(KUBECTL) apply -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
+	$(KUBECTL) wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
 
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
@@ -122,7 +128,7 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 	esac
 
 .PHONY: deploy-test-e2e
-deploy-test-e2e: setup-test-e2e manifests generate ## Build and deploy the operator to the Kind cluster for e2e tests.
+deploy-test-e2e: setup-test-e2e deploy-certmanager manifests generate ## Build and deploy the operator to the Kind cluster for e2e tests.
 	$(MAKE) docker-build IMG=example.com/mcp-lifecycle-operator:e2e
 	$(KIND) load docker-image example.com/mcp-lifecycle-operator:e2e --name $(KIND_CLUSTER)
 	$(MAKE) install deploy IMG=example.com/mcp-lifecycle-operator:e2e
