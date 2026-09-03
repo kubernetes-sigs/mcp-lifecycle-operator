@@ -400,7 +400,7 @@ func splitReadyToAvailableAndVerified(ready metav1.Condition) []metav1.Condition
 			{
 				Type:               conditionTypeAvailable,
 				Status:             metav1.ConditionTrue,
-				Reason:             "Available",
+				Reason:             conditionTypeAvailable,
 				Message:            "Workload is running",
 				ObservedGeneration: ready.ObservedGeneration,
 				LastTransitionTime: ready.LastTransitionTime,
@@ -416,13 +416,13 @@ func splitReadyToAvailableAndVerified(ready metav1.Condition) []metav1.Condition
 		}
 	}
 
-	if ready.Status == metav1.ConditionTrue && ready.Reason == "Available" {
+	if ready.Status == metav1.ConditionTrue && ready.Reason == conditionTypeAvailable {
 		// Fully ready: both available and verified.
 		return []metav1.Condition{
 			{
 				Type:               conditionTypeAvailable,
 				Status:             metav1.ConditionTrue,
-				Reason:             "Available",
+				Reason:             conditionTypeAvailable,
 				Message:            ready.Message,
 				ObservedGeneration: ready.ObservedGeneration,
 				LastTransitionTime: ready.LastTransitionTime,
@@ -524,7 +524,7 @@ func mergeAvailableAndVerifiedToReady(available, verified *metav1.Condition) met
 		return metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionTrue,
-			Reason:             "Available",
+			Reason:             conditionTypeAvailable,
 			Message:            src.Message,
 			ObservedGeneration: src.ObservedGeneration,
 			LastTransitionTime: src.LastTransitionTime,
@@ -549,7 +549,7 @@ func mergeAvailableAndVerifiedToReady(available, verified *metav1.Condition) met
 	return metav1.Condition{
 		Type:               conditionTypeReady,
 		Status:             metav1.ConditionTrue,
-		Reason:             "Available",
+		Reason:             conditionTypeAvailable,
 		Message:            "Workload is running, handshake pending",
 		ObservedGeneration: verified.ObservedGeneration,
 		LastTransitionTime: verified.LastTransitionTime,

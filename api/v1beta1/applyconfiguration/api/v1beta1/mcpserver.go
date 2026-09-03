@@ -19,8 +19,11 @@ limitations under the License.
 package v1beta1
 
 import (
+	apiv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	internal "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1/applyconfiguration/internal"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
+	managedfields "k8s.io/apimachinery/pkg/util/managedfields"
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
@@ -71,6 +74,47 @@ func MCPServer(name, namespace string) *MCPServerApplyConfiguration {
 	b.WithKind("MCPServer")
 	b.WithAPIVersion("mcp.x-k8s.io/v1beta1")
 	return b
+}
+
+// ExtractMCPServerFrom extracts the applied configuration owned by fieldManager from
+// mCPServer for the specified subresource. Pass an empty string for subresource to extract
+// the main resource. Common subresources include "status", "scale", etc.
+// mCPServer must be a unmodified MCPServer API object that was retrieved from the Kubernetes API.
+// ExtractMCPServerFrom provides a way to perform a extract/modify-in-place/apply workflow.
+// Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
+// applied if another fieldManager has updated or force applied any of the previously applied fields.
+func ExtractMCPServerFrom(mCPServer *apiv1beta1.MCPServer, fieldManager string, subresource string) (*MCPServerApplyConfiguration, error) {
+	b := &MCPServerApplyConfiguration{}
+	err := managedfields.ExtractInto(mCPServer, internal.Parser().Type("com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServer"), fieldManager, b, subresource)
+	if err != nil {
+		return nil, err
+	}
+	b.WithName(mCPServer.Name)
+	b.WithNamespace(mCPServer.Namespace)
+
+	b.WithKind("MCPServer")
+	b.WithAPIVersion("mcp.x-k8s.io/v1beta1")
+	return b, nil
+}
+
+// ExtractMCPServer extracts the applied configuration owned by fieldManager from
+// mCPServer. If no managedFields are found in mCPServer for fieldManager, a
+// MCPServerApplyConfiguration is returned with only the Name, Namespace (if applicable),
+// APIVersion and Kind populated. It is possible that no managed fields were found for because other
+// field managers have taken ownership of all the fields previously owned by fieldManager, or because
+// the fieldManager never owned fields any fields.
+// mCPServer must be a unmodified MCPServer API object that was retrieved from the Kubernetes API.
+// ExtractMCPServer provides a way to perform a extract/modify-in-place/apply workflow.
+// Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
+// applied if another fieldManager has updated or force applied any of the previously applied fields.
+func ExtractMCPServer(mCPServer *apiv1beta1.MCPServer, fieldManager string) (*MCPServerApplyConfiguration, error) {
+	return ExtractMCPServerFrom(mCPServer, fieldManager, "")
+}
+
+// ExtractMCPServerStatus extracts the applied configuration owned by fieldManager from
+// mCPServer for the status subresource.
+func ExtractMCPServerStatus(mCPServer *apiv1beta1.MCPServer, fieldManager string) (*MCPServerApplyConfiguration, error) {
+	return ExtractMCPServerFrom(mCPServer, fieldManager, "status")
 }
 
 func (b MCPServerApplyConfiguration) IsApplyConfiguration() {}

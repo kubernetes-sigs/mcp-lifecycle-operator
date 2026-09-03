@@ -26,6 +26,17 @@ const (
 // in operator-created Deployments.
 const ManagedWorkloadName = "mcp-server"
 
+// Metric label and structured-log field keys. The same value is used both as a
+// Prometheus label name and as a logr key so metrics and logs stay correlated.
+const (
+	keyName      = "name"
+	keyNamespace = "namespace"
+	keyReason    = "reason"
+	keyPhase     = "phase"
+	keyType      = "type"
+	keyStatus    = "status"
+)
+
 // ReconcilePhase is the value for the "phase" label on mcpserver_reconcile_phase_duration_seconds.
 const (
 	ReconcilePhaseValidation    = "validation"

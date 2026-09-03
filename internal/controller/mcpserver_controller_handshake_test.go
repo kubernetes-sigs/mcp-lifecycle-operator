@@ -875,7 +875,7 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 						Tools:     true,
 						Resources: true,
 						Prompts:   false,
-						Logging:   true,
+						Logging:   true, //nolint:staticcheck // exercising the deprecated Logging field on purpose
 					},
 				}, nil
 			},

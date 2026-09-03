@@ -39,6 +39,1076 @@ func Parser() *typed.Parser {
 var parserOnce sync.Once
 var parser *typed.Parser
 var schemaYAML = typed.YAMLObject(`types:
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.ContainerImageSource
+  map:
+    fields:
+    - name: imagePullSecrets
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.LocalObjectReference
+          elementRelationship: associative
+          keys:
+          - name
+    - name: pullPolicy
+      type:
+        namedType: io.k8s.api.core.v1.PullPolicy
+    - name: ref
+      type:
+        scalar: string
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.HealthConfig
+  map:
+    fields:
+    - name: livenessProbe
+      type:
+        namedType: io.k8s.api.core.v1.Probe
+    - name: readinessProbe
+      type:
+        namedType: io.k8s.api.core.v1.Probe
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPConfig
+  map:
+    fields:
+    - name: stateless
+      type:
+        scalar: boolean
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServer
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerSpec
+    - name: status
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerStatus
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerAddress
+  map:
+    fields:
+    - name: url
+      type:
+        scalar: string
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerCapabilities
+  map:
+    fields:
+    - name: completions
+      type:
+        scalar: boolean
+    - name: logging
+      type:
+        scalar: boolean
+    - name: prompts
+      type:
+        scalar: boolean
+    - name: resources
+      type:
+        scalar: boolean
+    - name: tools
+      type:
+        scalar: boolean
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerInfo
+  map:
+    fields:
+    - name: capabilities
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerCapabilities
+    - name: instructions
+      type:
+        scalar: string
+    - name: name
+      type:
+        scalar: string
+    - name: protocolVersion
+      type:
+        scalar: string
+    - name: version
+      type:
+        scalar: string
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerSpec
+  map:
+    fields:
+    - name: config
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.ServerConfig
+    - name: extraAnnotations
+      type:
+        map:
+          elementType:
+            scalar: string
+    - name: extraLabels
+      type:
+        map:
+          elementType:
+            scalar: string
+    - name: mcp
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPConfig
+    - name: network
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.NetworkConfig
+    - name: runtime
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.RuntimeConfig
+    - name: source
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.Source
+    - name: transport
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.TransportConfig
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerStatus
+  map:
+    fields:
+    - name: address
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerAddress
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: deploymentName
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+    - name: readyReplicas
+      type:
+        scalar: numeric
+    - name: replicas
+      type:
+        scalar: numeric
+    - name: serverInfo
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerInfo
+    - name: serviceName
+      type:
+        scalar: string
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MountPermissions
+  scalar: string
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.NetworkConfig
+  map:
+    fields:
+    - name: dnsEgressPeer
+      type:
+        namedType: io.k8s.api.networking.v1.NetworkPolicyPeer
+    - name: egressPorts
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.networking.v1.NetworkPolicyPort
+          elementRelationship: atomic
+    - name: egressTo
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.networking.v1.NetworkPolicyPeer
+          elementRelationship: atomic
+    - name: ingressFrom
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.networking.v1.NetworkPolicyPeer
+          elementRelationship: atomic
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.RuntimeConfig
+  map:
+    fields:
+    - name: health
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.HealthConfig
+    - name: replicas
+      type:
+        scalar: numeric
+    - name: resources
+      type:
+        namedType: io.k8s.api.core.v1.ResourceRequirements
+    - name: security
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.SecurityConfig
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.SecretReference
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.SecurityConfig
+  map:
+    fields:
+    - name: podSecurityContext
+      type:
+        namedType: io.k8s.api.core.v1.PodSecurityContext
+    - name: securityContext
+      type:
+        namedType: io.k8s.api.core.v1.SecurityContext
+    - name: serviceAccountName
+      type:
+        scalar: string
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.ServerConfig
+  map:
+    fields:
+    - name: arguments
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
+    - name: env
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.EnvVar
+          elementRelationship: atomic
+    - name: envFrom
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.EnvFromSource
+          elementRelationship: atomic
+    - name: path
+      type:
+        scalar: string
+      default: /mcp
+    - name: port
+      type:
+        scalar: numeric
+    - name: storage
+      type:
+        list:
+          elementType:
+            namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.StorageMount
+          elementRelationship: associative
+          keys:
+          - path
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.Source
+  map:
+    fields:
+    - name: containerImage
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.ContainerImageSource
+    - name: type
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.SourceType
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.SourceType
+  scalar: string
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.StorageMount
+  map:
+    fields:
+    - name: path
+      type:
+        scalar: string
+    - name: permissions
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MountPermissions
+      default: ReadOnly
+    - name: source
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.StorageSource
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.StorageSource
+  map:
+    fields:
+    - name: configMap
+      type:
+        namedType: io.k8s.api.core.v1.ConfigMapVolumeSource
+    - name: emptyDir
+      type:
+        namedType: io.k8s.api.core.v1.EmptyDirVolumeSource
+    - name: secret
+      type:
+        namedType: io.k8s.api.core.v1.SecretVolumeSource
+    - name: type
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.StorageType
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.StorageType
+  scalar: string
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.TLSClientConfig
+  map:
+    fields:
+    - name: caBundleSecret
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.SecretReference
+    - name: enabled
+      type:
+        scalar: boolean
+    - name: insecureSkipVerify
+      type:
+        scalar: boolean
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.TransportConfig
+  map:
+    fields:
+    - name: tls
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.TLSClientConfig
+- name: io.k8s.api.core.v1.AppArmorProfile
+  map:
+    fields:
+    - name: localhostProfile
+      type:
+        scalar: string
+    - name: type
+      type:
+        namedType: io.k8s.api.core.v1.AppArmorProfileType
+- name: io.k8s.api.core.v1.AppArmorProfileType
+  scalar: string
+- name: io.k8s.api.core.v1.Capabilities
+  map:
+    fields:
+    - name: add
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.Capability
+          elementRelationship: atomic
+    - name: drop
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.Capability
+          elementRelationship: atomic
+- name: io.k8s.api.core.v1.Capability
+  scalar: string
+- name: io.k8s.api.core.v1.ConfigMapEnvSource
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+      default: ""
+    - name: optional
+      type:
+        scalar: boolean
+    elementRelationship: atomic
+- name: io.k8s.api.core.v1.ConfigMapKeySelector
+  map:
+    fields:
+    - name: key
+      type:
+        scalar: string
+    - name: name
+      type:
+        scalar: string
+      default: ""
+    - name: optional
+      type:
+        scalar: boolean
+    elementRelationship: atomic
+- name: io.k8s.api.core.v1.ConfigMapVolumeSource
+  map:
+    fields:
+    - name: defaultMode
+      type:
+        scalar: numeric
+    - name: defaultUser
+      type:
+        scalar: numeric
+    - name: items
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.KeyToPath
+          elementRelationship: atomic
+    - name: name
+      type:
+        scalar: string
+      default: ""
+    - name: optional
+      type:
+        scalar: boolean
+    elementRelationship: atomic
+- name: io.k8s.api.core.v1.EmptyDirVolumeSource
+  map:
+    fields:
+    - name: medium
+      type:
+        namedType: io.k8s.api.core.v1.StorageMedium
+    - name: mode
+      type:
+        scalar: numeric
+    - name: sizeLimit
+      type:
+        namedType: io.k8s.apimachinery.pkg.api.resource.Quantity
+- name: io.k8s.api.core.v1.EnvFromSource
+  map:
+    fields:
+    - name: configMapRef
+      type:
+        namedType: io.k8s.api.core.v1.ConfigMapEnvSource
+    - name: prefix
+      type:
+        scalar: string
+    - name: secretRef
+      type:
+        namedType: io.k8s.api.core.v1.SecretEnvSource
+- name: io.k8s.api.core.v1.EnvVar
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+    - name: value
+      type:
+        scalar: string
+    - name: valueFrom
+      type:
+        namedType: io.k8s.api.core.v1.EnvVarSource
+- name: io.k8s.api.core.v1.EnvVarSource
+  map:
+    fields:
+    - name: configMapKeyRef
+      type:
+        namedType: io.k8s.api.core.v1.ConfigMapKeySelector
+    - name: fieldRef
+      type:
+        namedType: io.k8s.api.core.v1.ObjectFieldSelector
+    - name: fileKeyRef
+      type:
+        namedType: io.k8s.api.core.v1.FileKeySelector
+    - name: resourceFieldRef
+      type:
+        namedType: io.k8s.api.core.v1.ResourceFieldSelector
+    - name: secretKeyRef
+      type:
+        namedType: io.k8s.api.core.v1.SecretKeySelector
+- name: io.k8s.api.core.v1.ExecAction
+  map:
+    fields:
+    - name: command
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
+- name: io.k8s.api.core.v1.FileKeySelector
+  map:
+    fields:
+    - name: key
+      type:
+        scalar: string
+    - name: optional
+      type:
+        scalar: boolean
+      default: false
+    - name: path
+      type:
+        scalar: string
+    - name: volumeName
+      type:
+        scalar: string
+    elementRelationship: atomic
+- name: io.k8s.api.core.v1.GRPCAction
+  map:
+    fields:
+    - name: mode
+      type:
+        namedType: io.k8s.api.core.v1.GRPCProbeMode
+    - name: port
+      type:
+        scalar: numeric
+    - name: service
+      type:
+        scalar: string
+      default: ""
+- name: io.k8s.api.core.v1.GRPCProbeMode
+  scalar: string
+- name: io.k8s.api.core.v1.HTTPGetAction
+  map:
+    fields:
+    - name: host
+      type:
+        scalar: string
+    - name: httpHeaders
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.HTTPHeader
+          elementRelationship: atomic
+    - name: path
+      type:
+        scalar: string
+    - name: port
+      type:
+        namedType: io.k8s.apimachinery.pkg.util.intstr.IntOrString
+    - name: protocol
+      type:
+        namedType: io.k8s.api.core.v1.HTTPProtocol
+    - name: scheme
+      type:
+        namedType: io.k8s.api.core.v1.URIScheme
+- name: io.k8s.api.core.v1.HTTPHeader
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+    - name: value
+      type:
+        scalar: string
+- name: io.k8s.api.core.v1.HTTPProtocol
+  scalar: string
+- name: io.k8s.api.core.v1.KeyToPath
+  map:
+    fields:
+    - name: key
+      type:
+        scalar: string
+    - name: mode
+      type:
+        scalar: numeric
+    - name: path
+      type:
+        scalar: string
+    - name: user
+      type:
+        scalar: numeric
+- name: io.k8s.api.core.v1.LocalObjectReference
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+      default: ""
+    elementRelationship: atomic
+- name: io.k8s.api.core.v1.ObjectFieldSelector
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: fieldPath
+      type:
+        scalar: string
+    elementRelationship: atomic
+- name: io.k8s.api.core.v1.PodFSGroupChangePolicy
+  scalar: string
+- name: io.k8s.api.core.v1.PodSELinuxChangePolicy
+  scalar: string
+- name: io.k8s.api.core.v1.PodSecurityContext
+  map:
+    fields:
+    - name: appArmorProfile
+      type:
+        namedType: io.k8s.api.core.v1.AppArmorProfile
+    - name: fsGroup
+      type:
+        scalar: numeric
+    - name: fsGroupChangePolicy
+      type:
+        namedType: io.k8s.api.core.v1.PodFSGroupChangePolicy
+    - name: runAsGroup
+      type:
+        scalar: numeric
+    - name: runAsNonRoot
+      type:
+        scalar: boolean
+    - name: runAsUser
+      type:
+        scalar: numeric
+    - name: seLinuxChangePolicy
+      type:
+        namedType: io.k8s.api.core.v1.PodSELinuxChangePolicy
+    - name: seLinuxOptions
+      type:
+        namedType: io.k8s.api.core.v1.SELinuxOptions
+    - name: seccompProfile
+      type:
+        namedType: io.k8s.api.core.v1.SeccompProfile
+    - name: supplementalGroups
+      type:
+        list:
+          elementType:
+            scalar: numeric
+          elementRelationship: atomic
+    - name: supplementalGroupsPolicy
+      type:
+        namedType: io.k8s.api.core.v1.SupplementalGroupsPolicy
+    - name: sysctls
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.Sysctl
+          elementRelationship: atomic
+    - name: windowsOptions
+      type:
+        namedType: io.k8s.api.core.v1.WindowsSecurityContextOptions
+- name: io.k8s.api.core.v1.Probe
+  map:
+    fields:
+    - name: exec
+      type:
+        namedType: io.k8s.api.core.v1.ExecAction
+    - name: failureThreshold
+      type:
+        scalar: numeric
+    - name: grpc
+      type:
+        namedType: io.k8s.api.core.v1.GRPCAction
+    - name: httpGet
+      type:
+        namedType: io.k8s.api.core.v1.HTTPGetAction
+    - name: initialDelaySeconds
+      type:
+        scalar: numeric
+    - name: periodSeconds
+      type:
+        scalar: numeric
+    - name: successThreshold
+      type:
+        scalar: numeric
+    - name: tcpSocket
+      type:
+        namedType: io.k8s.api.core.v1.TCPSocketAction
+    - name: terminationGracePeriodSeconds
+      type:
+        scalar: numeric
+    - name: timeoutSeconds
+      type:
+        scalar: numeric
+- name: io.k8s.api.core.v1.ProcMountType
+  scalar: string
+- name: io.k8s.api.core.v1.Protocol
+  scalar: string
+- name: io.k8s.api.core.v1.PullPolicy
+  scalar: string
+- name: io.k8s.api.core.v1.ResourceClaim
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+    - name: request
+      type:
+        scalar: string
+- name: io.k8s.api.core.v1.ResourceFieldSelector
+  map:
+    fields:
+    - name: containerName
+      type:
+        scalar: string
+    - name: divisor
+      type:
+        namedType: io.k8s.apimachinery.pkg.api.resource.Quantity
+    - name: resource
+      type:
+        scalar: string
+    elementRelationship: atomic
+- name: io.k8s.api.core.v1.ResourceList
+  map:
+    elementType:
+      namedType: io.k8s.apimachinery.pkg.api.resource.Quantity
+- name: io.k8s.api.core.v1.ResourceRequirements
+  map:
+    fields:
+    - name: claims
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.ResourceClaim
+          elementRelationship: associative
+          keys:
+          - name
+    - name: limits
+      type:
+        namedType: io.k8s.api.core.v1.ResourceList
+    - name: requests
+      type:
+        namedType: io.k8s.api.core.v1.ResourceList
+- name: io.k8s.api.core.v1.SELinuxOptions
+  map:
+    fields:
+    - name: level
+      type:
+        scalar: string
+    - name: role
+      type:
+        scalar: string
+    - name: type
+      type:
+        scalar: string
+    - name: user
+      type:
+        scalar: string
+- name: io.k8s.api.core.v1.SeccompProfile
+  map:
+    fields:
+    - name: localhostProfile
+      type:
+        scalar: string
+    - name: type
+      type:
+        namedType: io.k8s.api.core.v1.SeccompProfileType
+- name: io.k8s.api.core.v1.SeccompProfileType
+  scalar: string
+- name: io.k8s.api.core.v1.SecretEnvSource
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+      default: ""
+    - name: optional
+      type:
+        scalar: boolean
+    elementRelationship: atomic
+- name: io.k8s.api.core.v1.SecretKeySelector
+  map:
+    fields:
+    - name: key
+      type:
+        scalar: string
+    - name: name
+      type:
+        scalar: string
+      default: ""
+    - name: optional
+      type:
+        scalar: boolean
+    elementRelationship: atomic
+- name: io.k8s.api.core.v1.SecretVolumeSource
+  map:
+    fields:
+    - name: defaultMode
+      type:
+        scalar: numeric
+    - name: defaultUser
+      type:
+        scalar: numeric
+    - name: items
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.api.core.v1.KeyToPath
+          elementRelationship: atomic
+    - name: optional
+      type:
+        scalar: boolean
+    - name: secretName
+      type:
+        scalar: string
+- name: io.k8s.api.core.v1.SecurityContext
+  map:
+    fields:
+    - name: allowPrivilegeEscalation
+      type:
+        scalar: boolean
+    - name: appArmorProfile
+      type:
+        namedType: io.k8s.api.core.v1.AppArmorProfile
+    - name: capabilities
+      type:
+        namedType: io.k8s.api.core.v1.Capabilities
+    - name: privileged
+      type:
+        scalar: boolean
+    - name: procMount
+      type:
+        namedType: io.k8s.api.core.v1.ProcMountType
+    - name: readOnlyRootFilesystem
+      type:
+        scalar: boolean
+    - name: runAsGroup
+      type:
+        scalar: numeric
+    - name: runAsNonRoot
+      type:
+        scalar: boolean
+    - name: runAsUser
+      type:
+        scalar: numeric
+    - name: seLinuxOptions
+      type:
+        namedType: io.k8s.api.core.v1.SELinuxOptions
+    - name: seccompProfile
+      type:
+        namedType: io.k8s.api.core.v1.SeccompProfile
+    - name: windowsOptions
+      type:
+        namedType: io.k8s.api.core.v1.WindowsSecurityContextOptions
+- name: io.k8s.api.core.v1.StorageMedium
+  scalar: string
+- name: io.k8s.api.core.v1.SupplementalGroupsPolicy
+  scalar: string
+- name: io.k8s.api.core.v1.Sysctl
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+    - name: value
+      type:
+        scalar: string
+- name: io.k8s.api.core.v1.TCPSocketAction
+  map:
+    fields:
+    - name: host
+      type:
+        scalar: string
+    - name: port
+      type:
+        namedType: io.k8s.apimachinery.pkg.util.intstr.IntOrString
+- name: io.k8s.api.core.v1.URIScheme
+  scalar: string
+- name: io.k8s.api.core.v1.WindowsSecurityContextOptions
+  map:
+    fields:
+    - name: gmsaCredentialSpec
+      type:
+        scalar: string
+    - name: gmsaCredentialSpecName
+      type:
+        scalar: string
+    - name: hostProcess
+      type:
+        scalar: boolean
+    - name: runAsUserName
+      type:
+        scalar: string
+- name: io.k8s.api.networking.v1.IPBlock
+  map:
+    fields:
+    - name: cidr
+      type:
+        scalar: string
+    - name: except
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
+- name: io.k8s.api.networking.v1.NetworkPolicyPeer
+  map:
+    fields:
+    - name: ipBlock
+      type:
+        namedType: io.k8s.api.networking.v1.IPBlock
+    - name: namespaceSelector
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector
+    - name: podSelector
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector
+- name: io.k8s.api.networking.v1.NetworkPolicyPort
+  map:
+    fields:
+    - name: endPort
+      type:
+        scalar: numeric
+    - name: port
+      type:
+        namedType: io.k8s.apimachinery.pkg.util.intstr.IntOrString
+    - name: protocol
+      type:
+        namedType: io.k8s.api.core.v1.Protocol
+- name: io.k8s.apimachinery.pkg.api.resource.Quantity
+  scalar: untyped
+  list:
+    elementType:
+      namedType: __untyped_atomic_
+    elementRelationship: atomic
+  map:
+    elementType:
+      namedType: __untyped_deduced_
+    elementRelationship: separable
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+  map:
+    fields:
+    - name: lastTransitionTime
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+    - name: message
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+    - name: reason
+      type:
+        scalar: string
+    - name: status
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ConditionStatus
+    - name: type
+      type:
+        scalar: string
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.ConditionStatus
+  scalar: string
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.FieldsV1
+  map:
+    elementType:
+      scalar: untyped
+      list:
+        elementType:
+          namedType: __untyped_atomic_
+        elementRelationship: atomic
+      map:
+        elementType:
+          namedType: __untyped_deduced_
+        elementRelationship: separable
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector
+  map:
+    fields:
+    - name: matchExpressions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelectorRequirement
+          elementRelationship: atomic
+    - name: matchLabels
+      type:
+        map:
+          elementType:
+            scalar: string
+    elementRelationship: atomic
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelectorOperator
+  scalar: string
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelectorRequirement
+  map:
+    fields:
+    - name: key
+      type:
+        scalar: string
+    - name: operator
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelectorOperator
+    - name: values
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.ManagedFieldsEntry
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: fieldsType
+      type:
+        scalar: string
+    - name: fieldsV1
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.FieldsV1
+    - name: manager
+      type:
+        scalar: string
+    - name: operation
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ManagedFieldsOperationType
+    - name: subresource
+      type:
+        scalar: string
+    - name: time
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.ManagedFieldsOperationType
+  scalar: string
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+  map:
+    fields:
+    - name: annotations
+      type:
+        map:
+          elementType:
+            scalar: string
+    - name: creationTimestamp
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+    - name: deletionGracePeriodSeconds
+      type:
+        scalar: numeric
+    - name: deletionTimestamp
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+    - name: finalizers
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: associative
+    - name: generateName
+      type:
+        scalar: string
+    - name: generation
+      type:
+        scalar: numeric
+    - name: labels
+      type:
+        map:
+          elementType:
+            scalar: string
+    - name: managedFields
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ManagedFieldsEntry
+          elementRelationship: atomic
+    - name: name
+      type:
+        scalar: string
+    - name: namespace
+      type:
+        scalar: string
+    - name: ownerReferences
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.OwnerReference
+          elementRelationship: associative
+          keys:
+          - uid
+    - name: resourceVersion
+      type:
+        scalar: string
+    - name: selfLink
+      type:
+        scalar: string
+    - name: uid
+      type:
+        namedType: io.k8s.apimachinery.pkg.types.UID
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.OwnerReference
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: blockOwnerDeletion
+      type:
+        scalar: boolean
+    - name: controller
+      type:
+        scalar: boolean
+    - name: kind
+      type:
+        scalar: string
+    - name: name
+      type:
+        scalar: string
+    - name: uid
+      type:
+        namedType: io.k8s.apimachinery.pkg.types.UID
+    elementRelationship: atomic
+- name: io.k8s.apimachinery.pkg.apis.meta.v1.Time
+  scalar: untyped
+- name: io.k8s.apimachinery.pkg.types.UID
+  scalar: string
+- name: io.k8s.apimachinery.pkg.util.intstr.IntOrString
+  scalar: untyped
+  list:
+    elementType:
+      namedType: __untyped_atomic_
+    elementRelationship: atomic
+  map:
+    elementType:
+      namedType: __untyped_deduced_
+    elementRelationship: separable
 - name: __untyped_atomic_
   scalar: untyped
   list:

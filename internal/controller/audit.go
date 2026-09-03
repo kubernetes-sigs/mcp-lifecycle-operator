@@ -33,7 +33,7 @@ func auditLog(ctx context.Context) logr.Logger {
 func auditFields(mcpServer *mcpv1alpha1.MCPServer) []any {
 	return []any{
 		"mcpserver", mcpServer.Name,
-		"namespace", mcpServer.Namespace,
+		keyNamespace, mcpServer.Namespace,
 		"generation", mcpServer.Generation,
 		"resourceVersion", mcpServer.ResourceVersion,
 	}
@@ -128,7 +128,7 @@ func auditConfigurationRejected(ctx context.Context, mcpServer *mcpv1alpha1.MCPS
 	auditLog(ctx).Info("audit",
 		append(auditFields(mcpServer),
 			"operation", "ConfigurationRejected",
-			"reason", reason,
+			keyReason, reason,
 			"message", message,
 		)...,
 	)

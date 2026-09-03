@@ -39,6 +39,7 @@ type HealthConfigApplyConfiguration struct {
 	//
 	// This probe is passed directly to the container spec without transformation,
 	// providing full compatibility with the Kubernetes Probe API.
+	//
 	LivenessProbe *v1.Probe `json:"livenessProbe,omitempty"`
 	// ReadinessProbe defines the readiness probe for the MCP server container.
 	// Kubernetes uses readiness probes to know when a container is ready to start accepting traffic.
@@ -46,6 +47,7 @@ type HealthConfigApplyConfiguration struct {
 	//
 	// This probe is passed directly to the container spec without transformation,
 	// providing full compatibility with the Kubernetes Probe API.
+	//
 	ReadinessProbe *v1.Probe `json:"readinessProbe,omitempty"`
 }
 
