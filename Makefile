@@ -232,9 +232,18 @@ build-docs: api-ref-docs ## Build documentation site using Docker
 	$(CONTAINER_TOOL) run --rm -v $(shell pwd):/work -w /work mkdocs-builder build
 
 .PHONY: build-docs-netlify
-build-docs-netlify: api-ref-docs ## Build documentation site for Netlify deployment
+build-docs-netlify: api-ref-docs ## Build documentation site locally (same as mkdocs build)
 	pip3 install --user --break-system-packages -r hack/mkdocs/image/requirements.txt
 	python3 -m mkdocs build
+
+.PHONY: deploy-docs-main
+deploy-docs-main: ## Deploy main-branch docs preview to gh-pages via mike
+	./hack/mkdocs/deploy.sh main --title "main (preview)"
+
+.PHONY: deploy-docs-release
+deploy-docs-release: ## Deploy release docs to gh-pages (VERSION=v0.1.0)
+	@test -n "$(VERSION)" || (echo "VERSION is required, e.g. make deploy-docs-release VERSION=v0.1.0" && exit 1)
+	./hack/mkdocs/deploy.sh $(VERSION) latest --set-default
 
 .PHONY: live-docs
 live-docs: api-ref-docs ## Run live documentation server using Docker
