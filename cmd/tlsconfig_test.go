@@ -84,9 +84,77 @@ func TestParseCipherSuites(t *testing.T) {
 	})
 }
 
+func TestParseTLSGroups(t *testing.T) {
+	log := noopLogger{}
+
+	t.Run("Go canonical names", func(t *testing.T) {
+		ids, names := parseTLSGroups("X25519,CurveP384", log)
+		if len(ids) != 2 || ids[0] != tls.X25519 || ids[1] != tls.CurveP384 {
+			t.Fatalf("ids = %v, want [X25519 CurveP384]", ids)
+		}
+		if len(names) != 2 || names[0] != groupX25519 || names[1] != groupCurveP384 {
+			t.Errorf("names = %v, want [X25519 CurveP384]", names)
+		}
+	})
+
+	t.Run("IANA aliases are canonicalized case-insensitively", func(t *testing.T) {
+		ids, names := parseTLSGroups("secp256r1, P-521 , x25519", log)
+		want := []tls.CurveID{tls.CurveP256, tls.CurveP521, tls.X25519}
+		if len(ids) != len(want) {
+			t.Fatalf("expected %d groups, got %d (%v)", len(want), len(ids), ids)
+		}
+		for i := range want {
+			if ids[i] != want[i] {
+				t.Errorf("ids[%d] = %d, want %d", i, ids[i], want[i])
+			}
+		}
+		if len(names) != 3 || names[0] != groupCurveP256 || names[1] != groupCurveP521 || names[2] != groupX25519 {
+			t.Errorf("names = %v, want [CurveP256 CurveP521 X25519]", names)
+		}
+	})
+
+	t.Run("post-quantum hybrid group", func(t *testing.T) {
+		ids, names := parseTLSGroups("X25519MLKEM768", log)
+		if len(ids) != 1 || ids[0] != tls.X25519MLKEM768 {
+			t.Fatalf("ids = %v, want [X25519MLKEM768]", ids)
+		}
+		if len(names) != 1 || names[0] != groupX25519MLKEM768 {
+			t.Errorf("names = %v, want [X25519MLKEM768]", names)
+		}
+	})
+
+	t.Run("unknown names are skipped", func(t *testing.T) {
+		ids, names := parseTLSGroups("X25519,x448,bogus", log)
+		if len(ids) != 1 || ids[0] != tls.X25519 {
+			t.Fatalf("ids = %v, want [X25519]", ids)
+		}
+		if len(names) != 1 || names[0] != groupX25519 {
+			t.Errorf("names = %v, want [X25519]", names)
+		}
+	})
+
+	t.Run("duplicates are de-duplicated", func(t *testing.T) {
+		ids, names := parseTLSGroups("X25519,x25519,secp256r1,CurveP256", log)
+		if len(ids) != 2 || ids[0] != tls.X25519 || ids[1] != tls.CurveP256 {
+			t.Fatalf("ids = %v, want [X25519 CurveP256]", ids)
+		}
+		if len(names) != 2 {
+			t.Errorf("names = %v, want 2 entries", names)
+		}
+	})
+
+	t.Run("empty input", func(t *testing.T) {
+		ids, names := parseTLSGroups("", log)
+		if ids != nil || names != nil {
+			t.Errorf("expected nil, nil; got %v, %v", ids, names)
+		}
+	})
+}
+
 func TestParseTLSSettings_Unset(t *testing.T) {
 	t.Setenv(envTLSMinVersion, "")
 	t.Setenv(envTLSCipherSuites, "")
+	t.Setenv(envTLSGroups, "")
 
 	s := parseTLSSettings()
 	if fn := s.tlsConfigFunc(); fn != nil {
@@ -94,6 +162,51 @@ func TestParseTLSSettings_Unset(t *testing.T) {
 	}
 	if envVars := s.envVars(); envVars != nil {
 		t.Errorf("expected nil envVars when env vars are unset, got %v", envVars)
+	}
+}
+
+func TestParseTLSSettings_AppliesGroups(t *testing.T) {
+	t.Setenv(envTLSMinVersion, "")
+	t.Setenv(envTLSCipherSuites, "")
+	t.Setenv(envTLSGroups, "X25519MLKEM768,X25519")
+
+	s := parseTLSSettings()
+
+	fn := s.tlsConfigFunc()
+	if fn == nil {
+		t.Fatal("expected non-nil TLS config function when only groups are set")
+	}
+	cfg := &tls.Config{}
+	fn(cfg)
+	if len(cfg.CurvePreferences) != 2 ||
+		cfg.CurvePreferences[0] != tls.X25519MLKEM768 ||
+		cfg.CurvePreferences[1] != tls.X25519 {
+		t.Errorf("CurvePreferences = %v, want [X25519MLKEM768 X25519]", cfg.CurvePreferences)
+	}
+
+	envVars := s.envVars()
+	if len(envVars) != 1 {
+		t.Fatalf("expected 1 env var, got %d (%v)", len(envVars), envVars)
+	}
+	if envVars[0].Name != envTLSGroups || envVars[0].Value != "X25519MLKEM768,X25519" {
+		t.Errorf("envVars[0] = %s=%s, want TLS_GROUPS=X25519MLKEM768,X25519", envVars[0].Name, envVars[0].Value)
+	}
+}
+
+func TestParseTLSSettings_GroupsUnsetLeavesCurvePreferences(t *testing.T) {
+	t.Setenv(envTLSMinVersion, "VersionTLS13")
+	t.Setenv(envTLSCipherSuites, "")
+	t.Setenv(envTLSGroups, "")
+
+	s := parseTLSSettings()
+	fn := s.tlsConfigFunc()
+	if fn == nil {
+		t.Fatal("expected non-nil TLS config function")
+	}
+	cfg := &tls.Config{}
+	fn(cfg)
+	if cfg.CurvePreferences != nil {
+		t.Errorf("CurvePreferences should be nil when groups unset, got %v", cfg.CurvePreferences)
 	}
 }
 
