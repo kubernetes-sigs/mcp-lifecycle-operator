@@ -226,6 +226,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if apierrors.IsNotFound(err) {
 			logger.Info("MCPServer resource not found, ignoring since object must be deleted")
 			r.tlsCABundleHashes.Delete(req.Namespace + "/" + req.Name)
+			r.handshakeRetries.Delete(req.Namespace + "/" + req.Name)
 			cleanupMetrics(req.Name, req.Namespace)
 			return ctrl.Result{}, nil
 		}
@@ -617,19 +618,22 @@ func (r *MCPServerReconciler) maybeEmitDeploymentUnavailableEvent(
 }
 
 // withAddressWhenVerified publishes status.address only once the MCP endpoint
-// has completed its protocol handshake (Verified=True). Before the
-// Available/Verified split the single Ready condition was overwritten by the
-// handshake result, so gating on it also required a successful handshake; the
-// address must now key off Verified explicitly so an unverified endpoint (e.g.
-// after a port change that breaks the handshake) does not leak an address
-// (issue #302). Verification only runs when the workload is Available, so
-// Verified=True implies Available=True.
+// has been verified reachable (Verified=True). Before the Available/Verified
+// split the single Ready condition was overwritten by the handshake result, so
+// gating on it also required a successful handshake; the address must now key
+// off Verified explicitly so an unverified endpoint (e.g. after a port change
+// that breaks the handshake) does not leak an address (issue #302). Both a
+// successful handshake (ReasonVerified) and an auth-guarded endpoint that
+// answered with an auth error (ReasonAuthSkipped) set Verified=True and are
+// reachable, so gate on the status alone rather than the reason - otherwise
+// auth-protected servers would never publish an address. Verification only runs
+// when the workload is Available, so Verified=True implies Available=True.
 func withAddressWhenVerified(
 	status *acv1beta1.MCPServerStatusApplyConfiguration,
 	verifiedCondition metav1.Condition,
 	mcpURL string,
 ) *acv1beta1.MCPServerStatusApplyConfiguration {
-	if verifiedCondition.Status == metav1.ConditionTrue && verifiedCondition.Reason == ReasonVerified {
+	if verifiedCondition.Status == metav1.ConditionTrue {
 		return status.WithAddress(acv1beta1.MCPServerAddress().WithURL(mcpURL))
 	}
 	return status

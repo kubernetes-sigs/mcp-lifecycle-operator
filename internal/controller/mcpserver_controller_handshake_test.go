@@ -856,6 +856,8 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(verifiedCondition.Reason).To(Equal(ReasonAuthSkipped))
 		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil(), "auth error should set non-nil empty serverInfo to prevent re-dial")
+		Expect(mcpServer.Status.Address).NotTo(BeNil(), "auth-guarded endpoint is reachable and must publish an address")
+		Expect(mcpServer.Status.Address.URL).NotTo(BeEmpty())
 	})
 
 	It("should populate status.serverInfo from successful handshake", func() {
@@ -978,6 +980,81 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(mcpServer.Status.ServerInfo.Version).To(Equal("2.0.0"))
 	})
 
+	It("should drop Verified and withdraw the address when a verified workload becomes unavailable", func() {
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+				return &mcpv1beta1.MCPServerInfo{
+					Name:            "outage-server",
+					Version:         "1.0.0",
+					ProtocolVersion: "2025-06-18",
+				}, nil
+			},
+			APIReader: k8sClient,
+		}
+
+		By("Initial reconciliation creates deployment")
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Marking the deployment available so the handshake runs")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.AvailableReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Confirming the endpoint is verified and an address is published")
+		mcpServer := &mcpv1beta1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+		Expect(verifiedCondition).NotTo(BeNil())
+		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
+		Expect(mcpServer.Status.Address).NotTo(BeNil())
+
+		By("Simulating all ready replicas going away without a spec change")
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+		deployment.Status.ReadyReplicas = 0
+		deployment.Status.AvailableReplicas = 0
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionFalse},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying Verified drops and the stale address is withdrawn")
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
+		Expect(availableCondition).NotTo(BeNil())
+		Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+		verifiedCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Verified")
+		Expect(verifiedCondition).NotTo(BeNil())
+		Expect(verifiedCondition.Status).NotTo(Equal(metav1.ConditionTrue))
+		Expect(mcpServer.Status.Address).To(BeNil())
+	})
+
 	It("should treat 403 Forbidden as a reachable endpoint", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
@@ -1020,6 +1097,8 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(verifiedCondition.Reason).To(Equal(ReasonAuthSkipped))
 		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil(), "auth error should set non-nil empty serverInfo to prevent re-dial")
+		Expect(mcpServer.Status.Address).NotTo(BeNil(), "auth-guarded endpoint is reachable and must publish an address")
+		Expect(mcpServer.Status.Address.URL).NotTo(BeEmpty())
 	})
 })
 

@@ -57,6 +57,15 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	}
 
 	existingVerified := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeVerified)
+
+	// Verification only runs when the workload is available. Checking this before
+	// the already-verified shortcut ensures a previously verified endpoint whose
+	// replicas have all gone away drops Verified (and, via withAddressWhenVerified,
+	// withdraws its published address) rather than preserving a stale Verified=True.
+	if availableCondition.Status != metav1.ConditionTrue || availableCondition.Reason != ReasonAvailable {
+		return newNotVerifiedCondition(mcpServer.Generation, mcpServer.Status.Conditions), nil
+	}
+
 	alreadyVerified := existingVerified != nil &&
 		existingVerified.Status == metav1.ConditionTrue &&
 		mcpServer.Status.ObservedGeneration == mcpServer.Generation &&
@@ -65,14 +74,10 @@ func (r *MCPServerReconciler) reconcileHandshake(
 
 	// If the handshake was already verified for this generation, preserve
 	// Verified=True even if the Deployment has a transient status fluctuation
-	// (e.g. during rollout cleanup).
+	// (e.g. during rollout cleanup) that keeps at least one replica Ready.
 	if alreadyVerified {
 		handshakeTotal.With(withResult(metricLabels, "skip")).Inc()
 		return *existingVerified, mcpServer.Status.ServerInfo
-	}
-
-	if availableCondition.Status != metav1.ConditionTrue || availableCondition.Reason != ReasonAvailable {
-		return newNotVerifiedCondition(mcpServer.Generation, mcpServer.Status.Conditions), nil
 	}
 
 	var tlsTransport *http.Transport

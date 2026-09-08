@@ -133,7 +133,7 @@ type deploymentState struct {
 }
 
 // extractDeploymentState reads the standard Deployment condition types and
-// returns a compact summary used by reconcileReadyCondition.
+// returns a compact summary used by reconcileAvailableCondition.
 func extractDeploymentState(deployment *appsv1.Deployment) deploymentState {
 	var state deploymentState
 	var progressingMessage string
