@@ -1,6 +1,10 @@
 # This NetworkPolicy allows ingress traffic
 # with Pods running on namespaces labeled with 'metrics: enabled'. Only Pods on those
 # namespaces are able to gather data from the metrics endpoint.
+#
+# It also restricts egress from the controller-manager pod to a deny-by-default
+# allow-list: cluster DNS, the kube-apiserver, and the managed MCP server pods the
+# operator must dial for the MCP handshake/discovery.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -16,6 +20,7 @@ spec:
       app.kubernetes.io/name: mcp-lifecycle-operator
   policyTypes:
     - Ingress
+    - Egress
   ingress:
     # Allow kubelet health probes (liveness/readiness) on port 8081
     - ports:
@@ -35,3 +40,43 @@ spec:
       ports:
         - port: 8443
           protocol: TCP
+  egress:
+    # E1: cluster DNS resolution (UDP+TCP 53). Peer mirrors the operand DNS
+    # modeling from PR #363 and targets the common kube-system / kube-dns
+    # location. Adjust the namespace/pod selectors if your cluster's DNS lives
+    # elsewhere (see docs/operator-networkpolicy.md).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # E2: kube-apiserver. The operator needs this for leader election (--leader-elect)
+    # and all reconcile reads/writes. The apiserver is typically host-networked and
+    # cannot be selected by pod/namespace selectors portably, so this allows the
+    # standard apiserver ports to any destination as a documented interim peer.
+    # Tighten to your environment's apiserver endpoint/CIDR where possible.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 6443
+          protocol: TCP
+    # E3: managed MCP server pods. The operator dials these for the TLS handshake
+    # and MCP discovery. Selected by the 'mcp-server' label the controller stamps
+    # on every managed workload (LabelKeyMCPServer). No port restriction: the MCP
+    # port is per-MCPServer (spec.config.port), so it varies across servers -
+    # scoping by pod label is the portable, least-privilege choice.
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: mcp-server
+                operator: Exists
