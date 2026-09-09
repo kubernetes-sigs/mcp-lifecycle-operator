@@ -1,0 +1,55 @@
+name: Provision RHOAI release branches
+
+on:
+  schedule:
+    - cron: '17 */2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: provision-rhoai-branches
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    if: github.repository == 'opendatahub-io/mcp-lifecycle-operator' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out ODH main
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Create missing release branches
+        env:
+          ODH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          readonly downstream_url="https://github.com/red-hat-data-services/mcp-lifecycle-operator.git"
+          readonly odh_url="https://x-access-token:${ODH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          main_sha="$(git rev-parse HEAD)"
+          readonly main_sha
+
+          # Validate both credentials before changing any refs.
+          git ls-remote --exit-code --heads "$downstream_url" main >/dev/null
+          git ls-remote --exit-code --heads "$odh_url" main >/dev/null
+
+          git ls-remote --heads "$downstream_url" |
+            awk '$2 ~ /^refs\/heads\/rhoai-[0-9]+\.[0-9]+(-ea\.[0-9]+)?$/ { print $1, $2 }' |
+            while read -r downstream_sha downstream_ref; do
+              branch="${downstream_ref#refs/heads/}"
+              if git ls-remote --exit-code --heads "$odh_url" "refs/heads/${branch}" >/dev/null; then
+                echo "Skipping existing ODH ref ${branch}."
+                continue
+              fi
+
+              echo "Source ref: ${downstream_ref} (${downstream_sha})"
+              git push "$odh_url" "${main_sha}:refs/heads/${branch}"
+              echo "Created ODH ref: ${branch} (${main_sha})"
+              echo "PipelineRun: PAC is triggered by this push; inspect the OpenShift Pipelines console."
+            done

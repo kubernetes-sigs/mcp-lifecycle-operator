@@ -1,6 +1,5 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
-#
 metadata:
   annotations:
     build.appstudio.openshift.io/repo: https://github.com/opendatahub-io/mcp-lifecycle-operator?rev={{revision}}
@@ -8,14 +7,13 @@ metadata:
     build.appstudio.redhat.com/target_branch: '{{target_branch}}'
     pipelinesascode.tekton.dev/cancel-in-progress: "false"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
-    pipelinesascode.tekton.dev/on-cel-expression: event == "push" && target_branch
-      == "main"
+    pipelinesascode.tekton.dev/on-cel-expression: event == "push" && target_branch.matches("^rhoai-[A-Za-z0-9_][A-Za-z0-9_.-]{0,40}$")
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: opendatahub-builds
     appstudio.openshift.io/component: odh-mcp-lifecycle-operator-e2e-ci
     pipelines.appstudio.openshift.io/type: build
-  name: odh-mcp-lifecycle-operator-e2e-on-push
+  name: odh-mcp-lifecycle-operator-e2e-on-release-push
   namespace: open-data-hub-tenant
 spec:
   params:
@@ -24,10 +22,7 @@ spec:
   - name: revision
     value: '{{revision}}'
   - name: output-image
-    value: quay.io/opendatahub/odh-mcp-lifecycle-operator-e2e:main
-  - name: additional-tags
-    value:
-    - odh-stable
+    value: quay.io/opendatahub/odh-mcp-lifecycle-operator-e2e:{{target_branch}}
   - name: dockerfile
     value: test/e2e/Dockerfile
   - name: path-context
