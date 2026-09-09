@@ -18,64 +18,52 @@ package controller
 
 import (
 	"crypto/tls"
-	"testing"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-// TestApplyTLSProfileWithFloor verifies that the operator-wide TLS profile is
-// applied to the MCP-server client config (min version, cipher suites and TLS
-// 1.3 group/curve preferences) while never letting the negotiated minimum
-// version drop below the TLS 1.2 floor the transport is built with.
-func TestApplyTLSProfileWithFloor(t *testing.T) {
-	t.Run("group preferences propagate to the client config", func(t *testing.T) {
+// applyTLSProfileWithFloor applies the operator-wide TLS profile to the
+// MCP-server client config (min version, cipher suites and TLS 1.3
+// group/curve preferences) while never letting the negotiated minimum version
+// drop below the TLS 1.2 floor the transport is built with.
+var _ = Describe("applyTLSProfileWithFloor", func() {
+	It("propagates group preferences to the client config", func() {
 		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
 		groups := []tls.CurveID{tls.X25519MLKEM768, tls.X25519}
 		profile := func(c *tls.Config) { c.CurvePreferences = groups }
 
 		applyTLSProfileWithFloor(cfg, profile)
 
-		if len(cfg.CurvePreferences) != 2 ||
-			cfg.CurvePreferences[0] != tls.X25519MLKEM768 ||
-			cfg.CurvePreferences[1] != tls.X25519 {
-			t.Errorf("CurvePreferences = %v, want [X25519MLKEM768 X25519]", cfg.CurvePreferences)
-		}
-		if cfg.MinVersion != tls.VersionTLS12 {
-			t.Errorf("MinVersion = %d, want TLS 1.2 floor %d", cfg.MinVersion, tls.VersionTLS12)
-		}
+		Expect(cfg.CurvePreferences).To(Equal(groups))
+		Expect(cfg.MinVersion).To(Equal(uint16(tls.VersionTLS12)))
 	})
 
-	t.Run("profile cannot lower min version below the TLS 1.2 floor", func(t *testing.T) {
+	It("does not let the profile lower the min version below the TLS 1.2 floor", func() {
 		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
 		profile := func(c *tls.Config) { c.MinVersion = tls.VersionTLS10 }
 
 		applyTLSProfileWithFloor(cfg, profile)
 
-		if cfg.MinVersion != tls.VersionTLS12 {
-			t.Errorf("MinVersion = %d, want floor preserved at TLS 1.2 %d", cfg.MinVersion, tls.VersionTLS12)
-		}
+		Expect(cfg.MinVersion).To(Equal(uint16(tls.VersionTLS12)))
 	})
 
-	t.Run("profile can raise the min version to TLS 1.3", func(t *testing.T) {
+	It("lets the profile raise the min version to TLS 1.3", func() {
 		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
 		profile := func(c *tls.Config) { c.MinVersion = tls.VersionTLS13 }
 
 		applyTLSProfileWithFloor(cfg, profile)
 
-		if cfg.MinVersion != tls.VersionTLS13 {
-			t.Errorf("MinVersion = %d, want TLS 1.3 %d", cfg.MinVersion, tls.VersionTLS13)
-		}
+		Expect(cfg.MinVersion).To(Equal(uint16(tls.VersionTLS13)))
 	})
 
-	t.Run("groups-only profile keeps the floor and sets curves", func(t *testing.T) {
+	It("keeps the floor and sets curves for a groups-only profile", func() {
 		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
 		profile := func(c *tls.Config) { c.CurvePreferences = []tls.CurveID{tls.CurveP256} }
 
 		applyTLSProfileWithFloor(cfg, profile)
 
-		if cfg.MinVersion != tls.VersionTLS12 {
-			t.Errorf("MinVersion = %d, want TLS 1.2 floor %d", cfg.MinVersion, tls.VersionTLS12)
-		}
-		if len(cfg.CurvePreferences) != 1 || cfg.CurvePreferences[0] != tls.CurveP256 {
-			t.Errorf("CurvePreferences = %v, want [CurveP256]", cfg.CurvePreferences)
-		}
+		Expect(cfg.MinVersion).To(Equal(uint16(tls.VersionTLS12)))
+		Expect(cfg.CurvePreferences).To(Equal([]tls.CurveID{tls.CurveP256}))
 	})
-}
+})
