@@ -26,11 +26,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 )
 
@@ -40,20 +43,20 @@ const (
 	testGatewayNS   = "gateway-ns"
 )
 
-func newTestMCPServer(name string) *mcpv1alpha1.MCPServer {
-	return &mcpv1alpha1.MCPServer{
+func newTestMCPServer(name string) *mcpv1beta1.MCPServer {
+	return &mcpv1beta1.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: testNamespace,
 		},
-		Spec: mcpv1alpha1.MCPServerSpec{
-			Source: mcpv1alpha1.Source{
-				Type: mcpv1alpha1.SourceTypeContainerImage,
-				ContainerImage: &mcpv1alpha1.ContainerImageSource{
+		Spec: mcpv1beta1.MCPServerSpec{
+			Source: mcpv1beta1.Source{
+				Type: mcpv1beta1.SourceTypeContainerImage,
+				ContainerImage: &mcpv1beta1.ContainerImageSource{
 					Ref: "docker.io/library/test-image:latest",
 				},
 			},
-			Config: mcpv1alpha1.ServerConfig{
+			Config: mcpv1beta1.ServerConfig{
 				Port: 8080,
 			},
 		},
@@ -142,7 +145,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			&gatewayv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
 			&mcpv1alpha1.MCPGatewayBinding{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
 			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: configMapName, Namespace: testNamespace}},
-			&mcpv1alpha1.MCPServer{ObjectMeta: metav1.ObjectMeta{Name: mcpServerName, Namespace: testNamespace}},
+			&mcpv1beta1.MCPServer{ObjectMeta: metav1.ObjectMeta{Name: mcpServerName, Namespace: testNamespace}},
 		} {
 			_ = k8sClient.Delete(ctx, obj)
 		}
@@ -707,7 +710,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			createBinding(ProviderName)
 
 			r := newReconciler()
-			server := &mcpv1alpha1.MCPServer{
+			server := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      mcpServerName,
 					Namespace: testNamespace,
@@ -722,7 +725,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			createBinding(ProviderName)
 
 			r := newReconciler()
-			server := &mcpv1alpha1.MCPServer{
+			server := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "other-server",
 					Namespace: testNamespace,
@@ -736,7 +739,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			createBinding("custom-vendor")
 
 			r := newReconciler()
-			server := &mcpv1alpha1.MCPServer{
+			server := &mcpv1beta1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      mcpServerName,
 					Namespace: testNamespace,
@@ -744,6 +747,21 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			}
 			requests := r.findBindingsForMCPServer(ctx, server)
 			Expect(requests).To(BeEmpty())
+		})
+	})
+
+	Describe("SetupWithManager", func() {
+		It("should register the controller when the HTTPRoute CRD is present", func() {
+			mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+				Scheme:  k8sClient.Scheme(),
+				Metrics: metricsserver.Options{BindAddress: "0"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// The Gateway API HTTPRoute CRD is installed by the suite, so setup
+			// should wire up the controller (including the MCPServer watch) rather
+			// than skip it.
+			Expect(Setup(mgr)).To(Succeed())
 		})
 	})
 })
