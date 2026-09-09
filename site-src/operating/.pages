@@ -1,2 +1,3 @@
 nav:
   - Metrics: metrics.md
+  - TLS: tls.md

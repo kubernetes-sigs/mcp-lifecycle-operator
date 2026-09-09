@@ -10,6 +10,7 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 - [Quickstart Guide](https://mcp-lifecycle-operator.sigs.k8s.io/guides/quickstart/) - Get up and running quickly
 - [Gateway Integration](https://mcp-lifecycle-operator.sigs.k8s.io/guides/gateway/) - Expose MCP servers through external gateways
 - [Metrics](https://mcp-lifecycle-operator.sigs.k8s.io/operating/metrics/) - Prometheus metrics reference
+- [TLS Configuration](https://mcp-lifecycle-operator.sigs.k8s.io/operating/tls/) - Min version, cipher suites, and TLS 1.3 named groups
 - [API Reference](https://mcp-lifecycle-operator.sigs.k8s.io/reference/) - Full MCPServer API documentation
 - [Complete MCPServer example](./config/samples/mcp_v1alpha1_mcpserver_complete.yaml) - YAML showing all available fields
 - [Contributing](https://mcp-lifecycle-operator.sigs.k8s.io/contributing/) - How to contribute to the project
