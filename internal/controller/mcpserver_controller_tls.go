@@ -93,6 +93,21 @@ func buildTLSTransport(ctx context.Context, reader client.Reader, namespace stri
 	return transport, nil
 }
 
+// applyTLSProfileWithFloor applies the operator-wide TLS profile (min version,
+// cipher suites and TLS 1.3 group/curve preferences) to the client config used
+// for MCP server handshakes, while guaranteeing the negotiated minimum version
+// never drops below the floor the transport was built with (TLS 1.2). Group
+// preferences and the X25519MLKEM768 hybrid only take effect once TLS 1.3 is
+// negotiated; the client keeps the TLS 1.2 floor so it can still reach servers
+// that do not speak TLS 1.3. Set TLS_MIN_VERSION=VersionTLS13 to require 1.3.
+func applyTLSProfileWithFloor(cfg *tls.Config, profile func(*tls.Config)) {
+	floor := cfg.MinVersion
+	profile(cfg)
+	if cfg.MinVersion < floor {
+		cfg.MinVersion = floor
+	}
+}
+
 // updateTLSCABundleHash persists the CA bundle hash in-memory only after the
 // status write succeeded and the handshake passed. A failed handshake preserves
 // the previous hash so re-verification is forced on the next reconcile.

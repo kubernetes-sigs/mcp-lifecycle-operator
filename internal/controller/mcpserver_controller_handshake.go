@@ -98,11 +98,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 			return cond, nil
 		}
 		if tlsTransport != nil && tlsTransport.TLSClientConfig != nil && r.TLSProfile != nil {
-			floor := tlsTransport.TLSClientConfig.MinVersion
-			r.TLSProfile(tlsTransport.TLSClientConfig)
-			if tlsTransport.TLSClientConfig.MinVersion < floor {
-				tlsTransport.TLSClientConfig.MinVersion = floor
-			}
+			applyTLSProfileWithFloor(tlsTransport.TLSClientConfig, r.TLSProfile)
 		}
 	}
 
