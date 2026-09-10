@@ -190,6 +190,8 @@ func PrewarmImages(images ...string) env.Func {
 				wait.WithContext(ctx),
 			)
 		}
+		// Delete/wait may populate the object with the old resourceVersion.
+		nsObj = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: prewarmNs}}
 		if err := r.Create(ctx, nsObj); err != nil {
 			return ctx, fmt.Errorf("creating prewarm namespace: %w", err)
 		}
