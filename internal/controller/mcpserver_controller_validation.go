@@ -146,6 +146,19 @@ func (r *MCPServerReconciler) validateReferencedSecret(
 	return nil
 }
 
+// validateReferencedPVC returns a permanent ValidationError on NotFound/BadRequest,
+// or a wrapped transient error for other API failures.
+func (r *MCPServerReconciler) validateReferencedPVC(
+	ctx context.Context,
+	namespace, name, resourceDesc string,
+) error {
+	pvc := &corev1.PersistentVolumeClaim{}
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, pvc); err != nil {
+		return classifyAPIError(resourceDesc, namespace, err)
+	}
+	return nil
+}
+
 // validateCABundleSecret validates that the referenced Secret exists, contains
 // the "ca.crt" key, and that the value is parseable PEM. This catches permanent
 // config errors at validation time instead of burning handshake retries.
@@ -231,6 +244,22 @@ func (r *MCPServerReconciler) validateStorageMount(
 				Message: fmt.Sprintf("EmptyDir must be set for storage mount at index %d", index),
 			}
 		}
+
+	case mcpv1alpha1.StorageTypePersistentVolumeClaim:
+		if storage.Source.PersistentVolumeClaim == nil {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("PersistentVolumeClaim must be set for storage mount at index %d", index),
+			}
+		}
+		if storage.Source.PersistentVolumeClaim.ClaimName == "" {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("ClaimName must not be empty for storage mount at index %d", index),
+			}
+		}
+		return r.validateReferencedPVC(ctx, mcpServer.Namespace, storage.Source.PersistentVolumeClaim.ClaimName,
+			fmt.Sprintf("PersistentVolumeClaim '%s'", storage.Source.PersistentVolumeClaim.ClaimName))
 
 	default:
 		// Unknown/unsupported storage type
