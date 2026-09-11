@@ -346,15 +346,17 @@ func WaitForEndpointsReady(ctx context.Context, t *testing.T, cfg *envconf.Confi
 }
 
 // CreateGatewayConfigMap creates a ConfigMap with gateway integration settings.
+// It copies all entries from configData except "gateway-class", which is not a
+// ConfigMap key but a provider registration detail.
 func CreateGatewayConfigMap(ctx context.Context, t *testing.T, cfg *envconf.Config,
-	name, namespace, gwName, gwNamespace, hostname string) {
+	name, namespace string, configData map[string]string) {
 	t.Helper()
-	data := map[string]string{
-		"gateway-name":      gwName,
-		"gateway-namespace": gwNamespace,
-	}
-	if hostname != "" {
-		data["hostname"] = hostname
+	data := make(map[string]string, len(configData))
+	for k, v := range configData {
+		if k == "gateway-class" {
+			continue
+		}
+		data[k] = v
 	}
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -369,11 +371,15 @@ func CreateGatewayConfigMap(ctx context.Context, t *testing.T, cfg *envconf.Conf
 	t.Logf("created gateway ConfigMap %s/%s", namespace, name)
 }
 
+const defaultListenerName = "http"
+
 // EnsureGateway creates a GatewayClass, namespace, and Gateway resource if they don't
 // already exist. The Gateway allows routes from all namespaces so that HTTPRoutes
 // created in per-test namespaces are accepted by the gateway controller.
+// It returns the listener name of the actual Gateway on the cluster so that
+// callers can align their section-name config with the deployed Gateway.
 func EnsureGateway(ctx context.Context, t *testing.T, cfg *envconf.Config,
-	name, namespace, gatewayClassName string) {
+	name, namespace, gatewayClassName string) string {
 	t.Helper()
 	r := cfg.Client().Resources()
 
@@ -403,7 +409,7 @@ func EnsureGateway(ctx context.Context, t *testing.T, cfg *envconf.Config,
 		Spec: gatewayv1.GatewaySpec{
 			GatewayClassName: gatewayv1.ObjectName(gatewayClassName),
 			Listeners: []gatewayv1.Listener{{
-				Name:     "http",
+				Name:     defaultListenerName,
 				Protocol: gatewayv1.HTTPProtocolType,
 				Port:     80,
 				AllowedRoutes: &gatewayv1.AllowedRoutes{
@@ -417,7 +423,17 @@ func EnsureGateway(ctx context.Context, t *testing.T, cfg *envconf.Config,
 	if err := r.Create(ctx, gw); err != nil && !apierrors.IsAlreadyExists(err) {
 		t.Fatalf("failed to create Gateway %s/%s: %v", namespace, name, err)
 	}
-	t.Logf("ensured Gateway %s/%s (class=%s)", namespace, name, gatewayClassName)
+
+	existing := &gatewayv1.Gateway{}
+	if err := r.Get(ctx, name, namespace, existing); err != nil {
+		t.Fatalf("failed to read Gateway %s/%s: %v", namespace, name, err)
+	}
+	listenerName := defaultListenerName
+	if len(existing.Spec.Listeners) > 0 {
+		listenerName = string(existing.Spec.Listeners[0].Name)
+	}
+	t.Logf("ensured Gateway %s/%s (class=%s, listener=%s)", namespace, name, gatewayClassName, listenerName)
+	return listenerName
 }
 
 // WaitForBindingRegistered polls until the MCPGatewayBinding's Registered condition

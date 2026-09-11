@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package httproute
+package kuadrant
 
 import (
 	"context"
@@ -42,14 +42,18 @@ import (
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers"
+	kuadrantapi "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant/api"
 )
 
 func init() {
 	providers.Register(ProviderName, Setup)
 }
 
-// Setup creates the httproute provider controller and registers it with the manager.
+// Setup creates the kuadrant provider controller and registers it with the manager.
 func Setup(mgr ctrl.Manager) error {
+	if err := kuadrantapi.AddToScheme(mgr.GetScheme()); err != nil {
+		return fmt.Errorf("registering Kuadrant types: %w", err)
+	}
 	return (&Reconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -57,20 +61,23 @@ func Setup(mgr ctrl.Manager) error {
 }
 
 const (
-	// ProviderName is the provider name for the reference Gateway API HTTPRoute
-	// integration controller.
-	ProviderName = "httproute"
+	ProviderName = "kuadrant"
 
 	configKeyGatewayName      = "gateway-name"
 	configKeyGatewayNamespace = "gateway-namespace"
 	configKeyHostname         = "hostname"
+	configKeyPrefix           = "prefix"
+	configKeySectionName      = "section-name"
 
-	reasonRouteNotAccepted = "RouteNotAccepted"
+	defaultSectionName = "mcps"
+
+	reasonRouteNotAccepted     = "RouteNotAccepted"
+	reasonRegistrationNotReady = "RegistrationNotReady"
 )
 
-// Reconciler reconciles MCPGatewayBinding resources with provider "httproute".
-// It creates Gateway API HTTPRoute resources that route traffic from a Gateway
-// to the MCPServer's Service.
+// Reconciler reconciles MCPGatewayBinding resources with provider "kuadrant".
+// It creates Gateway API HTTPRoute resources and Kuadrant MCPServerRegistration
+// resources that register MCP servers with the Kuadrant MCP Gateway.
 type Reconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -83,6 +90,7 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch
+// +kubebuilder:rbac:groups=mcp.kuadrant.io,resources=mcpserverregistrations,verbs=get;list;watch;create;update;delete
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -112,7 +120,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	configMap := &corev1.ConfigMap{}
 	if binding.Spec.ConfigRef == "" {
 		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
-			"spec.configRef is required for httproute provider")
+			"spec.configRef is required for kuadrant provider")
 	}
 	if err := r.Get(ctx, client.ObjectKey{Name: binding.Spec.ConfigRef, Namespace: binding.Namespace}, configMap); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -132,14 +140,82 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
 			fmt.Sprintf("ConfigMap %q missing required key %q", binding.Spec.ConfigRef, configKeyGatewayNamespace))
 	}
+	hostname, ok := configMap.Data[configKeyHostname]
+	if !ok || hostname == "" {
+		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
+			fmt.Sprintf("ConfigMap %q missing required key %q", binding.Spec.ConfigRef, configKeyHostname))
+	}
+
+	sectionName := defaultSectionName
+	if sn, ok := configMap.Data[configKeySectionName]; ok && sn != "" {
+		sectionName = sn
+	}
 
 	path := mcpServer.Spec.Config.Path
 	if path == "" {
 		path = mcpcontroller.DefaultMCPPath
 	}
-	pathType := gatewayv1.PathMatchPathPrefix
 
+	if err := r.reconcileHTTPRoute(ctx, binding, mcpServer, gwName, gwNamespace, hostname, sectionName, path); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	prefix, ok := configMap.Data[configKeyPrefix]
+	if !ok || prefix == "" {
+		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
+			fmt.Sprintf("ConfigMap %q missing required key %q", binding.Spec.ConfigRef, configKeyPrefix))
+	}
+	if err := r.reconcileMCPServerRegistration(ctx, binding, path, prefix); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	route := &gatewayv1.HTTPRoute{}
+	if err := r.Get(ctx, client.ObjectKey{Name: binding.Name, Namespace: binding.Namespace}, route); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if !isHTTPRouteAccepted(route, gwName, gwNamespace) {
+		statusErr := r.updateBindingStatus(ctx, binding, metav1.ConditionFalse,
+			reasonRouteNotAccepted, "Waiting for gateway to accept HTTPRoute", "")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, statusErr
+	}
+
+	reg := &kuadrantapi.MCPServerRegistration{}
+	reg.SetGroupVersionKind(kuadrantapi.SchemeGroupVersion.WithKind("MCPServerRegistration"))
+	if err := r.Get(ctx, client.ObjectKey{Name: binding.Name, Namespace: binding.Namespace}, reg); err != nil {
+		return ctrl.Result{}, err
+	}
+	if !isRegistrationReady(reg) {
+		msg := "Waiting for MCPServerRegistration to become ready"
+		if readyCond := meta.FindStatusCondition(reg.Status.Conditions, "Ready"); readyCond != nil {
+			msg = readyCond.Message
+		}
+		statusErr := r.updateBindingStatus(ctx, binding, metav1.ConditionFalse,
+			reasonRegistrationNotReady, msg, "")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, statusErr
+	}
+
+	scheme, schemeErr := providers.SchemeFromAcceptedRoute(ctx, r.Client, route, gwName, gwNamespace)
+	if schemeErr != nil {
+		return ctrl.Result{}, schemeErr
+	}
+	url := fmt.Sprintf("%s://%s%s", scheme, hostname, path)
+
+	return ctrl.Result{}, r.updateBindingStatus(ctx, binding, metav1.ConditionTrue,
+		mcpcontroller.ReasonGatewayRegistered, "HTTPRoute accepted and MCPServerRegistration ready", url)
+}
+
+func (r *Reconciler) reconcileHTTPRoute(
+	ctx context.Context,
+	binding *mcpv1alpha1.MCPGatewayBinding,
+	mcpServer *mcpv1beta1.MCPServer,
+	gwName, gwNamespace, hostname, sectionName, path string,
+) error {
+	logger := log.FromContext(ctx)
+
+	pathType := gatewayv1.PathMatchPathPrefix
 	gwNS := gatewayv1.Namespace(gwNamespace)
+	sn := gatewayv1.SectionName(sectionName)
 	port := mcpServer.Spec.Config.Port
 
 	httpRoute := &gatewayv1.HTTPRoute{
@@ -151,13 +227,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			CommonRouteSpec: gatewayv1.CommonRouteSpec{
 				ParentRefs: []gatewayv1.ParentReference{
 					{
-						Group:     ptr.To(gatewayv1.Group(gatewayv1.GroupName)),
-						Kind:      ptr.To(gatewayv1.Kind("Gateway")),
-						Name:      gatewayv1.ObjectName(gwName),
-						Namespace: &gwNS,
+						Group:       ptr.To(gatewayv1.Group(gatewayv1.GroupName)),
+						Kind:        ptr.To(gatewayv1.Kind("Gateway")),
+						Name:        gatewayv1.ObjectName(gwName),
+						Namespace:   &gwNS,
+						SectionName: &sn,
 					},
 				},
 			},
+			Hostnames: []gatewayv1.Hostname{gatewayv1.Hostname(hostname)},
 			Rules: []gatewayv1.HTTPRouteRule{
 				{
 					Matches: []gatewayv1.HTTPRouteMatch{
@@ -186,12 +264,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		},
 	}
 
-	if hostname, ok := configMap.Data[configKeyHostname]; ok && hostname != "" {
-		httpRoute.Spec.Hostnames = []gatewayv1.Hostname{gatewayv1.Hostname(hostname)}
-	}
-
 	if err := controllerutil.SetControllerReference(binding, httpRoute, r.Scheme); err != nil {
-		return ctrl.Result{}, fmt.Errorf("setting controller reference on HTTPRoute: %w", err)
+		return fmt.Errorf("setting controller reference on HTTPRoute: %w", err)
 	}
 
 	existing := &gatewayv1.HTTPRoute{}
@@ -201,49 +275,90 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if createErr := r.Create(ctx, httpRoute); createErr != nil {
 			_ = r.setNotRegistered(ctx, binding,
 				fmt.Sprintf("Failed to create HTTPRoute: %v", createErr))
-			return ctrl.Result{}, createErr
+			return createErr
 		}
-	} else if err != nil {
-		return ctrl.Result{}, err
-	} else {
-		ownersBefore := existing.OwnerReferences
-		if err := controllerutil.SetControllerReference(binding, existing, r.Scheme); err != nil {
-			return ctrl.Result{}, fmt.Errorf("setting controller reference on existing HTTPRoute: %w", err)
-		}
-		ownersChanged := !equality.Semantic.DeepEqual(ownersBefore, existing.OwnerReferences)
-		if ownersChanged || !equality.Semantic.DeepEqual(existing.Spec, httpRoute.Spec) {
-			logger.Info("Updating HTTPRoute", "name", httpRoute.Name)
-			existing.Spec = httpRoute.Spec
-			if updateErr := r.Update(ctx, existing); updateErr != nil {
-				_ = r.setNotRegistered(ctx, binding,
-					fmt.Sprintf("Failed to update HTTPRoute: %v", updateErr))
-				return ctrl.Result{}, updateErr
-			}
-		}
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
-	route := &gatewayv1.HTTPRoute{}
-	if err := r.Get(ctx, client.ObjectKey{Name: httpRoute.Name, Namespace: httpRoute.Namespace}, route); err != nil {
-		return ctrl.Result{}, err
+	ownersBefore := existing.OwnerReferences
+	if err := controllerutil.SetControllerReference(binding, existing, r.Scheme); err != nil {
+		return fmt.Errorf("setting controller reference on existing HTTPRoute: %w", err)
 	}
-
-	if !isHTTPRouteAccepted(route, gwName, gwNamespace) {
-		statusErr := r.updateBindingStatus(ctx, binding, metav1.ConditionFalse,
-			reasonRouteNotAccepted, "Waiting for gateway to accept HTTPRoute", "")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, statusErr
-	}
-
-	url := ""
-	if hostname, ok := configMap.Data[configKeyHostname]; ok && hostname != "" {
-		scheme, schemeErr := providers.SchemeFromAcceptedRoute(ctx, r.Client, route, gwName, gwNamespace)
-		if schemeErr != nil {
-			return ctrl.Result{}, schemeErr
+	ownersChanged := !equality.Semantic.DeepEqual(ownersBefore, existing.OwnerReferences)
+	if ownersChanged || !equality.Semantic.DeepEqual(existing.Spec, httpRoute.Spec) {
+		logger.Info("Updating HTTPRoute", "name", httpRoute.Name)
+		existing.Spec = httpRoute.Spec
+		if updateErr := r.Update(ctx, existing); updateErr != nil {
+			_ = r.setNotRegistered(ctx, binding,
+				fmt.Sprintf("Failed to update HTTPRoute: %v", updateErr))
+			return updateErr
 		}
-		url = fmt.Sprintf("%s://%s%s", scheme, hostname, path)
+	}
+	return nil
+}
+
+func (r *Reconciler) reconcileMCPServerRegistration(
+	ctx context.Context,
+	binding *mcpv1alpha1.MCPGatewayBinding,
+	path, prefix string,
+) error {
+	logger := log.FromContext(ctx)
+
+	reg := &kuadrantapi.MCPServerRegistration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      binding.Name,
+			Namespace: binding.Namespace,
+		},
+		Spec: kuadrantapi.MCPServerRegistrationSpec{
+			TargetRef: kuadrantapi.TargetReference{
+				Group: "gateway.networking.k8s.io",
+				Kind:  "HTTPRoute",
+				Name:  binding.Name,
+			},
+			Path:   path,
+			Prefix: prefix,
+			State:  "Enabled",
+		},
+	}
+	reg.SetGroupVersionKind(kuadrantapi.SchemeGroupVersion.WithKind("MCPServerRegistration"))
+
+	if err := controllerutil.SetControllerReference(binding, reg, r.Scheme); err != nil {
+		return fmt.Errorf("setting controller reference on MCPServerRegistration: %w", err)
 	}
 
-	return ctrl.Result{}, r.updateBindingStatus(ctx, binding, metav1.ConditionTrue,
-		mcpcontroller.ReasonGatewayRegistered, "HTTPRoute accepted by gateway", url)
+	existing := &kuadrantapi.MCPServerRegistration{}
+	err := r.Get(ctx, client.ObjectKey{Name: reg.Name, Namespace: reg.Namespace}, existing)
+	if apierrors.IsNotFound(err) {
+		logger.Info("Creating MCPServerRegistration", "name", reg.Name)
+		if createErr := r.Create(ctx, reg); createErr != nil {
+			_ = r.setNotRegistered(ctx, binding,
+				fmt.Sprintf("Failed to create MCPServerRegistration: %v", createErr))
+			return createErr
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	ownersBefore := existing.OwnerReferences
+	if err := controllerutil.SetControllerReference(binding, existing, r.Scheme); err != nil {
+		return fmt.Errorf("setting controller reference on existing MCPServerRegistration: %w", err)
+	}
+	ownersChanged := !equality.Semantic.DeepEqual(ownersBefore, existing.OwnerReferences)
+	if ownersChanged || !equality.Semantic.DeepEqual(existing.Spec, reg.Spec) {
+		logger.Info("Updating MCPServerRegistration", "name", reg.Name)
+		existing.Spec = reg.Spec
+		if updateErr := r.Update(ctx, existing); updateErr != nil {
+			_ = r.setNotRegistered(ctx, binding,
+				fmt.Sprintf("Failed to update MCPServerRegistration: %v", updateErr))
+			return updateErr
+		}
+	}
+	return nil
 }
 
 func (r *Reconciler) setNotRegistered(
@@ -251,23 +366,34 @@ func (r *Reconciler) setNotRegistered(
 	binding *mcpv1alpha1.MCPGatewayBinding,
 	message string,
 ) error {
-	if err := r.deleteStaleHTTPRoute(ctx, binding); err != nil {
+	if err := r.deleteStaleResources(ctx, binding); err != nil {
 		return err
 	}
 	return r.updateBindingStatus(ctx, binding, metav1.ConditionFalse, mcpcontroller.ReasonGatewayNotRegistered, message, "")
 }
 
-func (r *Reconciler) deleteStaleHTTPRoute(ctx context.Context, binding *mcpv1alpha1.MCPGatewayBinding) error {
+func (r *Reconciler) deleteStaleResources(ctx context.Context, binding *mcpv1alpha1.MCPGatewayBinding) error {
+	key := client.ObjectKey{Name: binding.Name, Namespace: binding.Namespace}
+
 	route := &gatewayv1.HTTPRoute{}
-	if err := r.Get(ctx, client.ObjectKey{Name: binding.Name, Namespace: binding.Namespace}, route); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
+	if err := r.Get(ctx, key, route); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("checking for stale HTTPRoute: %w", err)
 		}
-		return fmt.Errorf("checking for stale HTTPRoute: %w", err)
-	}
-	if err := r.Delete(ctx, route); err != nil && !apierrors.IsNotFound(err) {
+	} else if err := r.Delete(ctx, route); err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("deleting stale HTTPRoute: %w", err)
 	}
+
+	reg := &kuadrantapi.MCPServerRegistration{}
+	reg.SetGroupVersionKind(kuadrantapi.SchemeGroupVersion.WithKind("MCPServerRegistration"))
+	if err := r.Get(ctx, key, reg); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("checking for stale MCPServerRegistration: %w", err)
+		}
+	} else if err := r.Delete(ctx, reg); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("deleting stale MCPServerRegistration: %w", err)
+	}
+
 	return nil
 }
 
@@ -303,29 +429,46 @@ func (r *Reconciler) updateBindingStatus(
 }
 
 // SetupWithManager sets up the controller with the Manager.
-// It checks whether the Gateway API HTTPRoute CRD is installed before
-// registering. If the CRD is not available, the controller is skipped.
+// It checks whether the Gateway API HTTPRoute CRD and the Kuadrant
+// MCPServerRegistration CRD are installed before registering.
+// If either CRD is not available, the controller is skipped.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	setupLog := mgr.GetLogger().WithName("setup")
+
 	httpRouteGVK := schema.GroupVersionKind{
 		Group:   "gateway.networking.k8s.io",
 		Version: "v1",
 		Kind:    "HTTPRoute",
 	}
-
 	if _, err := mgr.GetRESTMapper().RESTMapping(httpRouteGVK.GroupKind(), httpRouteGVK.Version); err != nil {
 		if meta.IsNoMatchError(err) {
-			setupLog := mgr.GetLogger().WithName("setup")
-			setupLog.Info("Gateway API HTTPRoute CRD not found, skipping MCPGatewayBinding httproute controller. "+
-				"Install Gateway API CRDs and restart the operator to enable gateway integration.",
+			setupLog.Info("Gateway API HTTPRoute CRD not found, skipping MCPGatewayBinding kuadrant controller. "+
+				"Install Gateway API CRDs and restart the operator to enable Kuadrant gateway integration.",
 				"gvk", httpRouteGVK.String())
 			return nil
 		}
 		return fmt.Errorf("checking for HTTPRoute CRD: %w", err)
 	}
 
+	regGVK := schema.GroupVersionKind{
+		Group:   "mcp.kuadrant.io",
+		Version: "v1alpha1",
+		Kind:    "MCPServerRegistration",
+	}
+	if _, err := mgr.GetRESTMapper().RESTMapping(regGVK.GroupKind(), regGVK.Version); err != nil {
+		if meta.IsNoMatchError(err) {
+			setupLog.Info("Kuadrant MCPServerRegistration CRD not found, skipping MCPGatewayBinding kuadrant controller. "+
+				"Install Kuadrant MCP Gateway CRDs and restart the operator to enable Kuadrant gateway integration.",
+				"gvk", regGVK.String())
+			return nil
+		}
+		return fmt.Errorf("checking for MCPServerRegistration CRD: %w", err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.MCPGatewayBinding{}, builder.WithPredicates(providers.MatchesProvider(ProviderName))).
 		Owns(&gatewayv1.HTTPRoute{}).
+		Owns(&kuadrantapi.MCPServerRegistration{}).
 		Watches(
 			&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.findBindingsForConfigMap),
@@ -341,8 +484,13 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(r.findBindingsForGateway),
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
 		).
-		Named("mcpgatewaybinding-httproute").
+		Named("mcpgatewaybinding-kuadrant").
 		Complete(r)
+}
+
+func isRegistrationReady(reg *kuadrantapi.MCPServerRegistration) bool {
+	cond := meta.FindStatusCondition(reg.Status.Conditions, "Ready")
+	return cond != nil && cond.Status == metav1.ConditionTrue
 }
 
 func isHTTPRouteAccepted(route *gatewayv1.HTTPRoute, gwName, gwNamespace string) bool {

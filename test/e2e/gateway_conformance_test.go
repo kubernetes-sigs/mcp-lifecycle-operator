@@ -20,10 +20,13 @@ package e2e
 
 import (
 	"context"
+	"net/url"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
@@ -32,30 +35,24 @@ import (
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scope"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
-func TestGatewayBindingCreation(t *testing.T) {
-	const (
-		configMapName = "gw-config"
-		gwName        = "my-gateway"
-		gwNamespace   = "gateway-system"
-		hostname      = "mcp.example.com"
-	)
+func TestGatewayConformanceBindingLifecycle(t *testing.T) {
+	prov := f.ActiveProvider(t)
+	const configMapName = "gw-conformance-config"
 
-	feature := features.New("Gateway binding creation").
+	feature := features.New("Gateway conformance: binding lifecycle").
 		WithLabel(category.Label, category.Networking).
 		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scope.Label, scope.GatewayConformance).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
-			_ = f.EnsureGateway(ctx, t, cfg, gwName, gwNamespace, "eg")
-			f.CreateGatewayConfigMap(ctx, t, cfg, configMapName, ns, map[string]string{
-				"gateway-name":      gwName,
-				"gateway-namespace": gwNamespace,
-				"hostname":          hostname,
-			})
-			return f.SetupMCPServer(ctx, t, cfg, "test-gw-server", false,
-				f.WithGateway("httproute", configMapName),
+			prov.ConfigData["section-name"] = f.EnsureGateway(ctx, t, cfg, prov.ConfigData["gateway-name"], prov.ConfigData["gateway-namespace"], prov.ConfigData["gateway-class"])
+			f.CreateGatewayConfigMap(ctx, t, cfg, configMapName, ns, prov.ConfigData)
+			return f.SetupMCPServer(ctx, t, cfg, "conformance-lifecycle", false,
+				f.WithGateway(prov.Name, configMapName),
 				f.WithPath("/mcp"),
 			)
 		}).
@@ -71,60 +68,17 @@ func TestGatewayBindingCreation(t *testing.T) {
 				},
 			}
 			f.WaitForBindingRegistered(ctx, t, r, binding, metav1.ConditionTrue)
-			t.Logf("MCPGatewayBinding %s is Registered", bindingName)
 
 			if err := r.Get(ctx, bindingName, server.Namespace, binding); err != nil {
 				t.Fatalf("failed to get MCPGatewayBinding: %v", err)
 			}
-			if binding.Spec.Provider != "httproute" {
-				t.Fatalf("expected provider httproute, got %s", binding.Spec.Provider)
+			if binding.Spec.Provider != prov.Name {
+				t.Fatalf("expected provider %s, got %s", prov.Name, binding.Spec.Provider)
 			}
 			if binding.Spec.MCPServerRef != server.Name {
 				t.Fatalf("expected mcpServerRef %s, got %s", server.Name, binding.Spec.MCPServerRef)
 			}
-			if binding.Spec.ConfigRef != configMapName {
-				t.Fatalf("expected configRef %s, got %s", configMapName, binding.Spec.ConfigRef)
-			}
-
-			return ctx
-		}).
-		Assess("HTTPRoute is created with correct spec", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			server := f.ServerFromContext(ctx)
-			r := cfg.Client().Resources()
-
-			bindingName := server.Name + "-gateway-binding"
-			route := &gatewayv1.HTTPRoute{}
-			if err := r.Get(ctx, bindingName, server.Namespace, route); err != nil {
-				t.Fatalf("HTTPRoute not found: %v", err)
-			}
-
-			if len(route.Spec.ParentRefs) != 1 {
-				t.Fatalf("expected 1 parentRef, got %d", len(route.Spec.ParentRefs))
-			}
-			if string(route.Spec.ParentRefs[0].Name) != gwName {
-				t.Fatalf("expected parentRef name %s, got %s", gwName, route.Spec.ParentRefs[0].Name)
-			}
-			if route.Spec.ParentRefs[0].Namespace == nil || string(*route.Spec.ParentRefs[0].Namespace) != gwNamespace {
-				t.Fatal("expected parentRef namespace gateway-system")
-			}
-
-			if len(route.Spec.Rules) != 1 || len(route.Spec.Rules[0].BackendRefs) != 1 {
-				t.Fatal("expected 1 rule with 1 backendRef")
-			}
-			if string(route.Spec.Rules[0].BackendRefs[0].Name) != server.Name {
-				t.Fatalf("expected backendRef name %s, got %s", server.Name, route.Spec.Rules[0].BackendRefs[0].Name)
-			}
-
-			if len(route.Spec.Hostnames) != 1 || string(route.Spec.Hostnames[0]) != hostname {
-				t.Fatalf("expected hostname %s, got %v", hostname, route.Spec.Hostnames)
-			}
-
-			ownerRef := metav1.GetControllerOf(route)
-			if ownerRef == nil || ownerRef.Kind != "MCPGatewayBinding" {
-				t.Fatal("HTTPRoute should be owned by MCPGatewayBinding")
-			}
-			t.Logf("HTTPRoute %s verified", bindingName)
-
+			t.Logf("MCPGatewayBinding %s is Registered", bindingName)
 			return ctx
 		}).
 		Assess("MCPServer reflects gateway status", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -136,17 +90,17 @@ func TestGatewayBindingCreation(t *testing.T) {
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
 				t.Fatalf("failed to get MCPServer: %v", err)
 			}
-
-			if server.Status.GatewayBinding == nil {
-				t.Fatal("expected GatewayBinding status to be set")
+			if server.Status.Address == nil || server.Status.Address.URL == "" {
+				t.Fatal("expected status.address.url to be set")
 			}
-			if server.Status.GatewayBinding.Provider != "httproute" {
-				t.Fatalf("expected gateway binding provider httproute, got %s", server.Status.GatewayBinding.Provider)
-			}
-
-			f.AssertGatewayAddressURL(t, server, hostname, "/mcp")
 			t.Logf("MCPServer gateway status verified: address=%s", server.Status.Address.URL)
-
+			return ctx
+		}).
+		Assess("MCPServer is fully ready", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
+			t.Log("MCPServer is Available and Verified")
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -157,27 +111,21 @@ func TestGatewayBindingCreation(t *testing.T) {
 	testenv.Test(t, feature)
 }
 
-func TestGatewayRemoval(t *testing.T) {
-	const (
-		configMapName = "gw-config"
-		gwName        = "my-gateway"
-		gwNamespace   = "gateway-system"
-		hostname      = "mcp.example.com"
-	)
+func TestGatewayConformanceRemoval(t *testing.T) {
+	prov := f.ActiveProvider(t)
+	const configMapName = "gw-removal-config"
 
-	feature := features.New("Gateway removal").
+	feature := features.New("Gateway conformance: removal").
 		WithLabel(category.Label, category.Networking).
 		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scope.Label, scope.GatewayConformance).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
-			_ = f.EnsureGateway(ctx, t, cfg, gwName, gwNamespace, "eg")
-			f.CreateGatewayConfigMap(ctx, t, cfg, configMapName, ns, map[string]string{
-				"gateway-name":      gwName,
-				"gateway-namespace": gwNamespace,
-				"hostname":          hostname,
-			})
-			ctx = f.SetupMCPServer(ctx, t, cfg, "test-gw-remove", false,
-				f.WithGateway("httproute", configMapName),
+			prov.ConfigData["section-name"] = f.EnsureGateway(ctx, t, cfg, prov.ConfigData["gateway-name"], prov.ConfigData["gateway-namespace"], prov.ConfigData["gateway-class"])
+			f.CreateGatewayConfigMap(ctx, t, cfg, configMapName, ns, prov.ConfigData)
+			ctx = f.SetupMCPServer(ctx, t, cfg, "conformance-removal", false,
+				f.WithGateway(prov.Name, configMapName),
+				f.WithPath("/mcp"),
 			)
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
@@ -187,17 +135,15 @@ func TestGatewayRemoval(t *testing.T) {
 		Assess("remove gateway from spec", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
-
 			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1beta1.MCPServer) {
 				s.Spec.Gateway = nil
 			})
 			t.Log("removed spec.gateway from MCPServer")
 			return ctx
 		}).
-		Assess("binding and HTTPRoute are deleted", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("binding is deleted", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
-
 			bindingName := server.Name + "-gateway-binding"
 			binding := &mcpv1alpha1.MCPGatewayBinding{
 				ObjectMeta: metav1.ObjectMeta{
@@ -207,7 +153,6 @@ func TestGatewayRemoval(t *testing.T) {
 			}
 			f.WaitForBindingDeleted(ctx, t, r, binding)
 			t.Logf("MCPGatewayBinding %s deleted", bindingName)
-
 			return ctx
 		}).
 		Assess("MCPServer address reverts to service URL", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -227,6 +172,86 @@ func TestGatewayRemoval(t *testing.T) {
 			if cond != nil {
 				t.Fatalf("expected no GatewayRegistered condition after removal, but found one: %s", cond.Status)
 			}
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return f.TeardownMCPServer(ctx, t, cfg)
+		}).
+		Feature()
+
+	testenv.Test(t, feature)
+}
+
+func TestGatewayConformanceHTTPReachability(t *testing.T) {
+	prov := f.ActiveProvider(t)
+	const configMapName = "gw-reachability-config"
+
+	feature := features.New("Gateway conformance: HTTP reachability").
+		WithLabel(category.Label, category.Networking).
+		WithLabel(speed.Label, speed.Moderate).
+		WithLabel(scope.Label, scope.GatewayConformance).
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			ns := ctx.Value(f.NsKey).(string)
+			prov.ConfigData["section-name"] = f.EnsureGateway(ctx, t, cfg, prov.ConfigData["gateway-name"], prov.ConfigData["gateway-namespace"], prov.ConfigData["gateway-class"])
+			f.CreateGatewayConfigMap(ctx, t, cfg, configMapName, ns, prov.ConfigData)
+			ctx = f.SetupMCPServer(ctx, t, cfg, "conformance-http", true,
+				f.WithGateway(prov.Name, configMapName),
+				f.WithPath("/mcp"),
+			)
+
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
+			f.WaitForMCPServerCondition(ctx, t, r, server, "GatewayRegistered", metav1.ConditionTrue)
+			return ctx
+		}).
+		Assess("MCP handshake through gateway", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
+				t.Fatalf("failed to get MCPServer: %v", err)
+			}
+			if server.Status.Address == nil || server.Status.Address.URL == "" {
+				t.Fatal("status.address.url is not set")
+			}
+
+			parsed, err := url.Parse(server.Status.Address.URL)
+			if err != nil {
+				t.Fatalf("failed to parse status.address.url %q: %v", server.Status.Address.URL, err)
+			}
+
+			httpClient, proxyURL := f.GatewayProxyHTTPClient(t, cfg, prov.GatewayService, parsed.Path)
+			httpClient = f.WithHostOverride(httpClient, parsed.Hostname())
+
+			mcpClient := mcp.NewClient(
+				&mcp.Implementation{
+					Name:    "e2e-gateway-test-client",
+					Version: "v0.0.1",
+				},
+				nil,
+			)
+
+			transport := &mcp.StreamableClientTransport{
+				Endpoint:   proxyURL,
+				HTTPClient: httpClient,
+			}
+
+			connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+
+			session, err := mcpClient.Connect(connectCtx, transport, nil)
+			if err != nil {
+				t.Fatalf("failed MCP handshake through gateway: %v", err)
+			}
+			defer session.Close()
+
+			initResult := session.InitializeResult()
+			if initResult == nil {
+				t.Fatal("InitializeResult is nil")
+			}
+			t.Logf("MCP handshake through gateway succeeded: server=%s version=%s",
+				initResult.ServerInfo.Name, initResult.ServerInfo.Version)
 
 			return ctx
 		}).

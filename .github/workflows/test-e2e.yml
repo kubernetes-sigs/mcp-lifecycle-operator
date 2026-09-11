@@ -41,3 +41,39 @@ jobs:
 
       - name: Run e2e tests
         run: make test-e2e
+
+  test-e2e-gateway:
+    name: Gateway (${{ matrix.provider }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - provider: httproute
+            deploy_target: deploy-test-e2e-httproute
+          - provider: kuadrant
+            deploy_target: deploy-test-e2e-kuadrant
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install kind
+        run: |
+          KIND_VERSION=v0.32.0
+          KIND_BINARY="kind-linux-$(go env GOARCH)"
+          curl -Lo "./${KIND_BINARY}" "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/${KIND_BINARY}"
+          curl -Lo "./${KIND_BINARY}.sha256sum" "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/${KIND_BINARY}.sha256sum"
+          sha256sum -c "./${KIND_BINARY}.sha256sum"
+          chmod +x "./${KIND_BINARY}"
+          sudo mv "./${KIND_BINARY}" /usr/local/bin/kind
+
+      - name: Deploy operator and gateway provider
+        run: make ${{ matrix.deploy_target }}
+
+      - name: Run gateway e2e tests
+        run: make test-e2e-gateway GATEWAY_PROVIDER=${{ matrix.provider }}

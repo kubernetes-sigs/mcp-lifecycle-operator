@@ -107,6 +107,9 @@ cover-clean: ## Remove cover.out and out/coverage.{txt,html} from test-cover.
 KIND_CLUSTER ?= mcp-lifecycle-operator-test-e2e
 CERT_MANAGER_VERSION ?= v1.17.2
 ENVOY_GATEWAY_VERSION ?= v1.9.0
+ISTIO_VERSION ?= 1.31.0
+GATEWAY_API_VERSION ?= v1.6.2
+MCP_GATEWAY_VERSION ?= v0.9.0
 
 .PHONY: deploy-certmanager
 deploy-certmanager: ## Install cert-manager in the cluster (required for conversion webhooks).
@@ -132,15 +135,45 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 deploy-test-e2e: setup-test-e2e deploy-certmanager manifests generate ## Build and deploy the operator to the Kind cluster for e2e tests.
 	$(MAKE) docker-build IMG=example.com/mcp-lifecycle-operator:e2e
 	$(KIND) load docker-image example.com/mcp-lifecycle-operator:e2e --name $(KIND_CLUSTER)
-	$(KUBECTL) apply --server-side -f https://github.com/envoyproxy/gateway/releases/download/$(ENVOY_GATEWAY_VERSION)/install.yaml
-	$(KUBECTL) wait --for=condition=Available --timeout=300s deployment/envoy-gateway -n envoy-gateway-system
-	$(KUBECTL) wait --for=condition=Established --timeout=120s crd/httproutes.gateway.networking.k8s.io
 	$(MAKE) install deploy IMG=example.com/mcp-lifecycle-operator:e2e
 	$(KUBECTL) rollout status deployment/mcp-lifecycle-operator-controller-manager -n mcp-lifecycle-operator-system --timeout=120s
+
+GATEWAY_PROVIDER ?= httproute
 
 .PHONY: test-e2e
 test-e2e: ## Run the e2e tests (requires operator already deployed, see deploy-test-e2e).
 	go test -tags=e2e ./test/e2e/ -v -count=1 -timeout 1h
+
+.PHONY: deploy-gateway-envoygateway
+deploy-gateway-envoygateway: setup-test-e2e ## Install Envoy Gateway for gateway e2e tests.
+	$(KUBECTL) apply --server-side -f https://github.com/envoyproxy/gateway/releases/download/$(ENVOY_GATEWAY_VERSION)/install.yaml
+	$(KUBECTL) wait --for=condition=Available --timeout=300s deployment/envoy-gateway -n envoy-gateway-system
+	$(KUBECTL) wait --for=condition=Established --timeout=120s crd/httproutes.gateway.networking.k8s.io
+
+.PHONY: deploy-test-e2e-httproute
+deploy-test-e2e-httproute: deploy-gateway-envoygateway deploy-test-e2e ## Deploy for httproute gateway e2e tests.
+
+.PHONY: deploy-gateway-kuadrant
+deploy-gateway-kuadrant: setup-test-e2e istioctl ## Install Istio and Kuadrant MCP Gateway for gateway e2e tests.
+	$(KUBECTL) apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
+	$(KUBECTL) wait --for=condition=Established --timeout=120s crd/gateways.gateway.networking.k8s.io
+	$(ISTIOCTL) install --set profile=minimal -y
+	$(KUBECTL) wait --for=condition=Available --timeout=300s deployment/istiod -n istio-system
+	$(KUBECTL) apply -k 'https://github.com/Kuadrant/mcp-gateway/config/crd?ref=$(MCP_GATEWAY_VERSION)'
+	$(KUBECTL) wait --for=condition=Established --timeout=120s crd/mcpserverregistrations.mcp.kuadrant.io
+	$(KUBECTL) apply -k 'https://github.com/Kuadrant/mcp-gateway/config/mcp-gateway/overlays/mcp-system?ref=$(MCP_GATEWAY_VERSION)'
+	$(KUBECTL) wait --for=condition=Available --timeout=300s deployment/mcp-gateway-controller -n mcp-system
+	$(KUBECTL) apply -f test/e2e/testdata/kuadrant-gateway.yaml
+	$(KUBECTL) wait --for=condition=Accepted --timeout=120s gateway/mcp-gateway -n gateway-system
+	$(KUBECTL) wait --for=condition=Ready --timeout=300s mcpgatewayextension/mcp-gateway-extension -n mcp-system
+	$(KUBECTL) wait --for=condition=Available --timeout=300s deployment --all -n mcp-system
+
+.PHONY: deploy-test-e2e-kuadrant
+deploy-test-e2e-kuadrant: deploy-gateway-kuadrant deploy-test-e2e ## Deploy for kuadrant gateway e2e tests.
+
+.PHONY: test-e2e-gateway
+test-e2e-gateway: ## Run gateway e2e tests for a specific provider (set GATEWAY_PROVIDER=httproute|kuadrant).
+	GATEWAY_PROVIDER=$(GATEWAY_PROVIDER) go test -tags=e2e,e2e_gateway ./test/e2e/ -v -count=1 -timeout 1h -profile gateway-$(GATEWAY_PROVIDER)
 
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
@@ -297,6 +330,7 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+ISTIOCTL ?= $(LOCALBIN)/istioctl
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.7.1
@@ -347,6 +381,18 @@ $(ENVTEST): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+.PHONY: istioctl
+istioctl: $(ISTIOCTL) ## Download istioctl locally if necessary.
+$(ISTIOCTL): $(LOCALBIN)
+	@[ -f "$(ISTIOCTL)-$(ISTIO_VERSION)" ] || { \
+	set -eo pipefail; \
+	echo "Downloading istioctl $(ISTIO_VERSION)" ;\
+	curl -fsSL https://istio.io/downloadIstio | ISTIO_VERSION=$(ISTIO_VERSION) sh - ;\
+	mv istio-$(ISTIO_VERSION)/bin/istioctl "$(ISTIOCTL)-$(ISTIO_VERSION)" ;\
+	rm -rf istio-$(ISTIO_VERSION) ;\
+	}
+	@ln -sf "$$(realpath -e "$(ISTIOCTL)-$(ISTIO_VERSION)")" "$(ISTIOCTL)"
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

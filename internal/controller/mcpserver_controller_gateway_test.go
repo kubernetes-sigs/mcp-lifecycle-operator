@@ -456,7 +456,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			Expect(mcpServer.Status.GatewayBinding.Provider).To(Equal("httproute"))
 		})
 
-		It("should reflect gateway URL into MCPServer address when binding is registered", func() {
+		It("should not publish address until server is verified even when binding is registered", func() {
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -489,12 +489,11 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
-			Expect(mcpServer.Status.Address).NotTo(BeNil())
-			Expect(mcpServer.Status.Address.URL).To(Equal(testGatewayURL))
-
 			gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered)
 			Expect(gwCond).NotTo(BeNil())
 			Expect(gwCond.Status).To(Equal(metav1.ConditionTrue))
+
+			Expect(mcpServer.Status.Address).To(BeNil())
 		})
 
 		It("should preserve gateway status when deployment reconciliation fails", func() {

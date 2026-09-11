@@ -18,6 +18,7 @@ package framework
 
 import (
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scope"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
 
@@ -34,6 +35,21 @@ func init() {
 		Labels: map[string][]string{
 			category.Label: {category.Lifecycle, category.Configuration, category.Resilience},
 			speed.Label:    {speed.Fast, speed.Moderate},
+		},
+	})
+
+	// Gateway provider profiles (require -tags=e2e_gateway to compile
+	// matching tests; without it the profile matches nothing).
+	RegisterProfile(Profile{
+		Name: "gateway-httproute",
+		Labels: map[string][]string{
+			scope.Label: {scope.GatewayConformance, scope.HTTPRoute},
+		},
+	})
+	RegisterProfile(Profile{
+		Name: "gateway-kuadrant",
+		Labels: map[string][]string{
+			scope.Label: {scope.GatewayConformance, scope.Kuadrant},
 		},
 	})
 }
