@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   test-e2e:
-    name: Run on Ubuntu
+    name: E2E Tests
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
