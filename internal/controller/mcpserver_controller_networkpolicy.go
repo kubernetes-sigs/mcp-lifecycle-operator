@@ -190,6 +190,57 @@ func buildEgressRules(mcpServer *mcpv1beta1.MCPServer) []networkingv1.NetworkPol
 	return []networkingv1.NetworkPolicyEgressRule{dnsRule, userRule}
 }
 
+// networkPolicyPostureCondition reports whether the operator-managed
+// NetworkPolicy restricts ingress sources and egress destinations. It derives
+// the posture from the desired policy built by createNetworkPolicy, using the
+// same restriction-detection helpers as the audit signal so the two never
+// disagree. The condition is informational and never gates readiness.
+func (r *MCPServerReconciler) networkPolicyPostureCondition(
+	mcpServer *mcpv1beta1.MCPServer,
+	generation int64,
+	existingConditions []metav1.Condition,
+) metav1.Condition {
+	netpol := r.createNetworkPolicy(mcpServer)
+	ingressRestricted := hasIngressSourceRestriction(netpol)
+	egressRestricted := hasEgressDestinationRestriction(netpol)
+
+	var (
+		status  metav1.ConditionStatus
+		reason  string
+		message string
+	)
+	switch {
+	case ingressRestricted && egressRestricted:
+		status = metav1.ConditionTrue
+		reason = ReasonNetworkPolicyRestricted
+		// Egress counts as restricted when a rule constrains either destinations
+		// or ports. Phrase the message for what is actually constrained so a
+		// ports-only egress (any destination reachable on those ports) is not
+		// reported as restricting destinations.
+		if egressDestinationsRestricted(netpol) {
+			message = "NetworkPolicy restricts both ingress sources and egress destinations"
+		} else {
+			message = "NetworkPolicy restricts ingress sources and limits egress to specific ports"
+		}
+	case ingressRestricted && !egressRestricted:
+		status = metav1.ConditionFalse
+		reason = ReasonNetworkPolicyEgressUnrestricted
+		message = "NetworkPolicy allows egress to any destination"
+	case !ingressRestricted && egressRestricted:
+		status = metav1.ConditionFalse
+		reason = ReasonNetworkPolicyIngressUnrestricted
+		message = "NetworkPolicy allows ingress from any source"
+	default:
+		status = metav1.ConditionFalse
+		reason = ReasonNetworkPolicyUnrestricted
+		message = "NetworkPolicy allows ingress from any source and egress to any destination"
+	}
+
+	c := newCondition(ConditionTypeNetworkPolicyRestricted, status, reason, message, generation)
+	preserveLastTransitionTime(&c, existingConditions)
+	return c
+}
+
 func hasIngressSourceRestriction(netpol *networkingv1.NetworkPolicy) bool {
 	for _, rule := range netpol.Spec.Ingress {
 		for _, peer := range rule.From {
@@ -204,6 +255,19 @@ func hasIngressSourceRestriction(netpol *networkingv1.NetworkPolicy) bool {
 func hasEgressDestinationRestriction(netpol *networkingv1.NetworkPolicy) bool {
 	for _, rule := range netpol.Spec.Egress {
 		if len(rule.To) > 0 || len(rule.Ports) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// egressDestinationsRestricted reports whether any egress rule limits the set of
+// destination peers (a non-empty To). This is narrower than
+// hasEgressDestinationRestriction, which also treats a ports-only rule as
+// restricted; it is used only to phrase the posture message accurately.
+func egressDestinationsRestricted(netpol *networkingv1.NetworkPolicy) bool {
+	for _, rule := range netpol.Spec.Egress {
+		if len(rule.To) > 0 {
 			return true
 		}
 	}
