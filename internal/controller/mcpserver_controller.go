@@ -318,14 +318,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			r.emitDeploymentReconcileFailed(mcpServer, availableCondition.Message)
 		}
 
-		conditions := []*v1ac.ConditionApplyConfiguration{
+		conditions := r.appendPersistentConditions(mcpServer, []*v1ac.ConditionApplyConfiguration{
 			conditionToAC(acceptedCondition),
 			conditionToAC(availableCondition),
 			conditionToAC(verifiedCondition),
-		}
-		if gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered); gwCond != nil {
-			conditions = append(conditions, conditionToAC(*gwCond))
-		}
+		})
 
 		status := acv1beta1.MCPServerStatus().
 			WithObservedGeneration(mcpServer.Generation).
@@ -458,6 +455,16 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		WithReadyReplicas(existingDeployment.Status.ReadyReplicas)
 
 	applyGatewayStatusToAC(status, gwStatus, acceptedCondition, availableCondition, verifiedCondition)
+
+	// Surface the NetworkPolicy posture as an informational, administrator-visible
+	// condition. Computed from the desired policy (no extra API call) and appended
+	// to the same apply so it does not prune the other conditions. It never gates
+	// readiness (Available is computed independently above).
+	networkPolicyCondition := r.networkPolicyPostureCondition(
+		mcpServer, mcpServer.Generation, mcpServer.Status.Conditions)
+	recordCondition(mcpServer.Name, mcpServer.Namespace,
+		networkPolicyCondition.Type, string(networkPolicyCondition.Status), networkPolicyCondition.Reason)
+	status.WithConditions(conditionToAC(networkPolicyCondition))
 
 	status = withAddressWhenVerified(status, verifiedCondition, mcpURL)
 
@@ -595,14 +602,11 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 
 	prevAccepted := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAccepted)
 
-	conditions := []*v1ac.ConditionApplyConfiguration{
+	conditions := r.appendPersistentConditions(mcpServer, []*v1ac.ConditionApplyConfiguration{
 		conditionToAC(acceptedCondition),
 		conditionToAC(availableCondition),
 		conditionToAC(verifiedCondition),
-	}
-	if gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered); gwCond != nil {
-		conditions = append(conditions, conditionToAC(*gwCond))
-	}
+	})
 
 	status := acv1beta1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
@@ -750,14 +754,11 @@ func (r *MCPServerReconciler) handleResourceFailure(
 		params.emitEvent(mcpServer, availableCondition.Message)
 	}
 
-	conditions := []*v1ac.ConditionApplyConfiguration{
+	conditions := r.appendPersistentConditions(mcpServer, []*v1ac.ConditionApplyConfiguration{
 		conditionToAC(acceptedCondition),
 		conditionToAC(availableCondition),
 		conditionToAC(verifiedCondition),
-	}
-	if gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered); gwCond != nil {
-		conditions = append(conditions, conditionToAC(*gwCond))
-	}
+	})
 
 	status := acv1beta1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
@@ -846,6 +847,28 @@ func (r *MCPServerReconciler) applyStatus(
 		client.FieldOwner(fieldManager),
 		client.ForceOwnership,
 	)
+}
+
+// appendPersistentConditions re-adds the status conditions that must survive
+// every apply. applyStatus uses Server-Side Apply under a single field manager,
+// so any condition that manager previously owned but omits from a later apply is
+// pruned. The GatewayRegistered condition is carried forward from existing
+// status, and the NetworkPolicy posture is recomputed from the desired policy,
+// so neither disappears on failure or short-circuit paths (both are otherwise
+// only set on the successful reconcile path).
+func (r *MCPServerReconciler) appendPersistentConditions(
+	mcpServer *mcpv1beta1.MCPServer,
+	conditions []*v1ac.ConditionApplyConfiguration,
+) []*v1ac.ConditionApplyConfiguration {
+	if gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered); gwCond != nil {
+		conditions = append(conditions, conditionToAC(*gwCond))
+	}
+	posture := r.networkPolicyPostureCondition(
+		mcpServer, mcpServer.Generation, mcpServer.Status.Conditions)
+	recordCondition(mcpServer.Name, mcpServer.Namespace,
+		posture.Type, string(posture.Status), posture.Reason)
+	conditions = append(conditions, conditionToAC(posture))
+	return conditions
 }
 
 // SetupWithManager sets up the controller with the Manager.
