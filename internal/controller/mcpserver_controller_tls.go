@@ -53,14 +53,6 @@ func buildTLSTransport(ctx context.Context, reader client.Reader, namespace stri
 
 	transport := cloneDefaultTransport()
 
-	if tlsConfig.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: true, //nolint:gosec // user-requested via spec
-		}
-		return transport, nil
-	}
-
 	if tlsConfig.CABundleSecret == nil {
 		transport.TLSClientConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
@@ -125,7 +117,7 @@ func (r *MCPServerReconciler) updateTLSCABundleHash(
 }
 
 func computeTLSCABundleHash(ctx context.Context, reader client.Reader, namespace string, tlsConfig *mcpv1beta1.TLSClientConfig) string {
-	if tlsConfig == nil || !tlsConfig.Enabled || tlsConfig.InsecureSkipVerify || tlsConfig.CABundleSecret == nil {
+	if tlsConfig == nil || !tlsConfig.Enabled || tlsConfig.CABundleSecret == nil {
 		return ""
 	}
 	secret := &corev1.Secret{}

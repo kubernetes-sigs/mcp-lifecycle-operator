@@ -99,10 +99,10 @@ func (r *MCPServerReconciler) validateConfig(
 		mcpServer.Spec.Transport.TLS != nil &&
 		mcpServer.Spec.Transport.TLS.Enabled {
 		tlsCfg := mcpServer.Spec.Transport.TLS
-		if tlsCfg.InsecureSkipVerify && tlsCfg.CABundleSecret != nil {
+		if tlsCfg.InsecureSkipVerify {
 			return &ValidationError{
 				Reason:  ReasonInvalid,
-				Message: "insecureSkipVerify and caBundleSecret are mutually exclusive",
+				Message: "insecureSkipVerify is deprecated and unsupported; use system CA roots or caBundleSecret instead",
 			}
 		}
 		if tlsCfg.CABundleSecret != nil {

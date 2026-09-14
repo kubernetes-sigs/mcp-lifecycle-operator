@@ -31,8 +31,9 @@ type TLSClientConfigApplyConfiguration struct {
 	// under the key "ca.crt". Used to verify the MCP server's TLS certificate.
 	// When unset and enabled is true, system CA certificates are used.
 	CABundleSecret *SecretReferenceApplyConfiguration `json:"caBundleSecret,omitempty"`
-	// InsecureSkipVerify disables TLS certificate verification.
-	// For development and testing only.
+	// InsecureSkipVerify is deprecated and unsupported. Use system CA roots or
+	// CABundleSecret instead.
+	// Deprecated: this field will be removed in a future API version.
 	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`
 }
 

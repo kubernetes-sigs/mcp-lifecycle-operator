@@ -471,8 +471,9 @@ type TLSClientConfig struct {
 	// +optional
 	CABundleSecret *SecretReference `json:"caBundleSecret,omitempty"`
 
-	// InsecureSkipVerify disables TLS certificate verification.
-	// For development and testing only.
+	// InsecureSkipVerify is deprecated and unsupported. Use system CA roots or
+	// CABundleSecret instead.
+	// Deprecated: this field will be removed in a future API version.
 	// +optional
 	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
 }
