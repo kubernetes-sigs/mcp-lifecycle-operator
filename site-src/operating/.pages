@@ -1,3 +1,4 @@
 nav:
   - Metrics: metrics.md
   - TLS: tls.md
+  - Storage Version Migration: storage-version-migration.md

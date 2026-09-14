@@ -1,0 +1,5 @@
+# Opt-in bundle. Intentionally NOT referenced from config/default - storage
+# migration is a deliberate one-shot operation, decoupled from operator install.
+# Apply with: kubectl apply -k config/storage-migration  (or: make migrate-storage)
+resources:
+- mcpserver-storage-migration.yaml

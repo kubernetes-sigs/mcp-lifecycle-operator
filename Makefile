@@ -123,6 +123,19 @@ deploy-certmanager: ## Install cert-manager in the cluster (required for convers
 	$(KUBECTL) apply -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 	$(KUBECTL) wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
 
+.PHONY: migrate-storage
+migrate-storage: ## Rewrite stored MCPServer objects to the v1beta1 storage version (requires a cluster storage-version-migrator).
+	$(KUBECTL) apply -k config/storage-migration
+	@echo "Applied StorageVersionMigration 'mcpservers-v1beta1' (accepted, not yet complete)."
+	@echo "Migration is complete only once status.conditions reports Succeeded=True."
+	@echo "Check status: $(KUBECTL) get storageversionmigration mcpservers-v1beta1 -o yaml"
+	@echo "When Succeeded, the migrator has rewritten stored objects, but the CRD"
+	@echo "status.storedVersions still lists v1alpha1 until pruned - see the docs:"
+	@echo "  site-src/operating/storage-version-migration.md (Removing v1alpha1)"
+	@echo "This object is one-shot: to retry after a Failed result, first run"
+	@echo "  $(KUBECTL) delete storageversionmigration mcpservers-v1beta1"
+	@echo "then re-run 'make migrate-storage' (re-applying alone will not re-trigger)."
+
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 	@command -v $(KIND) >/dev/null 2>&1 || { \
