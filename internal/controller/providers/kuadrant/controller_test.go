@@ -155,7 +155,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 					Kind:        "Gateway",
 					Name:        "my-gateway",
 					Namespace:   "gateway-ns",
-					SectionName: "mcp",
+					SectionName: defaultSectionName,
 				},
 			},
 		}
@@ -668,6 +668,93 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionTrue))
 		Expect(binding.Status.URL).To(Equal("http://mcp.example.com/mcp"))
+	})
+
+	It("should resolve the matching listener's publicHost when multiple MCPGatewayExtensions target the same Gateway on different sectionNames", func() {
+		createMCPServer()
+
+		By("creating a Gateway with a wildcard listener for the default sectionName")
+		gw := &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "test",
+				Listeners: []gatewayv1.Listener{
+					{
+						Name:     gatewayv1.SectionName(defaultSectionName),
+						Port:     80,
+						Protocol: gatewayv1.HTTPProtocolType,
+						Hostname: hostnamePtr("*.mcp.local"),
+					},
+				},
+			},
+		}
+		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gw) }()
+
+		By("creating two MCPGatewayExtensions targeting different listeners on the same Gateway")
+		extMatching := &kuadrantapi.MCPGatewayExtension{
+			ObjectMeta: metav1.ObjectMeta{Name: "ext-mcps", Namespace: "gateway-ns"},
+			Spec: kuadrantapi.MCPGatewayExtensionSpec{
+				PublicHost: "mcps.example.com",
+				TargetRef: kuadrantapi.TargetReference{
+					Group:       "gateway.networking.k8s.io",
+					Kind:        "Gateway",
+					Name:        "my-gateway",
+					Namespace:   "gateway-ns",
+					SectionName: defaultSectionName,
+				},
+			},
+		}
+		extMatching.SetGroupVersionKind(kuadrantapi.SchemeGroupVersion.WithKind("MCPGatewayExtension"))
+		Expect(k8sClient.Create(ctx, extMatching)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, extMatching) }()
+
+		extOther := &kuadrantapi.MCPGatewayExtension{
+			ObjectMeta: metav1.ObjectMeta{Name: "ext-other", Namespace: "gateway-ns"},
+			Spec: kuadrantapi.MCPGatewayExtensionSpec{
+				PublicHost: "other.example.com",
+				TargetRef: kuadrantapi.TargetReference{
+					Group:       "gateway.networking.k8s.io",
+					Kind:        "Gateway",
+					Name:        "my-gateway",
+					Namespace:   "gateway-ns",
+					SectionName: "other-listener",
+				},
+			},
+		}
+		extOther.SetGroupVersionKind(kuadrantapi.SchemeGroupVersion.WithKind("MCPGatewayExtension"))
+		Expect(k8sClient.Create(ctx, extOther)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, extOther) }()
+
+		createConfigMap(map[string]string{
+			configKeyGatewayName:      "my-gateway",
+			configKeyGatewayNamespace: "gateway-ns",
+			configKeyPrefix:           "myserver_",
+		})
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		route := &gatewayv1.HTTPRoute{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
+		setHTTPRouteAccepted(ctx, route)
+		setRegistrationReady(ctx, bindingName, testNamespace)
+
+		By("resolving the publicHost of the extension whose sectionName matches, with no 'multiple' error")
+		_, err = doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionTrue))
+		Expect(binding.Status.URL).To(Equal("http://mcps.example.com/mcp"))
 	})
 
 	It("should prefer explicit hostname from ConfigMap over auto-construction", func() {

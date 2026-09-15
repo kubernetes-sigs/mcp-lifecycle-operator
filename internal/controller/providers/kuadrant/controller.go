@@ -229,7 +229,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	publicHost := cfg.hostname
 	if !cfg.hostnameExplicit {
 		var resolveErr error
-		publicHost, resolveErr = r.resolvePublicHostname(ctx, cfg.gwName, cfg.gwNamespace)
+		publicHost, resolveErr = r.resolvePublicHostname(ctx, cfg.gwName, cfg.gwNamespace, cfg.sectionName)
 		if resolveErr != nil {
 			statusErr := r.updateBindingStatus(ctx, binding, metav1.ConditionFalse,
 				mcpcontroller.ReasonGatewayNotRegistered, resolveErr.Error(), "")
@@ -461,24 +461,44 @@ func (r *Reconciler) resolveHostname(ctx context.Context, mcpServerName, gwName,
 }
 
 // resolvePublicHostname finds the MCPGatewayExtension targeting the given
-// Gateway and returns its publicHost. If zero or multiple extensions target the
-// Gateway, an error is returned asking the user to set hostname explicitly.
-func (r *Reconciler) resolvePublicHostname(ctx context.Context, gwName, gwNamespace string) (string, error) {
+// Gateway listener (sectionName) and returns its publicHost. An extension whose
+// targetRef.sectionName matches the listener is preferred; an extension with an
+// empty targetRef.sectionName targets the whole Gateway and is used only as a
+// fallback when no listener-specific extension exists. If zero or multiple
+// extensions match at the selected specificity, an error is returned asking the
+// user to set hostname explicitly.
+func (r *Reconciler) resolvePublicHostname(ctx context.Context, gwName, gwNamespace, sectionName string) (string, error) {
 	extList := &kuadrantapi.MCPGatewayExtensionList{}
 	if err := r.List(ctx, extList); err != nil {
 		return "", fmt.Errorf("listing MCPGatewayExtensions: %w", err)
 	}
 
-	var matches []kuadrantapi.MCPGatewayExtension
+	var specific, wholeGateway []kuadrantapi.MCPGatewayExtension
 	for _, ext := range extList.Items {
 		ref := ext.Spec.TargetRef
 		refNS := ref.Namespace
 		if refNS == "" {
 			refNS = ext.Namespace
 		}
-		if ref.Kind == "Gateway" && ref.Name == gwName && refNS == gwNamespace {
-			matches = append(matches, ext)
+		// An empty group defaults to the Gateway API group.
+		if ref.Group != "" && ref.Group != gatewayv1.GroupName {
+			continue
 		}
+		if ref.Kind != "Gateway" || ref.Name != gwName || refNS != gwNamespace {
+			continue
+		}
+		switch ref.SectionName {
+		case sectionName:
+			specific = append(specific, ext)
+		case "":
+			wholeGateway = append(wholeGateway, ext)
+		}
+	}
+
+	// A listener-specific extension wins over a whole-Gateway default.
+	matches := specific
+	if len(matches) == 0 {
+		matches = wholeGateway
 	}
 
 	switch len(matches) {
