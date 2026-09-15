@@ -670,6 +670,80 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(binding.Status.URL).To(Equal("http://mcp.example.com/mcp"))
 	})
 
+	DescribeTable("public hostname fallback when MCPGatewayExtension publicHost is empty", func(publicListenerName string, publicHostname *gatewayv1.Hostname, expectedURL, expectedError string) {
+		createMCPServer()
+
+		By("creating a Gateway with separate backend and public listeners")
+		gw := &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "test",
+				Listeners: []gatewayv1.Listener{
+					{
+						Name:     gatewayv1.SectionName(defaultSectionName),
+						Port:     80,
+						Protocol: gatewayv1.HTTPProtocolType,
+						Hostname: hostnamePtr("*.mcp.local"),
+					},
+					{
+						Name:     gatewayv1.SectionName(publicListenerName),
+						Port:     80,
+						Protocol: gatewayv1.HTTPProtocolType,
+						Hostname: publicHostname,
+					},
+				},
+			},
+		}
+		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gw) }()
+
+		createConfigMap(map[string]string{
+			configKeyGatewayName:      "my-gateway",
+			configKeyGatewayNamespace: "gateway-ns",
+			configKeyPrefix:           "myserver_",
+		})
+		createBinding()
+
+		By("creating an MCPGatewayExtension without a publicHost override")
+		createGatewayExtension("")
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		route := &gatewayv1.HTTPRoute{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
+		Expect(route.Spec.Hostnames).To(Equal([]gatewayv1.Hostname{gatewayv1.Hostname(mcpServerName + ".mcp.local")}))
+		setHTTPRouteAccepted(ctx, route)
+		setRegistrationReady(ctx, bindingName, testNamespace)
+
+		By("resolving the public hostname from the extension's target listener")
+		result, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(binding.Status.URL).To(Equal(expectedURL))
+		if expectedError != "" {
+			Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+			Expect(registered.Message).To(ContainSubstring(expectedError))
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(route), route)).To(Succeed())
+			return
+		}
+		Expect(registered.Status).To(Equal(metav1.ConditionTrue))
+	},
+		Entry("uses the public listener's exact hostname", "mcp", hostnamePtr("broker.example.com"), "http://broker.example.com/mcp", ""),
+		Entry("replaces the public listener's wildcard with mcp", "mcp", hostnamePtr("*.example.com"), "http://mcp.example.com/mcp", ""),
+		Entry("rejects a missing public listener", "other", hostnamePtr("broker.example.com"), "", `no listener named "mcp"`),
+		Entry("rejects a public listener without a hostname", "mcp", nil, "", `listener "mcp" has no hostname`),
+	)
+
 	It("should prefer explicit hostname from ConfigMap over auto-construction", func() {
 		createMCPServer()
 

@@ -461,8 +461,10 @@ func (r *Reconciler) resolveHostname(ctx context.Context, mcpServerName, gwName,
 }
 
 // resolvePublicHostname finds the MCPGatewayExtension targeting the given
-// Gateway and returns its publicHost. If zero or multiple extensions target the
-// Gateway, an error is returned asking the user to set hostname explicitly.
+// Gateway and returns its publicHost override or derives the hostname from the
+// extension's target listener. Wildcards use the "mcp" subdomain, matching Kuadrant.
+// If zero or multiple extensions target the Gateway, an error is returned asking
+// the user to set hostname explicitly.
 func (r *Reconciler) resolvePublicHostname(ctx context.Context, gwName, gwNamespace string) (string, error) {
 	extList := &kuadrantapi.MCPGatewayExtensionList{}
 	if err := r.List(ctx, extList); err != nil {
@@ -485,10 +487,30 @@ func (r *Reconciler) resolvePublicHostname(ctx context.Context, gwName, gwNamesp
 	case 0:
 		return "", fmt.Errorf("no MCPGatewayExtension targets gateway %s/%s; set %q in the ConfigMap to specify the public hostname", gwNamespace, gwName, configKeyHostname)
 	case 1:
-		if matches[0].Spec.PublicHost == "" {
-			return "", fmt.Errorf("MCPGatewayExtension %s/%s has no publicHost; set %q in the ConfigMap", matches[0].Namespace, matches[0].Name, configKeyHostname)
+		ext := matches[0]
+		if ext.Spec.PublicHost != "" {
+			return ext.Spec.PublicHost, nil
 		}
-		return matches[0].Spec.PublicHost, nil
+
+		gw := &gatewayv1.Gateway{}
+		if err := r.Get(ctx, client.ObjectKey{Name: gwName, Namespace: gwNamespace}, gw); err != nil {
+			return "", fmt.Errorf("getting gateway %s/%s: %w", gwNamespace, gwName, err)
+		}
+		sectionName := ext.Spec.TargetRef.SectionName
+		for _, listener := range gw.Spec.Listeners {
+			if string(listener.Name) != sectionName {
+				continue
+			}
+			if listener.Hostname == nil || *listener.Hostname == "" {
+				return "", fmt.Errorf("gateway listener %q has no hostname; set publicHost in MCPGatewayExtension %s/%s", sectionName, ext.Namespace, ext.Name)
+			}
+			hostname := string(*listener.Hostname)
+			if strings.HasPrefix(hostname, "*.") {
+				hostname = "mcp" + hostname[1:]
+			}
+			return hostname, nil
+		}
+		return "", fmt.Errorf("gateway %s/%s has no listener named %q", gwNamespace, gwName, sectionName)
 	default:
 		return "", fmt.Errorf("multiple MCPGatewayExtensions target gateway %s/%s; set %q in the ConfigMap to specify the public hostname", gwNamespace, gwName, configKeyHostname)
 	}
