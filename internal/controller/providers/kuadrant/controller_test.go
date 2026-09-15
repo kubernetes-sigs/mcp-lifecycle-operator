@@ -1729,6 +1729,53 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		})
 	})
 
+	Describe("findBindingsForGatewayExtension", func() {
+		It("should enqueue bindings when targetRef.namespace is omitted (defaults to the extension namespace)", func() {
+			createConfigMap(validConfigData())
+			createBinding()
+
+			ensureGatewayNamespace(ctx)
+			ext := &kuadrantapi.MCPGatewayExtension{
+				ObjectMeta: metav1.ObjectMeta{Name: gatewayExtensionName, Namespace: "gateway-ns"},
+				Spec: kuadrantapi.MCPGatewayExtensionSpec{
+					PublicHost: "public.example.com",
+					TargetRef: kuadrantapi.TargetReference{
+						Kind: "Gateway",
+						Name: "my-gateway",
+						// Namespace omitted on purpose: defaults to the extension's namespace.
+						SectionName: "mcp",
+					},
+				},
+			}
+
+			r := newReconciler()
+			requests := r.findBindingsForGatewayExtension(ctx, ext)
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0].Name).To(Equal(bindingName))
+		})
+
+		It("should not enqueue bindings for an extension targeting a different gateway", func() {
+			createConfigMap(validConfigData())
+			createBinding()
+
+			ext := &kuadrantapi.MCPGatewayExtension{
+				ObjectMeta: metav1.ObjectMeta{Name: gatewayExtensionName, Namespace: "other-ns"},
+				Spec: kuadrantapi.MCPGatewayExtensionSpec{
+					PublicHost: "public.example.com",
+					TargetRef: kuadrantapi.TargetReference{
+						Kind:        "Gateway",
+						Name:        "my-gateway",
+						SectionName: "mcp",
+					},
+				},
+			}
+
+			r := newReconciler()
+			requests := r.findBindingsForGatewayExtension(ctx, ext)
+			Expect(requests).To(BeEmpty())
+		})
+	})
+
 	Describe("SetupWithManager", func() {
 		It("should register the controller without error", func() {
 			mgr, err := ctrl.NewManager(cfg, ctrl.Options{

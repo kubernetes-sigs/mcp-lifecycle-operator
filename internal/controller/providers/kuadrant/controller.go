@@ -775,10 +775,18 @@ func (r *Reconciler) findBindingsForGatewayExtension(ctx context.Context, obj cl
 		return nil
 	}
 	ref := ext.Spec.TargetRef
-	if ref.Kind != "Gateway" || ref.Name == "" || ref.Namespace == "" {
+	if ref.Kind != "Gateway" || ref.Name == "" {
 		return nil
 	}
-	return r.findBindingsForGatewayByNamespace(ctx, ref.Name, ref.Namespace)
+	// An empty targetRef.namespace defaults to the extension's own namespace,
+	// matching how resolvePublicHostname selects the extension. Without this,
+	// a co-located extension (namespace omitted) that the resolver does match
+	// would never re-enqueue its bindings on change, leaving status stale.
+	gwNamespace := ref.Namespace
+	if gwNamespace == "" {
+		gwNamespace = ext.Namespace
+	}
+	return r.findBindingsForGatewayByNamespace(ctx, ref.Name, gwNamespace)
 }
 
 func (r *Reconciler) findBindingsForMCPServer(ctx context.Context, obj client.Object) []ctrl.Request {
