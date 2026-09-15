@@ -105,6 +105,9 @@ const (
 // Event-only reasons (not used as condition reasons).
 const (
 	EventReasonCapabilityChanged = "CapabilityChanged"
+	// ReasonInsecureTLS is the reason for the Warning event emitted when a user
+	// opts into disabling TLS certificate verification for MCP handshakes.
+	ReasonInsecureTLS = "InsecureTLSConfigured"
 )
 
 // Container waiting reasons from Kubernetes pod status.
@@ -142,6 +145,8 @@ const (
 	eventActionGatewayBindingReconcileFailed = "GatewayBindingReconcileFailed"
 	// eventActionCapabilityChangeDetected is the reporting action when capability changes are detected.
 	eventActionCapabilityChangeDetected = "CapabilityChangeDetected"
+	// eventActionInsecureTLSConfigured is the reporting action when TLS verification is disabled via spec.
+	eventActionInsecureTLSConfigured = "InsecureTLSConfigured"
 
 	// requeueDelayMCPHandshake is the initial delay before requeuing when an MCP handshake fails.
 	requeueDelayMCPHandshake = 10 * time.Second
@@ -658,6 +663,18 @@ func (r *MCPServerReconciler) emitServerReady(mcpServer *mcpv1beta1.MCPServer) {
 		return
 	}
 	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeNormal, ReasonAvailable, eventActionServerReady, "MCPServer %s is ready; Available=True, Verified=True", mcpServer.Name)
+}
+
+// emitInsecureTLSWarning records a Warning event when a user has opted into
+// disabling TLS certificate verification via spec.transport.tls.insecureSkipVerify.
+// This makes the intentionally insecure configuration visible in `kubectl describe`.
+func (r *MCPServerReconciler) emitInsecureTLSWarning(mcpServer *mcpv1beta1.MCPServer) {
+	if r.Recorder == nil {
+		return
+	}
+	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonInsecureTLS, eventActionInsecureTLSConfigured,
+		"MCPServer %s: spec.transport.tls.insecureSkipVerify is enabled; TLS certificate verification is disabled for MCP handshakes, exposing connections to man-in-the-middle attacks",
+		mcpServer.Name)
 }
 
 func (r *MCPServerReconciler) maybeEmitDeploymentUnavailableEvent(

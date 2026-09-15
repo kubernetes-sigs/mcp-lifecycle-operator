@@ -54,6 +54,9 @@ func buildTLSTransport(ctx context.Context, reader client.Reader, namespace stri
 	transport := cloneDefaultTransport()
 
 	if tlsConfig.InsecureSkipVerify {
+		// nosemgrep: go.lang.security.audit.crypto.tls.insecure-skip-verify
+		// Opt-in only: the user explicitly set spec.transport.tls.insecureSkipVerify.
+		// A Warning event is emitted (emitInsecureTLSWarning) whenever this path is taken.
 		transport.TLSClientConfig = &tls.Config{
 			MinVersion:         tls.VersionTLS12,
 			InsecureSkipVerify: true, //nolint:gosec // user-requested via spec

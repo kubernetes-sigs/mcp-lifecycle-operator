@@ -1445,6 +1445,43 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(capturedURL).To(HavePrefix("https://"))
 	})
 
+	It("should emit a Warning event when InsecureSkipVerify is enabled", func() {
+		By("Updating MCPServer with InsecureSkipVerify TLS config")
+		mcpServer := &mcpv1beta1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		mcpServer.Spec.Transport = &mcpv1beta1.TransportConfig{
+			TLS: &mcpv1beta1.TLSClientConfig{
+				Enabled:            true,
+				InsecureSkipVerify: true,
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		reconciler, fr := newReconcilerForTestWithFakeEvents(k8sClient, k8sClient.Scheme())
+		reconciler.MCPDialer = func(_ context.Context, _ string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+			return &mcpv1beta1.MCPServerInfo{Name: "test"}, nil
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Making the deployment available so the handshake path runs")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: "default"}, deployment)).To(Succeed())
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(fr.Events).Should(Receive(ContainSubstring(ReasonInsecureTLS)))
+	})
+
 	It("should apply TLSProfile to the handshake transport", func() {
 		By("Updating MCPServer with InsecureSkipVerify TLS config")
 		mcpServer := &mcpv1beta1.MCPServer{}
@@ -1522,7 +1559,8 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 			},
 			APIReader: k8sClient,
 			TLSProfile: func(c *tls.Config) {
-				c.MinVersion = tls.VersionTLS10
+				// nosemgrep: go.lang.security.audit.crypto.ssl.insecure-min-version
+				c.MinVersion = tls.VersionTLS10 //nolint:gosec // deliberately low; test asserts the TLS 1.2 floor overrides this
 			},
 		}
 

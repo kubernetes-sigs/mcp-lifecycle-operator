@@ -41,7 +41,8 @@ var _ = Describe("applyTLSProfileWithFloor", func() {
 
 	It("does not let the profile lower the min version below the TLS 1.2 floor", func() {
 		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
-		profile := func(c *tls.Config) { c.MinVersion = tls.VersionTLS10 }
+		// nosemgrep: go.lang.security.audit.crypto.ssl.insecure-min-version
+		profile := func(c *tls.Config) { c.MinVersion = tls.VersionTLS10 } //nolint:gosec // deliberately low; test asserts the TLS 1.2 floor overrides this
 
 		applyTLSProfileWithFloor(cfg, profile)
 

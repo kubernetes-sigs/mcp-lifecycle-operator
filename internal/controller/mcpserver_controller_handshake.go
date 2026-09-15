@@ -82,6 +82,12 @@ func (r *MCPServerReconciler) reconcileHandshake(
 
 	var tlsTransport *http.Transport
 	if mcpServer.Spec.Transport != nil && mcpServer.Spec.Transport.TLS != nil {
+		if mcpServer.Spec.Transport.TLS.Enabled && mcpServer.Spec.Transport.TLS.InsecureSkipVerify {
+			logger.Info("TLS certificate verification is disabled via spec.transport.tls.insecureSkipVerify; "+
+				"MCP handshakes are exposed to man-in-the-middle attacks",
+				"mcpServer", mcpServer.Name, "namespace", mcpServer.Namespace)
+			r.emitInsecureTLSWarning(mcpServer)
+		}
 		var tlsErr error
 		tlsTransport, tlsErr = buildTLSTransport(ctx, r.APIReader, mcpServer.Namespace, mcpServer.Spec.Transport.TLS)
 		if tlsErr != nil {

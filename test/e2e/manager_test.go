@@ -172,6 +172,8 @@ func TestMetricsEndpoint(t *testing.T) {
 
 			httpClient := &http.Client{
 				Transport: &http.Transport{
+					// nosemgrep: go.lang.security.audit.crypto.tls.insecure-skip-verify
+					// Test-only: scrapes /metrics over a localhost port-forward to the operator's self-signed serving cert.
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
 				},
 			}
