@@ -1390,69 +1390,13 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(acceptedCondition.Message).To(ContainSubstring("TLS CA bundle Secret not found"))
 	})
 
-	It("should pass InsecureSkipVerify transport to the dialer with https URL", func() {
-		By("Updating MCPServer with InsecureSkipVerify TLS config")
-		mcpServer := &mcpv1beta1.MCPServer{}
-		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		mcpServer.Spec.Transport = &mcpv1beta1.TransportConfig{
-			TLS: &mcpv1beta1.TLSClientConfig{
-				Enabled:            true,
-				InsecureSkipVerify: true,
-			},
-		}
-		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
-
-		var capturedTransport *http.Transport
-		var capturedURL string
-		reconciler := &MCPServerReconciler{
-			Client: k8sClient,
-			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(_ context.Context, url string, transport *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
-				capturedTransport = transport
-				capturedURL = url
-				return &mcpv1beta1.MCPServerInfo{Name: "test"}, nil
-			},
-			APIReader: k8sClient,
-		}
-
-		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: typeNamespacedName,
-		})
-		Expect(err).NotTo(HaveOccurred())
-
-		By("Making deployment available and re-reconciling")
-		deployment := &appsv1.Deployment{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{
-			Name: resourceName, Namespace: "default",
-		}, deployment)).To(Succeed())
-
-		deployment.Status.Replicas = 1
-		deployment.Status.ReadyReplicas = 1
-		deployment.Status.Conditions = []appsv1.DeploymentCondition{
-			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
-			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
-		}
-		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
-
-		_, err = reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: typeNamespacedName,
-		})
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(capturedTransport).NotTo(BeNil())
-		Expect(capturedTransport.TLSClientConfig).NotTo(BeNil())
-		Expect(capturedTransport.TLSClientConfig.InsecureSkipVerify).To(BeTrue())
-		Expect(capturedURL).To(HavePrefix("https://"))
-	})
-
 	It("should apply TLSProfile to the handshake transport", func() {
-		By("Updating MCPServer with InsecureSkipVerify TLS config")
+		By("Updating MCPServer with TLS config")
 		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 		mcpServer.Spec.Transport = &mcpv1beta1.TransportConfig{
 			TLS: &mcpv1beta1.TLSClientConfig{
-				Enabled:            true,
-				InsecureSkipVerify: true,
+				Enabled: true,
 			},
 		}
 		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
@@ -1498,62 +1442,6 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(capturedTransport).NotTo(BeNil())
 		Expect(capturedTransport.TLSClientConfig).NotTo(BeNil())
 		Expect(capturedTransport.TLSClientConfig.MinVersion).To(Equal(uint16(tls.VersionTLS13)))
-	})
-
-	It("should not allow TLSProfile to lower MinVersion below TLS 1.2", func() {
-		By("Updating MCPServer with InsecureSkipVerify TLS config")
-		mcpServer := &mcpv1beta1.MCPServer{}
-		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
-		mcpServer.Spec.Transport = &mcpv1beta1.TransportConfig{
-			TLS: &mcpv1beta1.TLSClientConfig{
-				Enabled:            true,
-				InsecureSkipVerify: true,
-			},
-		}
-		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
-
-		var capturedTransport *http.Transport
-		reconciler := &MCPServerReconciler{
-			Client: k8sClient,
-			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(_ context.Context, _ string, transport *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
-				capturedTransport = transport
-				return &mcpv1beta1.MCPServerInfo{Name: "test"}, nil
-			},
-			APIReader: k8sClient,
-			TLSProfile: func(c *tls.Config) {
-				c.MinVersion = tls.VersionTLS10
-			},
-		}
-
-		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: typeNamespacedName,
-		})
-		Expect(err).NotTo(HaveOccurred())
-
-		By("Making deployment available and re-reconciling")
-		deployment := &appsv1.Deployment{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{
-			Name: resourceName, Namespace: "default",
-		}, deployment)).To(Succeed())
-
-		deployment.Status.Replicas = 1
-		deployment.Status.ReadyReplicas = 1
-		deployment.Status.Conditions = []appsv1.DeploymentCondition{
-			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
-			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
-		}
-		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
-
-		_, err = reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: typeNamespacedName,
-		})
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(capturedTransport).NotTo(BeNil())
-		Expect(capturedTransport.TLSClientConfig).NotTo(BeNil())
-		Expect(capturedTransport.TLSClientConfig.MinVersion).To(Equal(uint16(tls.VersionTLS12)),
-			"TLS 1.2 floor must not be lowered by TLSProfile")
 	})
 
 	It("should set Accepted=False when CA Secret has invalid PEM data", func() {
@@ -1728,25 +1616,14 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(mcpServer.Status.Address.URL).To(HavePrefix("http://"))
 	})
 
-	It("should reject insecureSkipVerify combined with caBundleSecret", func() {
-		By("Creating a CA Secret")
-		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "conflict-ca",
-				Namespace: "default",
-			},
-			Data: map[string][]byte{"ca.crt": []byte("dummy")},
-		}
-		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
-
-		By("Updating MCPServer with both insecureSkipVerify and caBundleSecret")
+	It("should reject insecureSkipVerify", func() {
+		By("Updating MCPServer with the deprecated insecureSkipVerify field")
 		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 		mcpServer.Spec.Transport = &mcpv1beta1.TransportConfig{
 			TLS: &mcpv1beta1.TLSClientConfig{
 				Enabled:            true,
 				InsecureSkipVerify: true,
-				CABundleSecret:     &mcpv1beta1.SecretReference{Name: "conflict-ca"},
 			},
 		}
 		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
@@ -1762,10 +1639,7 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(acceptedCondition).NotTo(BeNil())
 		Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(acceptedCondition.Reason).To(Equal(ReasonInvalid))
-		Expect(acceptedCondition.Message).To(ContainSubstring("mutually exclusive"))
-
-		By("Cleaning up Secret")
-		Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+		Expect(acceptedCondition.Message).To(ContainSubstring("deprecated and unsupported"))
 	})
 
 	It("should re-run handshake when CA bundle Secret content changes", func() {

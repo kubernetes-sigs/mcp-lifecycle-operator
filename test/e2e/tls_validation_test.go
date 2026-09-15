@@ -252,10 +252,10 @@ func TestTLSMissingCACrtKey(t *testing.T) {
 	testenv.Test(t, feature)
 }
 
-func TestTLSInsecureSkipVerifyWithCABundleConflict(t *testing.T) {
+func TestTLSInsecureSkipVerifyDeprecated(t *testing.T) {
 	t.Parallel()
 	testCAPEM, _ := generateTestCACert(t)
-	feature := features.New("TLS validation rejects insecureSkipVerify with caBundleSecret").
+	feature := features.New("TLS validation rejects deprecated insecureSkipVerify").
 		WithLabel(category.Label, category.Resilience).
 		WithLabel(speed.Label, speed.Fast).
 		WithLabel(scenario.Label, scenario.Failure).
@@ -289,12 +289,12 @@ func TestTLSInsecureSkipVerifyWithCABundleConflict(t *testing.T) {
 				}),
 			)
 		}).
-		Assess("Accepted=False with message about mutual exclusivity", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("Accepted=False with message about deprecated field", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
 			f.WaitForMCPServerConditionMessageContains(ctx, t, r, server,
-				"Accepted", metav1.ConditionFalse, "Invalid", "mutually exclusive",
+				"Accepted", metav1.ConditionFalse, "Invalid", "deprecated and unsupported",
 				2*time.Minute)
 
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {

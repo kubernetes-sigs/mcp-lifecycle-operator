@@ -2151,8 +2151,9 @@ spec:
                         type: boolean
                       insecureSkipVerify:
                         description: |-
-                          InsecureSkipVerify disables TLS certificate verification.
-                          For development and testing only.
+                          InsecureSkipVerify is deprecated and unsupported. Use system CA roots or
+                          CABundleSecret instead.
+                          Deprecated: this field will be removed in a future API version.
                         type: boolean
                     type: object
                 type: object
@@ -4502,8 +4503,9 @@ spec:
                         type: boolean
                       insecureSkipVerify:
                         description: |-
-                          InsecureSkipVerify disables TLS certificate verification.
-                          For development and testing only.
+                          InsecureSkipVerify is deprecated and unsupported. Use system CA roots or
+                          CABundleSecret instead.
+                          Deprecated: this field will be removed in a future API version.
                         type: boolean
                     type: object
                 type: object

@@ -77,24 +77,10 @@ var _ = Describe("buildTLSTransport", func() {
 	It("should return nil transport when Enabled is false", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
 		transport, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1beta1.TLSClientConfig{
-			Enabled:            false,
-			InsecureSkipVerify: true,
+			Enabled: false,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(transport).To(BeNil())
-	})
-
-	It("should set InsecureSkipVerify with TLS 1.2 minimum", func() {
-		c := fake.NewClientBuilder().WithScheme(scheme).Build()
-		transport, err := buildTLSTransport(context.Background(), c, "default", &mcpv1beta1.TLSClientConfig{
-			Enabled:            true,
-			InsecureSkipVerify: true,
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(transport).NotTo(BeNil())
-		Expect(transport.TLSClientConfig).NotTo(BeNil())
-		Expect(transport.TLSClientConfig.InsecureSkipVerify).To(BeTrue())
-		Expect(transport.TLSClientConfig.MinVersion).To(Equal(uint16(tls.VersionTLS12)))
 	})
 
 	It("should use system CAs when no CABundleSecret is set", func() {
@@ -240,16 +226,6 @@ var _ = Describe("computeTLSCABundleHash", func() {
 	It("should return empty when TLS is disabled", func() {
 		cli := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
 		cfg := &mcpv1beta1.TLSClientConfig{Enabled: false}
-		Expect(computeTLSCABundleHash(ctx, cli, "default", cfg)).To(BeEmpty())
-	})
-
-	It("should return empty when insecureSkipVerify is set", func() {
-		cli := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
-		cfg := &mcpv1beta1.TLSClientConfig{
-			Enabled:            true,
-			InsecureSkipVerify: true,
-			CABundleSecret:     &mcpv1beta1.SecretReference{Name: "ca"},
-		}
 		Expect(computeTLSCABundleHash(ctx, cli, "default", cfg)).To(BeEmpty())
 	})
 
