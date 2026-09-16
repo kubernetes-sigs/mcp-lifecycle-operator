@@ -1,0 +1,5 @@
+# Netlify publishes pre-built documentation from the gh-pages branch.
+# GitHub Actions builds versioned docs with mike; Netlify should not run a build.
+[build]
+  publish = "."
+  command = ""
