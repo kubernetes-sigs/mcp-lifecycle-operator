@@ -190,8 +190,9 @@ type MCPServerReconciler struct {
 	// TLSEnvVars holds TLS-related environment variables to propagate to every
 	// MCP server container. Populated at startup when PROPAGATE_TLS_ENV_VARS is set.
 	TLSEnvVars []corev1.EnvVar
-	// TLSProfile applies operator-wide TLS settings (min version, cipher suites)
-	// to outbound connections. Populated from TLS_MIN_VERSION / TLS_CIPHER_SUITES.
+	// TLSProfile applies operator-wide TLS settings (min version, cipher suites
+	// and TLS 1.3 group/curve preferences) to outbound connections. Populated
+	// from TLS_MIN_VERSION / TLS_CIPHER_SUITES / TLS_GROUPS.
 	TLSProfile func(*tls.Config)
 	// tlsCABundleHashes tracks the SHA-256 hash of each MCPServer's CA bundle
 	// Secret content at the time of the last successful handshake. Keyed by
