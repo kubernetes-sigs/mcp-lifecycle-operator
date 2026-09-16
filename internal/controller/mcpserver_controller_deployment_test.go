@@ -1587,6 +1587,23 @@ var _ = Describe("MCPServer Controller - TLS Env Var Propagation", func() {
 		Expect(env[2].Value).To(Equal("TLS_AES_128_GCM_SHA256"))
 	})
 
+	It("should propagate TLS_GROUPS to the operand deployment", func() {
+		mcpServer := newTestMCPServer("test-tls-groups")
+
+		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+		reconciler.TLSEnvVars = []corev1.EnvVar{
+			{Name: "TLS_MIN_VERSION", Value: "VersionTLS13"},
+			{Name: "TLS_GROUPS", Value: "X25519MLKEM768,X25519"},
+		}
+
+		deployment, err := reconciler.createDeployment(mcpServer)
+		Expect(err).NotTo(HaveOccurred())
+
+		env := deployment.Spec.Template.Spec.Containers[0].Env
+		Expect(env).To(ContainElement(corev1.EnvVar{Name: "TLS_MIN_VERSION", Value: "VersionTLS13"}))
+		Expect(env).To(ContainElement(corev1.EnvVar{Name: "TLS_GROUPS", Value: "X25519MLKEM768,X25519"}))
+	})
+
 	It("should filter out user-specified duplicates in favour of operator TLS vars", func() {
 		mcpServer := newTestMCPServer("test-tls-override")
 		mcpServer.Spec.Config.Env = []corev1.EnvVar{
