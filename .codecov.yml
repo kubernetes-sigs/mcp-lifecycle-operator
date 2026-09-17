@@ -27,8 +27,24 @@ coverage:
         if_ci_failed: error
     changes: false
 
+# Coverage is uploaded under two flags (see #177):
+#   unittests - from the Tests workflow, on every pull request and push to main
+#   e2e       - from the E2E Tests workflow, on a nightly schedule / manual run
+# carryforward keeps the last known coverage for a flag when a given CI run does
+# not upload it (e.g. a PR uploads only unittests), so the combined project
+# coverage stays meaningful instead of dropping to just one flag's contribution.
+flags:
+  unittests:
+    paths:
+      - .
+    carryforward: true
+  e2e:
+    paths:
+      - .
+    carryforward: true
+
 comment:
-  layout: "header, diff"
+  layout: "header, diff, flags"
   behavior: default
   require_changes: false
 
