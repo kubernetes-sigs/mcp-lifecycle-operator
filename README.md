@@ -13,7 +13,7 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 - [TLS Configuration](https://mcp-lifecycle-operator.sigs.k8s.io/operating/tls/) - Min version, cipher suites, and TLS 1.3 named groups
 - [Storage Version Migration](https://mcp-lifecycle-operator.sigs.k8s.io/operating/storage-version-migration/) - Rewrite stored objects to v1beta1 before removing v1alpha1
 - [API Reference](https://mcp-lifecycle-operator.sigs.k8s.io/reference/) - Full MCPServer API documentation
-- [Complete MCPServer example](./config/samples/mcp_v1alpha1_mcpserver_complete.yaml) - YAML showing all available fields
+- [Complete MCPServer example](./config/samples/mcp_v1beta1_mcpserver_complete.yaml) - YAML showing all available fields
 - [Contributing](https://mcp-lifecycle-operator.sigs.k8s.io/contributing/) - How to contribute to the project
 
 ## Prerequisites

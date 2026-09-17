@@ -3,7 +3,7 @@
 
 ## Append samples of your project ##
 resources:
-- mcp_v1alpha1_mcpserver.yaml
-- mcp_v1alpha1_mcpserver_with_ingress_restriction.yaml
-- mcp_v1alpha1_mcpserver_with_egress_restriction.yaml
+- mcp_v1beta1_mcpserver.yaml
+- mcp_v1beta1_mcpserver_with_ingress_restriction.yaml
+- mcp_v1beta1_mcpserver_with_egress_restriction.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
