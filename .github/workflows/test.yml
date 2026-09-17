@@ -34,4 +34,9 @@ jobs:
 
       - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          files: ./cover.out
+          # cover.out is the untagged production build; cover-e2ecoverage.out adds
+          # cmd/coverage.go, which is compiled only under the e2ecoverage tag. See #177.
+          files: ./cover.out,./cover-e2ecoverage.out
+          # Tag as unit-test coverage so it can be compared side by side with the
+          # e2e coverage uploaded by the E2E Tests workflow. See #177.
+          flags: unittests

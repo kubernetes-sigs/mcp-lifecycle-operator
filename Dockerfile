@@ -55,3 +55,34 @@ COPY --from=builder /workspace/manager .
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]
+
+# Build a coverage-instrumented manager binary for E2E code coverage (see #177).
+# `go build -cover` instruments the main module's packages; at runtime the binary
+# writes coverage data to $GOCOVERDIR. This image is for E2E runs only and is
+# never shipped.
+FROM --platform=${BUILDPLATFORM} golang:1.27.1 AS coverage-builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+
+COPY . .
+
+# The e2ecoverage build tag compiles cmd/coverage.go (the real coverage-flushing
+# logic) in place of the production no-op stub, so the instrumented binary
+# actually flushes counters to $GOCOVERDIR. See #177.
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -cover -covermode=atomic -tags e2ecoverage -o manager ./cmd
+
+# Coverage runtime image. Unlike the distroless production image, this uses a
+# busybox base so that `kubectl cp` (which shells out to `tar` inside the
+# container) can extract the collected coverage data from the running pod.
+FROM busybox:1.37.0 AS coverage
+WORKDIR /
+COPY --from=coverage-builder /workspace/manager .
+USER 65532:65532
+
+ENTRYPOINT ["/manager"]

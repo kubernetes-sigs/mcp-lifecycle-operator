@@ -6,6 +6,13 @@ name: E2E Tests
 on:
   pull_request:
     branches: ['main']
+  # The e2e-coverage job is expensive (it rebuilds an instrumented image and
+  # collects coverage from a live cluster), so it does not run on every PR.
+  # It runs on a schedule and can be triggered manually. See #177.
+  workflow_dispatch: {}
+  schedule:
+    # Nightly at 03:00 UTC.
+    - cron: '0 3 * * *'
 
 permissions:
   contents: read
@@ -13,6 +20,7 @@ permissions:
 jobs:
   test-e2e:
     name: Run on Ubuntu
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
@@ -44,6 +52,7 @@ jobs:
 
   test-e2e-gateway:
     name: Gateway (${{ matrix.provider }})
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -77,3 +86,44 @@ jobs:
 
       - name: Run gateway e2e tests
         run: make test-e2e-gateway GATEWAY_PROVIDER=${{ matrix.provider }}
+
+  e2e-coverage:
+    name: E2E code coverage
+    # Only on schedule/manual runs: this rebuilds an instrumented image and
+    # collects coverage from a live cluster, which is too slow for every PR. See #177.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install kind
+        run: |
+          KIND_VERSION=v0.32.0
+          KIND_BINARY="kind-linux-$(go env GOARCH)"
+          curl -Lo "./${KIND_BINARY}" "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/${KIND_BINARY}"
+          curl -Lo "./${KIND_BINARY}.sha256sum" "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/${KIND_BINARY}.sha256sum"
+          sha256sum -c "./${KIND_BINARY}.sha256sum"
+          chmod +x "./${KIND_BINARY}"
+          sudo mv "./${KIND_BINARY}" /usr/local/bin/kind
+
+      - name: Deploy coverage-instrumented operator to Kind cluster
+        run: make deploy-test-e2e-cover
+
+      - name: Run e2e tests and collect coverage
+        run: make test-e2e-cover
+
+      - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: ./out/e2e-coverage.out
+          # Tag as e2e coverage so it can be compared side by side with the unit
+          # test coverage uploaded by the Tests workflow. See #177.
+          flags: e2e
+          # This job runs only on schedule/dispatch, so fail the run on an upload
+          # error rather than silently leaving the e2e flag empty.
+          fail_ci_if_error: true

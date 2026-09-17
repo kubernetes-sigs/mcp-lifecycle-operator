@@ -75,8 +75,23 @@ vet: ## Run go vet against code.
 
 # Coverage profile written by `make test` (same default as kubebuilder scaffold).
 COVER_PROFILE ?= cover.out
+# Second profile from the e2ecoverage-tagged ./cmd run. cmd/coverage.go (the real
+# coverage-flushing logic) is only compiled under that tag, so the default untagged
+# run cannot cover it. Uploaded to Codecov alongside COVER_PROFILE so that logic is
+# reflected without hiding the production (untagged) build from CI. See #177.
+COVER_PROFILE_E2ECOVERAGE ?= cover-e2ecoverage.out
 # Human-readable reports (not used by CI; see kubernetes-sigs/cluster-api `test-cover` pattern).
 COVER_OUTPUT_DIR ?= out
+
+# E2E code coverage (see #177). The coverage image is a `go build -cover` build of
+# the manager on a busybox base (so `kubectl cp` can extract data), deployed via
+# the config/coverage overlay. GOCOVERDIR is the local directory the raw coverage
+# data (covmeta*/covcounters*) is copied into before it is converted to a Go
+# coverage profile (E2E_COVER_PROFILE) that Codecov and `go tool cover` understand.
+COVERAGE_IMG ?= example.com/mcp-lifecycle-operator:e2e-cover
+GOCOVERDIR ?= $(COVER_OUTPUT_DIR)/e2e-gocoverdir
+E2E_COVER_PROFILE ?= $(COVER_OUTPUT_DIR)/e2e-coverage.out
+E2E_NAMESPACE ?= mcp-lifecycle-operator-system
 
 KUADRANT_TEST_CRD_DIR := internal/controller/providers/kuadrant/testdata
 
@@ -86,9 +101,14 @@ kuadrant-test-crds: kustomize ## Download Kuadrant CRDs for unit tests.
 		-o $(KUADRANT_TEST_CRD_DIR)/
 
 .PHONY: test
+# The main run is untagged, so it exercises the production build - including the
+# cmd/coverage_noop.go stub that actually ships. A second, tag-scoped run over
+# ./cmd then covers cmd/coverage.go (the real coverage-flushing logic, compiled
+# only under the e2ecoverage tag); both profiles are uploaded to Codecov. See #177.
 test: manifests generate fmt vet setup-envtest kuadrant-test-crds ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 		go test $$(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./...) -coverprofile $(COVER_PROFILE)
+	go test -tags e2ecoverage ./cmd/... -coverprofile $(COVER_PROFILE_E2ECOVERAGE)
 
 .PHONY: test-cover
 test-cover: test ## Run unit tests and write text + HTML coverage reports under out/ (informational).
@@ -109,7 +129,7 @@ cover-html: ## Open HTML coverage in a browser (requires cover.out; run make tes
 
 .PHONY: cover-clean
 cover-clean: ## Remove cover.out and out/coverage.{txt,html} from test-cover.
-	rm -f $(COVER_PROFILE) $(COVER_OUTPUT_DIR)/coverage.txt $(COVER_OUTPUT_DIR)/coverage.html
+	rm -f $(COVER_PROFILE) $(COVER_PROFILE_E2ECOVERAGE) $(COVER_OUTPUT_DIR)/coverage.txt $(COVER_OUTPUT_DIR)/coverage.html
 
 KIND_CLUSTER ?= mcp-lifecycle-operator-test-e2e
 CERT_MANAGER_VERSION ?= v1.17.2
@@ -191,6 +211,34 @@ stop-cloud-provider-kind: ## Stop cloud-provider-kind if running.
 .PHONY: test-e2e
 test-e2e: ## Run the e2e tests (requires operator already deployed, see deploy-test-e2e).
 	go test -tags=e2e ./test/e2e/ -v -count=1 -timeout 1h
+
+.PHONY: deploy-test-e2e-cover
+deploy-test-e2e-cover: setup-test-e2e deploy-certmanager manifests generate ## Build and deploy the coverage-instrumented operator to Kind for E2E code coverage (see #177).
+	$(MAKE) docker-build-cover
+	$(KIND) load docker-image $(COVERAGE_IMG) --name $(KIND_CLUSTER)
+	$(MAKE) install
+	$(MAKE) deploy KUSTOMIZE_DEFAULT_DIR=config/coverage IMG=$(COVERAGE_IMG)
+	$(KUBECTL) rollout status deployment/mcp-lifecycle-operator-controller-manager -n $(E2E_NAMESPACE) --timeout=120s
+
+.PHONY: test-e2e-cover
+test-e2e-cover: ## Run the e2e tests then collect code coverage from the running operator (requires deploy-test-e2e-cover).
+	$(MAKE) test-e2e
+	$(MAKE) cover-collect-e2e
+
+.PHONY: cover-collect-e2e
+cover-collect-e2e: ## Copy Go coverage data out of the running operator pod and convert it to a profile (see #177).
+	@rm -rf $(GOCOVERDIR) && mkdir -p $(GOCOVERDIR)
+	@pod=$$($(KUBECTL) get pods -n $(E2E_NAMESPACE) -l control-plane=controller-manager --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}'); \
+	if [ -z "$$pod" ]; then echo "no controller-manager pod found in $(E2E_NAMESPACE)" >&2; exit 1; fi; \
+	echo "Collecting coverage from pod $$pod"; \
+	$(KUBECTL) cp -n $(E2E_NAMESPACE) -c manager "$$pod:/coverage" "$(GOCOVERDIR)"; \
+	counters=$$(find "$(GOCOVERDIR)" -name 'covcounters.*' -print -quit); \
+	if [ -z "$$counters" ]; then echo "no Go coverage counters (covcounters.*) found under $(GOCOVERDIR); the operator may not have flushed yet (counters are written at startup and on an interval, and covdata needs them alongside covmeta.*)" >&2; exit 1; fi; \
+	covdir=$$(dirname "$$counters"); \
+	echo "Found coverage data in $$covdir"; \
+	go tool covdata textfmt -i="$$covdir" -o $(E2E_COVER_PROFILE); \
+	go tool covdata percent -i="$$covdir"
+	@echo "Wrote E2E coverage profile to $(E2E_COVER_PROFILE)"
 
 .PHONY: deploy-gateway-envoygateway
 deploy-gateway-envoygateway: setup-test-e2e deploy-cloud-provider-kind ## Install Envoy Gateway for gateway e2e tests.
@@ -280,6 +328,10 @@ docker-build: ## Build docker image with the manager.
 .PHONY: docker-build-debug
 docker-build-debug: ## Build docker image with Delve for remote debugging.
 	$(CONTAINER_TOOL) build --target debug -t ${IMG} .
+
+.PHONY: docker-build-cover
+docker-build-cover: ## Build a coverage-instrumented manager image for E2E code coverage (see #177).
+	$(CONTAINER_TOOL) build --target coverage -t $(COVERAGE_IMG) .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
