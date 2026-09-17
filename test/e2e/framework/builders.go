@@ -126,6 +126,13 @@ func WithGateway(provider, configRef string) MCPServerOption {
 	}
 }
 
+// WithNetwork sets the network policy configuration on the MCPServer.
+func WithNetwork(network *mcpv1beta1.NetworkConfig) MCPServerOption {
+	return func(s *mcpv1beta1.MCPServer) {
+		s.Spec.Network = network
+	}
+}
+
 // NewMCPServer creates an MCPServer with sensible defaults for e2e tests.
 // Defaults: image=DefaultMCPServerImage, port=8080, args=["--port","8080","--read-only"].
 func NewMCPServer(name, namespace string, opts ...MCPServerOption) *mcpv1beta1.MCPServer {
