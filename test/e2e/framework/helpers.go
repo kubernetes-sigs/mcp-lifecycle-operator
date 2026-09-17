@@ -112,6 +112,42 @@ func WaitForMCPServerCondition(ctx context.Context, t *testing.T, r *resources.R
 	}
 }
 
+// WaitForMCPServerGatewayAddress polls until the MCPServer both reports
+// GatewayRegistered=True and has a non-empty status.address.url. The gateway
+// address is derived from the binding's status URL, which can still be empty at
+// the instant GatewayRegistered flips to True (the gateway address is populated
+// by a later reconcile). Waiting only on the condition therefore races the URL
+// being set; callers that assert on the address must wait on both.
+// An optional timeout can be provided; defaults to 3 minutes.
+func WaitForMCPServerGatewayAddress(ctx context.Context, t *testing.T, r *resources.Resources,
+	server *mcpv1beta1.MCPServer, timeout ...time.Duration) {
+	t.Helper()
+	d := 3 * time.Minute
+	if len(timeout) > 0 {
+		d = timeout[0]
+	}
+	err := wait.For(
+		conditions.New(r).ResourceMatch(server, func(obj k8s.Object) bool {
+			s := obj.(*mcpv1beta1.MCPServer)
+			registered := false
+			for _, c := range s.Status.Conditions {
+				if c.Type == "GatewayRegistered" && c.Status == metav1.ConditionTrue {
+					registered = true
+					break
+				}
+			}
+			return registered && s.Status.Address != nil && s.Status.Address.URL != ""
+		}),
+		wait.WithContext(ctx),
+		wait.WithTimeout(d),
+		wait.WithInterval(2*time.Second),
+	)
+	if err != nil {
+		t.Fatalf("MCPServer %s/%s: timed out waiting for GatewayRegistered=True and status.address.url to be set: %v",
+			server.Namespace, server.Name, err)
+	}
+}
+
 // WaitForMCPServerReconciledAndReady polls until the controller has reconciled the
 // current generation (observedGeneration >= generation) and the server is fully
 // ready: both Available=True (workload up) and Verified=True (MCP handshake
