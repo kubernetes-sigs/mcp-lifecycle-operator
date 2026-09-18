@@ -27,7 +27,7 @@ import (
 //
 // StorageMount defines a storage mount combining volume source and mount configuration.
 // The Path and Permissions fields apply to all storage types, while Source contains
-// the type-specific configuration (ConfigMap, Secret, or EmptyDir).
+// the type-specific configuration (ConfigMap, Secret, EmptyDir, or PersistentVolumeClaim).
 type StorageMountApplyConfiguration struct {
 	// Path is a required field that specifies where the volume should be mounted in the container.
 	// Must be an absolute path (starting with /).
