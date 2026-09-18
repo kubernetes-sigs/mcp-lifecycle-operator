@@ -283,6 +283,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	// No-op in the production binary; only the coverage build (-tags e2ecoverage)
+	// registers a real Runnable. See cmd/coverage.go / cmd/coverage_noop.go and #177.
+	startCoverageFlushing(mgr)
+
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")

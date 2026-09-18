@@ -1,0 +1,17 @@
+# E2E code coverage overlay (see #177).
+#
+# Layers a writable GOCOVERDIR volume and environment variable onto the default
+# deployment so that a coverage-instrumented manager image (built via the
+# Dockerfile `coverage` target, `make docker-build-cover`) emits coverage data
+# that `kubectl cp` can extract from the running pod. Use with a coverage image:
+#
+#   make deploy-test-e2e-cover
+#   make test-e2e-cover
+resources:
+- ../default
+
+patches:
+- path: manager_coverage_patch.yaml
+  target:
+    kind: Deployment
+    labelSelector: control-plane=controller-manager
