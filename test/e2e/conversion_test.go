@@ -25,6 +25,7 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
@@ -153,6 +154,111 @@ func TestConversionWebhookRoundTrip(t *testing.T) {
 			}
 			f.AssertAddressURL(t, beta, port)
 			t.Logf("converted MCPServer reconciled: Available=True, Verified=True, address=%s", beta.Status.Address.URL)
+			return ctx
+		}).
+		Feature()
+
+	testenv.Test(t, feature)
+}
+
+// TestConversionV1beta1OnlyFieldPreserved guards the v1beta1-only spec.gateway
+// field on the conversion path. Unlike the shared-schema fields that
+// TestConversionWebhookRoundTrip covers, spec.gateway has no v1alpha1 equivalent,
+// so it exercises two properties those fields cannot:
+//   - it is actually served and persisted by the v1beta1 CRD (a schema-generation
+//     regression that pruned the new field would surface here, not just at the
+//     unit layer),
+//   - down-conversion to v1alpha1 drops it: a Get at v1alpha1 returns the shared
+//     fields without error, and the served v1alpha1 representation genuinely omits
+//     spec.gateway rather than smuggling it into an annotation or extra field.
+//
+// A native v1beta1 object is used (not a v1alpha1 one) because v1alpha1 cannot
+// express spec.gateway in the first place. The provider name is deliberately one
+// no integration controller reconciles, so the test does not depend on gateway
+// infrastructure being installed; only field persistence and conversion are under
+// test, not binding provisioning.
+func TestConversionV1beta1OnlyFieldPreserved(t *testing.T) {
+	t.Parallel()
+	const (
+		name      = "convert-beta-gateway"
+		port      = int32(8080)
+		provider  = "e2e-conversion-probe"
+		configRef = "gw-config"
+	)
+
+	feature := features.New("v1beta1-only spec.gateway is persisted and drops cleanly on down-conversion").
+		WithLabel(category.Label, category.Configuration).
+		WithLabel(speed.Label, speed.Moderate).
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			ns, ok := ctx.Value(f.NsKey).(string)
+			if !ok || ns == "" {
+				t.Fatal("namespace not found in context; ensure BeforeEachTest has run")
+			}
+			r := cfg.Client().Resources()
+
+			// Native v1beta1 object carrying the v1beta1-only spec.gateway field.
+			beta := f.NewMCPServer(name, ns, f.WithGateway(provider, configRef))
+			if err := r.Create(ctx, beta); err != nil {
+				t.Fatalf("failed to create v1beta1 MCPServer with spec.gateway: %v", err)
+			}
+			t.Logf("created v1beta1 MCPServer %s/%s with spec.gateway.provider=%s", ns, name, provider)
+			return ctx
+		}).
+		Assess("spec.gateway is persisted and served at the v1beta1 storage version", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			ns := ctx.Value(f.NsKey).(string)
+			r := cfg.Client().Resources()
+
+			beta := &mcpv1beta1.MCPServer{}
+			if err := r.Get(ctx, name, ns, beta); err != nil {
+				t.Fatalf("failed to get MCPServer at v1beta1: %v", err)
+			}
+			if beta.Spec.Gateway == nil {
+				t.Fatal("spec.gateway dropped: the v1beta1-only field was not persisted by the CRD")
+			}
+			if got := beta.Spec.Gateway.Provider; got != provider {
+				t.Errorf("spec.gateway.provider not preserved: got %q, want %q", got, provider)
+			}
+			if got := beta.Spec.Gateway.ConfigRef; got != configRef {
+				t.Errorf("spec.gateway.configRef not preserved: got %q, want %q", got, configRef)
+			}
+			t.Logf("spec.gateway preserved at v1beta1 (provider=%s configRef=%s)",
+				beta.Spec.Gateway.Provider, beta.Spec.Gateway.ConfigRef)
+			return ctx
+		}).
+		Assess("down-conversion to v1alpha1 drops spec.gateway", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			ns := ctx.Value(f.NsKey).(string)
+			r := cfg.Client().Resources()
+
+			// A typed v1alpha1 Get runs the webhook (v1beta1 -> v1alpha1) and must
+			// succeed and preserve the shared fields. The gateway field cannot be
+			// asserted on the typed object because v1alpha1 has no such field.
+			alpha := &mcpv1alpha1.MCPServer{}
+			if err := r.Get(ctx, name, ns, alpha); err != nil {
+				t.Fatalf("down-conversion to v1alpha1 failed on an object with spec.gateway set: %v", err)
+			}
+			if alpha.Spec.Source.ContainerImage == nil ||
+				alpha.Spec.Source.ContainerImage.Ref != f.DefaultMCPServerImage {
+				t.Errorf("shared fields not preserved on down-conversion: source=%+v", alpha.Spec.Source)
+			}
+			if alpha.Spec.Config.Port != port {
+				t.Errorf("port not preserved on down-conversion: got %d, want %d", alpha.Spec.Config.Port, port)
+			}
+
+			// An unstructured v1alpha1 Get proves the drop rather than assuming it:
+			// it reads the served v1alpha1 representation verbatim, so a conversion
+			// that leaked gateway data into spec.gateway (or anywhere) would show up
+			// here even though the typed client would silently discard it.
+			u := &unstructured.Unstructured{}
+			u.SetGroupVersionKind(mcpv1alpha1.GroupVersion.WithKind("MCPServer"))
+			if err := r.Get(ctx, name, ns, u); err != nil {
+				t.Fatalf("failed to get v1alpha1 MCPServer as unstructured: %v", err)
+			}
+			if _, found, err := unstructured.NestedMap(u.Object, "spec", "gateway"); err != nil {
+				t.Fatalf("failed to read spec.gateway from v1alpha1 object: %v", err)
+			} else if found {
+				t.Error("spec.gateway present in the served v1alpha1 representation; it must be dropped on down-conversion")
+			}
+			t.Log("v1alpha1 down-conversion succeeded and omits spec.gateway as expected")
 			return ctx
 		}).
 		Feature()
