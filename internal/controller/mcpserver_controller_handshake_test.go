@@ -923,6 +923,182 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Completions).To(BeFalse())
 	})
 
+	It("should populate catalog counts in status when handshake returns them", func() {
+		toolCount := int32(5)
+		resourceCount := int32(3)
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+				return &mcpv1beta1.MCPServerInfo{
+					Name:            "catalog-test-server",
+					Version:         "1.0.0",
+					ProtocolVersion: "2025-03-26",
+					Capabilities: &mcpv1beta1.MCPServerCapabilities{
+						Tools:     true,
+						Resources: true,
+					},
+					CatalogCounts: &mcpv1beta1.CatalogCounts{
+						ToolCount:     &toolCount,
+						ResourceCount: &resourceCount,
+					},
+				}, nil
+			},
+			APIReader: k8sClient,
+		}
+
+		By("Initial reconciliation creates deployment")
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Simulating deployment becoming available")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		By("Reconciling with successful handshake that includes catalog counts")
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying status.serverInfo.catalogCounts is populated")
+		mcpServer := &mcpv1beta1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil())
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts).NotTo(BeNil())
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.ToolCount).NotTo(BeNil())
+		Expect(*mcpServer.Status.ServerInfo.CatalogCounts.ToolCount).To(Equal(int32(5)))
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.ResourceCount).NotTo(BeNil())
+		Expect(*mcpServer.Status.ServerInfo.CatalogCounts.ResourceCount).To(Equal(int32(3)))
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.PromptCount).To(BeNil(),
+			"PromptCount should be nil when server does not support prompts")
+	})
+
+	It("should handle zero catalog counts correctly", func() {
+		toolCount := int32(0)
+		resourceCount := int32(0)
+		promptCount := int32(0)
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+				return &mcpv1beta1.MCPServerInfo{
+					Name:            "empty-catalog-server",
+					Version:         "1.0.0",
+					ProtocolVersion: "2025-03-26",
+					Capabilities: &mcpv1beta1.MCPServerCapabilities{
+						Tools:     true,
+						Resources: true,
+						Prompts:   true,
+					},
+					CatalogCounts: &mcpv1beta1.CatalogCounts{
+						ToolCount:     &toolCount,
+						ResourceCount: &resourceCount,
+						PromptCount:   &promptCount,
+					},
+				}, nil
+			},
+			APIReader: k8sClient,
+		}
+
+		By("Initial reconciliation creates deployment")
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Simulating deployment becoming available")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		By("Reconciling with successful handshake")
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying zero counts are preserved (not nil)")
+		mcpServer := &mcpv1beta1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil())
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts).NotTo(BeNil())
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.ToolCount).NotTo(BeNil())
+		Expect(*mcpServer.Status.ServerInfo.CatalogCounts.ToolCount).To(Equal(int32(0)))
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.ResourceCount).NotTo(BeNil())
+		Expect(*mcpServer.Status.ServerInfo.CatalogCounts.ResourceCount).To(Equal(int32(0)))
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts.PromptCount).NotTo(BeNil())
+		Expect(*mcpServer.Status.ServerInfo.CatalogCounts.PromptCount).To(Equal(int32(0)))
+	})
+
+	It("should not populate catalog counts when no capabilities are supported", func() {
+		reconciler := &MCPServerReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+				return &mcpv1beta1.MCPServerInfo{
+					Name:            "no-caps-server",
+					Version:         "1.0.0",
+					ProtocolVersion: "2025-03-26",
+				}, nil
+			},
+			APIReader: k8sClient,
+		}
+
+		By("Initial reconciliation creates deployment")
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Simulating deployment becoming available")
+		deployment := &appsv1.Deployment{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name: resourceName, Namespace: "default",
+		}, deployment)).To(Succeed())
+
+		deployment.Status.Replicas = 1
+		deployment.Status.ReadyReplicas = 1
+		deployment.Status.Conditions = []appsv1.DeploymentCondition{
+			{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue},
+			{Type: appsv1.DeploymentProgressing, Status: corev1.ConditionTrue},
+		}
+		Expect(k8sClient.Status().Update(ctx, deployment)).To(Succeed())
+
+		By("Reconciling with successful handshake")
+		_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: typeNamespacedName,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Verifying catalog counts are nil when no capabilities")
+		mcpServer := &mcpv1beta1.MCPServer{}
+		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil())
+		Expect(mcpServer.Status.ServerInfo.CatalogCounts).To(BeNil())
+	})
+
 	It("should carry forward serverInfo when handshake is skipped", func() {
 		reconciler := &MCPServerReconciler{
 			Client: k8sClient,
@@ -1310,6 +1486,124 @@ var _ = Describe("extractServerInfo", func() {
 		info := extractServerInfo(result)
 		Expect(info).NotTo(BeNil())
 		Expect(info.Capabilities).To(BeNil())
+	})
+})
+
+var _ = Describe("extractCatalogCounts", func() {
+	// newCatalogSession spins up an in-memory MCP server exposing the requested
+	// number of tools, resources, and prompts, connects a client to it, and
+	// returns the live client session. The cleanup closes both sides.
+	// pageSize of 0 lets the SDK use its default (1000); a small value forces
+	// the server to paginate so the cursor-following path is exercised.
+	newCatalogSession := func(tools, resources, prompts, pageSize int) (*mcp.ClientSession, func()) {
+		serverTransport, clientTransport := mcp.NewInMemoryTransports()
+		server := mcp.NewServer(
+			&mcp.Implementation{Name: "catalog-server", Version: "1.0.0"},
+			&mcp.ServerOptions{PageSize: pageSize},
+		)
+
+		for i := range tools {
+			server.AddTool(
+				&mcp.Tool{
+					Name:        fmt.Sprintf("tool-%d", i),
+					Description: "test tool",
+					InputSchema: map[string]any{"type": "object"},
+				},
+				func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+					return &mcp.CallToolResult{}, nil
+				},
+			)
+		}
+		for i := range resources {
+			server.AddResource(
+				&mcp.Resource{Name: fmt.Sprintf("res-%d", i), URI: fmt.Sprintf("file:///res-%d", i)},
+				func(context.Context, *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+					return &mcp.ReadResourceResult{}, nil
+				},
+			)
+		}
+		for i := range prompts {
+			server.AddPrompt(
+				&mcp.Prompt{Name: fmt.Sprintf("prompt-%d", i)},
+				func(context.Context, *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+					return &mcp.GetPromptResult{}, nil
+				},
+			)
+		}
+
+		ctx := context.Background()
+		serverSession, err := server.Connect(ctx, serverTransport, nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		mcpClient := mcp.NewClient(&mcp.Implementation{Name: "catalog-client", Version: "1.0.0"}, nil)
+		clientSession, err := mcpClient.Connect(ctx, clientTransport, nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		cleanup := func() {
+			_ = clientSession.Close()
+			_ = serverSession.Close()
+		}
+		return clientSession, cleanup
+	}
+
+	It("should return nil when the initialize result is nil", func() {
+		Expect(extractCatalogCounts(context.Background(), nil, nil)).To(BeNil())
+	})
+
+	It("should return nil when capabilities are nil", func() {
+		Expect(extractCatalogCounts(context.Background(), nil, &mcp.InitializeResult{})).To(BeNil())
+	})
+
+	It("should return nil when no tool/resource/prompt capabilities are advertised", func() {
+		initResult := &mcp.InitializeResult{
+			Capabilities: &mcp.ServerCapabilities{
+				Logging: &mcp.LoggingCapabilities{}, //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
+			},
+		}
+		Expect(extractCatalogCounts(context.Background(), nil, initResult)).To(BeNil())
+	})
+
+	It("should count tools, resources, and prompts from a live session", func() {
+		session, cleanup := newCatalogSession(2, 3, 1, 0)
+		defer cleanup()
+
+		counts := extractCatalogCounts(context.Background(), session, session.InitializeResult())
+		Expect(counts).NotTo(BeNil())
+		Expect(counts.ToolCount).NotTo(BeNil())
+		Expect(*counts.ToolCount).To(Equal(int32(2)))
+		Expect(counts.ResourceCount).NotTo(BeNil())
+		Expect(*counts.ResourceCount).To(Equal(int32(3)))
+		Expect(counts.PromptCount).NotTo(BeNil())
+		Expect(*counts.PromptCount).To(Equal(int32(1)))
+	})
+
+	It("should count only the advertised capability when the server exposes a single kind", func() {
+		session, cleanup := newCatalogSession(1, 0, 0, 0)
+		defer cleanup()
+
+		counts := extractCatalogCounts(context.Background(), session, session.InitializeResult())
+		Expect(counts).NotTo(BeNil())
+		Expect(counts.ToolCount).NotTo(BeNil())
+		Expect(*counts.ToolCount).To(Equal(int32(1)))
+		Expect(counts.ResourceCount).To(BeNil())
+		Expect(counts.PromptCount).To(BeNil())
+	})
+
+	It("should count all items across multiple pages, not just the first page", func() {
+		// PageSize 1 forces the server to return one item per page, so an
+		// undercounting implementation that ignored NextCursor would report 1
+		// for each kind instead of the true totals below.
+		session, cleanup := newCatalogSession(5, 4, 3, 1)
+		defer cleanup()
+
+		counts := extractCatalogCounts(context.Background(), session, session.InitializeResult())
+		Expect(counts).NotTo(BeNil())
+		Expect(counts.ToolCount).NotTo(BeNil())
+		Expect(*counts.ToolCount).To(Equal(int32(5)))
+		Expect(counts.ResourceCount).NotTo(BeNil())
+		Expect(*counts.ResourceCount).To(Equal(int32(4)))
+		Expect(counts.PromptCount).NotTo(BeNil())
+		Expect(*counts.PromptCount).To(Equal(int32(3)))
 	})
 })
 

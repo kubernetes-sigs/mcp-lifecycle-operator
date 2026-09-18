@@ -32,6 +32,8 @@ import (
 func ForKind(kind schema.GroupVersionKind) interface{} {
 	switch kind {
 	// Group=mcp.x-k8s.io, Version=v1beta1
+	case v1beta1.SchemeGroupVersion.WithKind("CatalogCounts"):
+		return &apiv1beta1.CatalogCountsApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("ContainerImageSource"):
 		return &apiv1beta1.ContainerImageSourceApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("GatewayBindingStatus"):
