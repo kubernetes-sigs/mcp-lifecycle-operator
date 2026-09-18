@@ -45,7 +45,8 @@ func TestHTTPRouteProviderResources(t *testing.T) {
 		WithLabel(scope.Label, scope.HTTPRoute).
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
-			prov.ConfigData["section-name"] = f.EnsureGateway(ctx, t, cfg, prov.ConfigData["gateway-name"], prov.ConfigData["gateway-namespace"], prov.ConfigData["gateway-class"])
+			listenerName, _ := f.EnsureGateway(ctx, t, cfg, prov.ConfigData["gateway-name"], prov.ConfigData["gateway-namespace"], prov.ConfigData["gateway-class"])
+			prov.ConfigData["section-name"] = listenerName
 			f.CreateGatewayConfigMap(ctx, t, cfg, configMapName, ns, prov.ConfigData)
 			ctx = f.SetupMCPServer(ctx, t, cfg, "httproute-resources", false,
 				f.WithGateway(prov.Name, configMapName),

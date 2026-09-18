@@ -26,24 +26,21 @@ import (
 	"testing"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
-)
 
-// GatewayServiceLocator describes how to find the gateway data plane service.
-type GatewayServiceLocator struct {
-	Namespace     string
-	LabelSelector map[string]string
-}
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	kuadrantapi "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant/api"
+)
 
 // ProviderConfig describes a gateway provider for conformance testing.
 type ProviderConfig struct {
-	Name           string
-	ConfigData     map[string]string
-	GatewayService GatewayServiceLocator
+	Name       string
+	ConfigData map[string]string
 }
 
 var providers = map[string]ProviderConfig{
@@ -56,13 +53,6 @@ var providers = map[string]ProviderConfig{
 			"route-hostname":    "mcp.e2e.test",
 			"public-hostname":   "mcp.e2e.test",
 		},
-		GatewayService: GatewayServiceLocator{
-			Namespace: "envoy-gateway-system",
-			LabelSelector: map[string]string{
-				"gateway.envoyproxy.io/owning-gateway-name":      "e2e-gateway",
-				"gateway.envoyproxy.io/owning-gateway-namespace": "gateway-system",
-			},
-		},
 	},
 	"kuadrant": {
 		Name: "kuadrant",
@@ -70,15 +60,9 @@ var providers = map[string]ProviderConfig{
 			"gateway-name":      "mcp-gateway",
 			"gateway-namespace": "gateway-system",
 			"gateway-class":     "istio",
-			"route-hostname":    "mcp.127-0-0-1.sslip.io",
-			"public-hostname":   "mcp.127-0-0-1.sslip.io",
+			"route-hostname":    "mcp.e2e.test",
+			"public-hostname":   "mcp.e2e.test",
 			"prefix":            "e2e_",
-		},
-		GatewayService: GatewayServiceLocator{
-			Namespace: "gateway-system",
-			LabelSelector: map[string]string{
-				"gateway.networking.k8s.io/gateway-name": "mcp-gateway",
-			},
 		},
 	},
 }
@@ -106,44 +90,19 @@ func providerNames() []string {
 	return names
 }
 
-// GatewayProxyHTTPClient discovers the gateway data plane service by label
-// selector and returns an *http.Client plus the full API-server proxy URL for
-// reaching it on port 80. The caller should set the Host header on requests to
-// route through the gateway's data plane.
-func GatewayProxyHTTPClient(t *testing.T, cfg *envconf.Config,
-	locator GatewayServiceLocator, path string) (*http.Client, string) {
+// NewGatewayRequest builds an *http.Request that targets the gateway's
+// LoadBalancer address directly. The Host header is set to hostname so
+// the gateway's listener can perform host-based routing.
+func NewGatewayRequest(t *testing.T, gatewayAddress, method, path, hostname string) *http.Request {
 	t.Helper()
 
-	svc := resolveGatewayService(t, cfg, locator)
-	return ServiceProxyHTTPClient(t, cfg, svc.Namespace, svc.Name, 80, path)
-}
-
-func resolveGatewayService(t *testing.T, cfg *envconf.Config, loc GatewayServiceLocator) corev1.Service {
-	t.Helper()
-	r := cfg.Client().Resources().WithNamespace(loc.Namespace)
-	sel := labels.SelectorFromSet(loc.LabelSelector).String()
-
-	var found corev1.Service
-	deadline := time.Now().Add(60 * time.Second)
-	for {
-		var list corev1.ServiceList
-		if err := r.List(context.Background(), &list,
-			resources.WithLabelSelector(sel),
-		); err != nil {
-			t.Fatalf("failed to list gateway services: %v", err)
-		}
-		if len(list.Items) == 1 {
-			found = list.Items[0]
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for gateway data plane service in %s matching %v (found %d)",
-				loc.Namespace, loc.LabelSelector, len(list.Items))
-		}
-		time.Sleep(2 * time.Second)
+	u := fmt.Sprintf("http://%s%s", gatewayAddress, path)
+	req, err := http.NewRequest(method, u, nil)
+	if err != nil {
+		t.Fatalf("failed to create gateway request: %v", err)
 	}
-	t.Logf("resolved gateway service: %s/%s", found.Namespace, found.Name)
-	return found
+	req.Host = hostname
+	return req
 }
 
 type hostOverrideTransport struct {
@@ -158,12 +117,243 @@ func (t *hostOverrideTransport) RoundTrip(req *http.Request) (*http.Response, er
 
 // WithHostOverride wraps the given http.Client's transport so that every
 // outgoing request sets the Host header to the given value. This is needed
-// when routing through the Kubernetes API server proxy to a gateway that
-// performs host-based routing.
+// when the MCP SDK client creates its own requests internally and the
+// gateway performs host-based routing.
 func WithHostOverride(c *http.Client, host string) *http.Client {
-	return &http.Client{
-		Transport: &hostOverrideTransport{base: c.Transport, host: host},
+	base := c.Transport
+	if base == nil {
+		base = http.DefaultTransport
 	}
+	return &http.Client{
+		Transport: &hostOverrideTransport{base: base, host: host},
+	}
+}
+
+// MCPGatewayExtensionOption configures an MCPGatewayExtension for testing.
+type MCPGatewayExtensionOption func(*kuadrantapi.MCPGatewayExtension)
+
+// WithPublicHost sets the publicHost on the MCPGatewayExtension.
+func WithPublicHost(host string) MCPGatewayExtensionOption {
+	return func(ext *kuadrantapi.MCPGatewayExtension) {
+		ext.Spec.PublicHost = host
+	}
+}
+
+// WithSectionName sets the sectionName on the MCPGatewayExtension's targetRef.
+func WithSectionName(name string) MCPGatewayExtensionOption {
+	return func(ext *kuadrantapi.MCPGatewayExtension) {
+		ext.Spec.TargetRef.SectionName = name
+	}
+}
+
+// CreateMCPGatewayExtension creates an MCPGatewayExtension that targets the
+// given Gateway. The caller must ensure the kuadrant scheme is registered.
+func CreateMCPGatewayExtension(ctx context.Context, t *testing.T, cfg *envconf.Config,
+	name, namespace, gatewayName, gatewayNamespace string, opts ...MCPGatewayExtensionOption) *kuadrantapi.MCPGatewayExtension {
+	t.Helper()
+
+	ext := &kuadrantapi.MCPGatewayExtension{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "mcp.kuadrant.io/v1alpha1",
+			Kind:       "MCPGatewayExtension",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: kuadrantapi.MCPGatewayExtensionSpec{
+			TargetRef: kuadrantapi.TargetReference{
+				Group:     "gateway.networking.k8s.io",
+				Kind:      "Gateway",
+				Name:      gatewayName,
+				Namespace: gatewayNamespace,
+			},
+		},
+	}
+	for _, opt := range opts {
+		opt(ext)
+	}
+
+	if err := cfg.Client().Resources().Create(ctx, ext); err != nil {
+		t.Fatalf("failed to create MCPGatewayExtension %s/%s: %v", namespace, name, err)
+	}
+	t.Logf("created MCPGatewayExtension %s/%s (gateway=%s/%s)", namespace, name, gatewayNamespace, gatewayName)
+
+	t.Cleanup(func() {
+		cleanupExt := &kuadrantapi.MCPGatewayExtension{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		}
+		r := cfg.Client().Resources()
+		if err := r.Get(context.Background(), name, namespace, cleanupExt); err != nil {
+			return
+		}
+		if len(cleanupExt.Finalizers) > 0 {
+			cleanupExt.Finalizers = nil
+			_ = r.Update(context.Background(), cleanupExt)
+		}
+		_ = r.Delete(context.Background(), cleanupExt)
+	})
+
+	return ext
+}
+
+// ListenerSpec describes a Gateway listener for EnsureMultiListenerGateway.
+type ListenerSpec struct {
+	Name     string
+	Port     int32
+	Protocol gatewayv1.ProtocolType
+	Hostname *gatewayv1.Hostname
+}
+
+// EnsureMultiListenerGateway creates a Gateway with multiple listeners if it
+// doesn't already exist. Returns the gateway's LoadBalancer address.
+func EnsureMultiListenerGateway(ctx context.Context, t *testing.T, cfg *envconf.Config,
+	name, namespace, gatewayClassName string, listeners []ListenerSpec) string {
+	t.Helper()
+	r := cfg.Client().Resources()
+
+	fromAll := gatewayv1.NamespacesFromAll
+	var gwListeners []gatewayv1.Listener
+	for _, l := range listeners {
+		listener := gatewayv1.Listener{
+			Name:     gatewayv1.SectionName(l.Name),
+			Protocol: l.Protocol,
+			Port:     gatewayv1.PortNumber(l.Port),
+			AllowedRoutes: &gatewayv1.AllowedRoutes{
+				Namespaces: &gatewayv1.RouteNamespaces{
+					From: &fromAll,
+				},
+			},
+		}
+		if l.Hostname != nil {
+			listener.Hostname = l.Hostname
+		}
+		gwListeners = append(gwListeners, listener)
+	}
+
+	gw := &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: gatewayv1.GatewaySpec{
+			GatewayClassName: gatewayv1.ObjectName(gatewayClassName),
+			Listeners:        gwListeners,
+		},
+	}
+	if err := r.Create(ctx, gw); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("failed to create Gateway %s/%s: %v", namespace, name, err)
+	}
+
+	existing := &gatewayv1.Gateway{}
+	deadline := time.Now().Add(120 * time.Second)
+	var gatewayAddress string
+	for {
+		if err := r.Get(ctx, name, namespace, existing); err != nil {
+			t.Fatalf("failed to read Gateway %s/%s: %v", namespace, name, err)
+		}
+		if len(existing.Status.Addresses) > 0 {
+			gatewayAddress = existing.Status.Addresses[0].Value
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for Gateway %s/%s to receive a LoadBalancer address", namespace, name)
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	t.Logf("ensured multi-listener Gateway %s/%s (class=%s, listeners=%d, address=%s)",
+		namespace, name, gatewayClassName, len(listeners), gatewayAddress)
+	return gatewayAddress
+}
+
+// AssertMCPReachable performs a full MCP handshake through the gateway,
+// proving the server is reachable via the data plane. It connects to the
+// gateway's LoadBalancer address with the route hostname as the Host header.
+func AssertMCPReachable(ctx context.Context, t *testing.T, gatewayAddress, routeHostname, path string) {
+	t.Helper()
+
+	httpClient := WithHostOverride(&http.Client{}, routeHostname)
+
+	mcpClient := mcp.NewClient(
+		&mcp.Implementation{
+			Name:    "e2e-hostname-test-client",
+			Version: "v0.0.1",
+		},
+		nil,
+	)
+
+	transport := &mcp.StreamableClientTransport{
+		Endpoint:   fmt.Sprintf("http://%s%s", gatewayAddress, path),
+		HTTPClient: httpClient,
+	}
+
+	connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	session, err := mcpClient.Connect(connectCtx, transport, nil)
+	if err != nil {
+		t.Fatalf("MCP handshake through gateway failed (address=%s, host=%s, path=%s): %v",
+			gatewayAddress, routeHostname, path, err)
+	}
+	defer session.Close()
+
+	initResult := session.InitializeResult()
+	if initResult == nil {
+		t.Fatal("InitializeResult is nil")
+	}
+	t.Logf("MCP handshake succeeded: server=%s version=%s (host=%s)",
+		initResult.ServerInfo.Name, initResult.ServerInfo.Version, routeHostname)
+}
+
+// EnsureReferenceGrant creates a ReferenceGrant in gatewayNamespace that allows
+// MCPGatewayExtensions (and HTTPRoutes) from fromNamespace to reference Gateway
+// resources. The mcp-gateway controller requires this for cross-namespace
+// extension references. A t.Cleanup is registered to delete the grant.
+func EnsureReferenceGrant(ctx context.Context, t *testing.T, cfg *envconf.Config,
+	fromNamespace, gatewayNamespace string) {
+	t.Helper()
+	r := cfg.Client().Resources()
+
+	name := "allow-" + fromNamespace
+	grant := &gatewayv1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: gatewayNamespace,
+		},
+		Spec: gatewayv1.ReferenceGrantSpec{
+			From: []gatewayv1.ReferenceGrantFrom{
+				{
+					Group:     "gateway.networking.k8s.io",
+					Kind:      "HTTPRoute",
+					Namespace: gatewayv1.Namespace(fromNamespace),
+				},
+				{
+					Group:     "mcp.kuadrant.io",
+					Kind:      "MCPGatewayExtension",
+					Namespace: gatewayv1.Namespace(fromNamespace),
+				},
+			},
+			To: []gatewayv1.ReferenceGrantTo{
+				{
+					Group: "",
+					Kind:  "Service",
+				},
+				{
+					Group: "gateway.networking.k8s.io",
+					Kind:  "Gateway",
+				},
+			},
+		},
+	}
+	if err := r.Create(ctx, grant); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("failed to create ReferenceGrant %s/%s: %v", gatewayNamespace, name, err)
+	}
+	t.Logf("created ReferenceGrant %s/%s (from=%s)", gatewayNamespace, name, fromNamespace)
+
+	t.Cleanup(func() {
+		_ = r.Delete(context.Background(), grant)
+	})
 }
 
 func init() {

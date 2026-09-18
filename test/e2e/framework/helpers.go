@@ -148,6 +148,31 @@ func WaitForMCPServerGatewayAddress(ctx context.Context, t *testing.T, r *resour
 	}
 }
 
+// WaitForMCPServerAddressContains polls until the MCPServer's status.address.url
+// contains the given substring. Useful for waiting on a ConfigMap change to
+// propagate through reconciliation.
+func WaitForMCPServerAddressContains(ctx context.Context, t *testing.T, r *resources.Resources,
+	server *mcpv1beta1.MCPServer, substring string, timeout ...time.Duration) {
+	t.Helper()
+	d := 3 * time.Minute
+	if len(timeout) > 0 {
+		d = timeout[0]
+	}
+	err := wait.For(
+		conditions.New(r).ResourceMatch(server, func(obj k8s.Object) bool {
+			s := obj.(*mcpv1beta1.MCPServer)
+			return s.Status.Address != nil && strings.Contains(s.Status.Address.URL, substring)
+		}),
+		wait.WithContext(ctx),
+		wait.WithTimeout(d),
+		wait.WithInterval(2*time.Second),
+	)
+	if err != nil {
+		t.Fatalf("MCPServer %s/%s: timed out waiting for status.address.url to contain %q: %v",
+			server.Namespace, server.Name, substring, err)
+	}
+}
+
 // WaitForMCPServerReconciledAndReady polls until the controller has reconciled the
 // current generation (observedGeneration >= generation) and the server is fully
 // ready: both Available=True (workload up) and Verified=True (MCP handshake
@@ -407,15 +432,32 @@ func CreateGatewayConfigMap(ctx context.Context, t *testing.T, cfg *envconf.Conf
 	t.Logf("created gateway ConfigMap %s/%s", namespace, name)
 }
 
+// UpdateGatewayConfigMap updates an existing gateway ConfigMap's data using
+// a read-modify-write loop with automatic retry on conflict.
+func UpdateGatewayConfigMap(ctx context.Context, t *testing.T, cfg *envconf.Config,
+	name, namespace string, data map[string]string) {
+	t.Helper()
+	r := cfg.Client().Resources()
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+	}
+	UpdateWithRetry(ctx, t, r, cm, func(c *corev1.ConfigMap) {
+		c.Data = data
+	})
+	t.Logf("updated gateway ConfigMap %s/%s", namespace, name)
+}
+
 const defaultListenerName = "http"
 
 // EnsureGateway creates a GatewayClass, namespace, and Gateway resource if they don't
 // already exist. The Gateway allows routes from all namespaces so that HTTPRoutes
 // created in per-test namespaces are accepted by the gateway controller.
-// It returns the listener name of the actual Gateway on the cluster so that
-// callers can align their section-name config with the deployed Gateway.
+// It returns the listener name and the gateway's LoadBalancer address.
 func EnsureGateway(ctx context.Context, t *testing.T, cfg *envconf.Config,
-	name, namespace, gatewayClassName string) string {
+	name, namespace, gatewayClassName string) (string, string) {
 	t.Helper()
 	r := cfg.Client().Resources()
 
@@ -468,8 +510,25 @@ func EnsureGateway(ctx context.Context, t *testing.T, cfg *envconf.Config,
 	if len(existing.Spec.Listeners) > 0 {
 		listenerName = string(existing.Spec.Listeners[0].Name)
 	}
-	t.Logf("ensured Gateway %s/%s (class=%s, listener=%s)", namespace, name, gatewayClassName, listenerName)
-	return listenerName
+
+	deadline := time.Now().Add(120 * time.Second)
+	var gatewayAddress string
+	for {
+		if err := r.Get(ctx, name, namespace, existing); err != nil {
+			t.Fatalf("failed to read Gateway %s/%s: %v", namespace, name, err)
+		}
+		if len(existing.Status.Addresses) > 0 {
+			gatewayAddress = existing.Status.Addresses[0].Value
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for Gateway %s/%s to receive a LoadBalancer address", namespace, name)
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	t.Logf("ensured Gateway %s/%s (class=%s, listener=%s, address=%s)", namespace, name, gatewayClassName, listenerName, gatewayAddress)
+	return listenerName, gatewayAddress
 }
 
 // WaitForBindingRegistered polls until the MCPGatewayBinding's Registered condition

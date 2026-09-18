@@ -117,6 +117,7 @@ ENVOY_GATEWAY_VERSION ?= v1.9.0
 ISTIO_VERSION ?= 1.31.0
 GATEWAY_API_VERSION ?= v1.6.2
 MCP_GATEWAY_VERSION ?= v0.9.0
+CLOUD_PROVIDER_KIND_VERSION ?= v0.11.1
 
 .PHONY: deploy-certmanager
 deploy-certmanager: ## Install cert-manager in the cluster (required for conversion webhooks).
@@ -160,12 +161,24 @@ deploy-test-e2e: setup-test-e2e deploy-certmanager manifests generate ## Build a
 
 GATEWAY_PROVIDER ?= httproute
 
+.PHONY: deploy-cloud-provider-kind
+deploy-cloud-provider-kind: cloud-provider-kind ## Start cloud-provider-kind for LoadBalancer support on KinD.
+	@if [ -f /tmp/cloud-provider-kind.pid ] && kill -0 $$(cat /tmp/cloud-provider-kind.pid) 2>/dev/null; then \
+		echo "cloud-provider-kind is already running (PID: $$(cat /tmp/cloud-provider-kind.pid)). Skipping."; \
+	else \
+		echo "Starting cloud-provider-kind (gateway-channel=disabled)..." ;\
+		"$(CLOUD_PROVIDER_KIND)" --gateway-channel disabled > /tmp/cloud-provider-kind.log 2>&1 & \
+		echo "$$!" > /tmp/cloud-provider-kind.pid ;\
+		echo "cloud-provider-kind started (PID: $$!)"; \
+		sleep 3; \
+	fi
+
 .PHONY: test-e2e
 test-e2e: ## Run the e2e tests (requires operator already deployed, see deploy-test-e2e).
 	go test -tags=e2e ./test/e2e/ -v -count=1 -timeout 1h
 
 .PHONY: deploy-gateway-envoygateway
-deploy-gateway-envoygateway: setup-test-e2e ## Install Envoy Gateway for gateway e2e tests.
+deploy-gateway-envoygateway: setup-test-e2e deploy-cloud-provider-kind ## Install Envoy Gateway for gateway e2e tests.
 	$(KUBECTL) apply --server-side -f https://github.com/envoyproxy/gateway/releases/download/$(ENVOY_GATEWAY_VERSION)/install.yaml
 	$(KUBECTL) wait --for=condition=Available --timeout=300s deployment/envoy-gateway -n envoy-gateway-system
 	$(KUBECTL) wait --for=condition=Established --timeout=120s crd/httproutes.gateway.networking.k8s.io
@@ -174,7 +187,7 @@ deploy-gateway-envoygateway: setup-test-e2e ## Install Envoy Gateway for gateway
 deploy-test-e2e-httproute: deploy-gateway-envoygateway deploy-test-e2e ## Deploy for httproute gateway e2e tests.
 
 .PHONY: deploy-gateway-kuadrant
-deploy-gateway-kuadrant: setup-test-e2e istioctl ## Install Istio and Kuadrant MCP Gateway for gateway e2e tests.
+deploy-gateway-kuadrant: setup-test-e2e deploy-cloud-provider-kind istioctl ## Install Istio and Kuadrant MCP Gateway for gateway e2e tests.
 	$(KUBECTL) apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/$(GATEWAY_API_VERSION)/standard-install.yaml
 	$(KUBECTL) wait --for=condition=Established --timeout=120s crd/gateways.gateway.networking.k8s.io
 	$(ISTIOCTL) install --set profile=minimal -y
@@ -351,6 +364,7 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 ISTIOCTL ?= $(LOCALBIN)/istioctl
+CLOUD_PROVIDER_KIND ?= $(LOCALBIN)/cloud-provider-kind
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.7.1
@@ -413,6 +427,11 @@ $(ISTIOCTL): $(LOCALBIN)
 	rm -rf istio-$(ISTIO_VERSION) ;\
 	}
 	@ln -sf "$$(realpath -e "$(ISTIOCTL)-$(ISTIO_VERSION)")" "$(ISTIOCTL)"
+
+.PHONY: cloud-provider-kind
+cloud-provider-kind: $(CLOUD_PROVIDER_KIND) ## Download cloud-provider-kind locally if necessary.
+$(CLOUD_PROVIDER_KIND): $(LOCALBIN)
+	$(call go-install-tool,$(CLOUD_PROVIDER_KIND),sigs.k8s.io/cloud-provider-kind,$(CLOUD_PROVIDER_KIND_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
