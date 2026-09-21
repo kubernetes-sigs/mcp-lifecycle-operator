@@ -85,8 +85,13 @@ kuadrant-test-crds: kustomize ## Download Kuadrant CRDs for unit tests.
 	$(KUSTOMIZE) build 'https://github.com/Kuadrant/mcp-gateway/config/crd?ref=$(MCP_GATEWAY_VERSION)' \
 		-o $(KUADRANT_TEST_CRD_DIR)/
 
+.PHONY: verify-grafana-dashboard
+verify-grafana-dashboard: kustomize ## Validate Grafana dashboard JSON and PromQL references.
+	chmod +x hack/verify-grafana-dashboard.sh
+	./hack/verify-grafana-dashboard.sh
+
 .PHONY: test
-test: manifests generate fmt vet setup-envtest kuadrant-test-crds ## Run tests.
+test: manifests generate fmt vet setup-envtest kuadrant-test-crds verify-grafana-dashboard ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 		go test $$(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./...) -coverprofile $(COVER_PROFILE)
 

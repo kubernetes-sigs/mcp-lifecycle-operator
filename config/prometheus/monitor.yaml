@@ -16,6 +16,9 @@ spec:
     - path: /metrics
       port: https # Ensure this is the name of the port that exposes HTTPS metrics
       scheme: https
+      # Keep metric labels (e.g. MCPServer namespace) instead of renaming them to
+      # exported_* when they collide with Kubernetes target labels.
+      honorLabels: true
       bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
       tlsConfig:
         # TODO(user): The option insecureSkipVerify: true is not recommended for production since it disables
