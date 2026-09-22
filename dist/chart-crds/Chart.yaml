@@ -1,0 +1,19 @@
+apiVersion: v2
+name: mcp-lifecycle-operator-crds
+description: CRDs for the mcp-lifecycle-operator Helm chart
+type: application
+version: 0.1.0
+appVersion: "v0.1.0"
+kubeVersion: ">= 1.28.0"
+home: https://github.com/kubernetes-sigs/mcp-lifecycle-operator
+sources:
+  - https://github.com/kubernetes-sigs/mcp-lifecycle-operator
+keywords:
+  - kubernetes
+  - operator
+  - mcp
+  - model-context-protocol
+  - crds
+maintainers:
+  - name: mcp-lifecycle-operator maintainers
+    url: https://github.com/kubernetes-sigs/mcp-lifecycle-operator

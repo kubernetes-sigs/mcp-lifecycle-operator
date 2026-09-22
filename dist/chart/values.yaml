@@ -1,0 +1,74 @@
+# -- Override the name of the chart
+nameOverride: ""
+# -- Override the full name of the chart
+fullnameOverride: ""
+
+# -- Number of controller manager replicas
+replicas: 1
+
+# -- Controller manager image configuration
+image:
+  # -- Image repository
+  repository: registry.k8s.io/mcp-lifecycle-operator/mcp-lifecycle-operator
+  # -- Image tag (defaults to appVersion if not set)
+  tag: ""
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets for private registries
+imagePullSecrets: []
+
+serviceAccount:
+  # -- Whether to create the controller manager ServiceAccount
+  create: true
+  # -- Annotations to add to the ServiceAccount
+  annotations: {}
+  # -- Name of the ServiceAccount (generated from fullname if not set)
+  name: ""
+
+rbac:
+  # -- Whether to create RBAC resources (ClusterRole, ClusterRoleBinding, Role, RoleBinding)
+  create: true
+
+# -- Controller manager container resource requests and limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+leaderElection:
+  # -- Enable leader election for the controller manager
+  enabled: true
+
+metrics:
+  # -- Metrics bind address
+  bindAddress: ":8443"
+  service:
+    # -- Metrics service port
+    port: 8443
+    # -- Metrics service protocol
+    protocol: TCP
+
+healthProbe:
+  # -- Health probe bind address
+  bindAddress: ":8081"
+  # -- Health probe port
+  port: 8081
+
+# -- Node selector for controller manager pods
+nodeSelector: {}
+
+# -- Tolerations for controller manager pods
+tolerations: []
+
+# -- Affinity rules for controller manager pods
+affinity: {}
+
+# -- Annotations to add to controller manager pods
+podAnnotations: {}
+
+# -- Labels to add to controller manager pods
+podLabels: {}
