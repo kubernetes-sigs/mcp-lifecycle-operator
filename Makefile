@@ -102,13 +102,15 @@ kuadrant-test-crds: kustomize ## Download Kuadrant CRDs for unit tests.
 
 .PHONY: test
 # The main run is untagged, so it exercises the production build - including the
-# cmd/coverage_noop.go stub that actually ships. A second, tag-scoped run over
-# ./cmd then covers cmd/coverage.go (the real coverage-flushing logic, compiled
-# only under the e2ecoverage tag); both profiles are uploaded to Codecov. See #177.
+# cmd/coverage_noop.go stub that actually ships. A second run, tag-scoped and
+# -run filtered to the coverage tests, then covers cmd/coverage.go (the real
+# coverage-flushing logic, compiled only under the e2ecoverage tag) without
+# re-running the untagged ./cmd tests (loglevel, tlsconfig, envtest, ...) that
+# the first run already covered; both profiles are uploaded to Codecov. See #177.
 test: manifests generate fmt vet setup-envtest kuadrant-test-crds ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 		go test $$(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./...) -coverprofile $(COVER_PROFILE)
-	go test -tags e2ecoverage ./cmd/... -coverprofile $(COVER_PROFILE_E2ECOVERAGE)
+	go test -tags e2ecoverage -run 'Coverage|Flusher' ./cmd/... -coverprofile $(COVER_PROFILE_E2ECOVERAGE)
 
 .PHONY: test-cover
 test-cover: test ## Run unit tests and write text + HTML coverage reports under out/ (informational).
@@ -231,7 +233,7 @@ cover-collect-e2e: ## Copy Go coverage data out of the running operator pod and 
 	@pod=$$($(KUBECTL) get pods -n $(E2E_NAMESPACE) -l control-plane=controller-manager --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}'); \
 	if [ -z "$$pod" ]; then echo "no controller-manager pod found in $(E2E_NAMESPACE)" >&2; exit 1; fi; \
 	echo "Collecting coverage from pod $$pod"; \
-	$(KUBECTL) cp -n $(E2E_NAMESPACE) -c manager "$$pod:/coverage" "$(GOCOVERDIR)"; \
+	$(KUBECTL) cp -n $(E2E_NAMESPACE) -c manager "$$pod:/coverage" "$(GOCOVERDIR)" || { echo "kubectl cp of /coverage from pod $$pod failed" >&2; exit 1; }; \
 	counters=$$(find "$(GOCOVERDIR)" -name 'covcounters.*' -print -quit); \
 	if [ -z "$$counters" ]; then echo "no Go coverage counters (covcounters.*) found under $(GOCOVERDIR); the operator may not have flushed yet (counters are written at startup and on an interval, and covdata needs them alongside covmeta.*)" >&2; exit 1; fi; \
 	covdir=$$(dirname "$$counters"); \

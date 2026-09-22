@@ -116,6 +116,11 @@ jobs:
         run: make deploy-test-e2e-cover
 
       - name: Run e2e tests and collect coverage
+        # This runs the base e2e suite (make test-e2e) only. The gateway provider
+        # suites (test-e2e-gateway: httproute, kuadrant) are intentionally not
+        # included here, so code under internal/controller/providers/ will read as
+        # 0% under the e2e flag even though the per-PR gateway jobs exercise it.
+        # Folding gateway coverage into this job is tracked as a follow-up. See #177.
         run: make test-e2e-cover
 
       - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
