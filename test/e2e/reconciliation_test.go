@@ -20,6 +20,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -529,6 +530,83 @@ func TestServiceDeletion(t *testing.T) {
 		Feature()
 
 	testenv.Test(t, feature)
+}
+
+// TestRapidSpecUpdatesConvergeAvailable stresses the reconciler with a burst of
+// back-to-back spec updates. Each update triggers a Deployment update, and under
+// contention the controller can hit optimistic-lock conflicts against its cached
+// copy. This is the real-world scenario behind issue #87: such conflicts must be
+// treated as transient (requeue) and must never leave the MCPServer stuck in a
+// non-Available state. After the churn settles, the server must converge back to
+// Available=True and Verified=True.
+//
+// Note: an optimistic-lock conflict cannot be deterministically injected against
+// a real operator pod (that requires an in-process client interceptor, which the
+// unit tests use). This test is a regression guard that the conflict path never
+// wedges the server; the deterministic conflict coverage lives in the unit tests.
+func TestRapidSpecUpdatesConvergeAvailable(t *testing.T) {
+	t.Parallel()
+	feature := features.New("MCPServer converges to Available under rapid spec updates").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Slow).
+		WithLabel(scenario.Label, scenario.SpecUpdate).
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return f.SetupMCPServer(ctx, t, cfg, "rapid-update", true, f.WithReplicas(1))
+		}).
+		Assess("server stays reconcilable and converges to Available after a burst of updates", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
+
+			t.Log("issuing a burst of back-to-back spec updates to induce update contention")
+			for i := range 6 {
+				val := fmt.Sprintf("probe-%d", i)
+				f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1beta1.MCPServer) {
+					s.Spec.Config.Env = []corev1.EnvVar{{Name: "FLICKER_PROBE", Value: val}}
+				})
+				t.Logf("applied spec update %d (FLICKER_PROBE=%s)", i, val)
+			}
+
+			t.Log("verifying the server converges back to Available=True and Verified=True")
+			// WaitForMCPServerReconciledAndReady already blocks until
+			// observedGeneration>=generation, Available=True and Verified=True, so
+			// convergence is asserted by the wait itself (it fails on timeout).
+			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
+
+			// The latest env value must be reflected on the Deployment, proving the
+			// updates were actually applied (and not silently dropped on conflict).
+			dep := &appsv1.Deployment{}
+			if err := r.Get(ctx, server.Name, server.Namespace, dep); err != nil {
+				t.Fatalf("Deployment not found: %v", err)
+			}
+			if len(dep.Spec.Template.Spec.Containers) == 0 {
+				t.Fatal("expected at least one container in Deployment pod template")
+			}
+			if !hasEnv(dep.Spec.Template.Spec.Containers[0].Env, "FLICKER_PROBE", "probe-5") {
+				t.Fatalf("expected Deployment to reflect the final env update FLICKER_PROBE=probe-5, got %v",
+					dep.Spec.Template.Spec.Containers[0].Env)
+			}
+
+			t.Log("server converged to Available=True with the latest spec applied after rapid updates")
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return f.TeardownMCPServer(ctx, t, cfg)
+		}).
+		Feature()
+
+	testenv.Test(t, feature)
+}
+
+// hasEnv reports whether the env slice contains a variable with the given name and value.
+func hasEnv(env []corev1.EnvVar, name, value string) bool {
+	for _, e := range env {
+		if e.Name == name && e.Value == value {
+			return true
+		}
+	}
+	return false
 }
 
 // --- Ownership and Garbage Collection Tests ---
