@@ -123,12 +123,16 @@ jobs:
         # Folding gateway coverage into this job is tracked as a follow-up. See #177.
         run: make test-e2e-cover
 
-      - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ./out/e2e-coverage.out
           # Tag as e2e coverage so it can be compared side by side with the unit
           # test coverage uploaded by the Tests workflow. See #177.
           flags: e2e
+          # This job runs only on schedule/dispatch on the protected main branch,
+          # where Codecov rejects tokenless uploads ("Token required because branch
+          # is protected"). Pass the repo upload token. See #177.
+          token: ${{ secrets.CODECOV_TOKEN }}
           # This job runs only on schedule/dispatch, so fail the run on an upload
           # error rather than silently leaving the e2e flag empty.
           fail_ci_if_error: true
