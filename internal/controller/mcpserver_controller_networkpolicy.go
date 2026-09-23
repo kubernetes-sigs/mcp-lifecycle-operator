@@ -217,7 +217,7 @@ func (r *MCPServerReconciler) networkPolicyPostureCondition(
 		// or ports. Phrase the message for what is actually constrained so a
 		// ports-only egress (any destination reachable on those ports) is not
 		// reported as restricting destinations.
-		if egressDestinationsRestricted(netpol) {
+		if egressDestinationsRestricted(mcpServer) {
 			message = "NetworkPolicy restricts both ingress sources and egress destinations"
 		} else {
 			message = "NetworkPolicy restricts ingress sources and limits egress to specific ports"
@@ -261,15 +261,13 @@ func hasEgressDestinationRestriction(netpol *networkingv1.NetworkPolicy) bool {
 	return false
 }
 
-// egressDestinationsRestricted reports whether any egress rule limits the set of
-// destination peers (a non-empty To). This is narrower than
-// hasEgressDestinationRestriction, which also treats a ports-only rule as
-// restricted; it is used only to phrase the posture message accurately.
-func egressDestinationsRestricted(netpol *networkingv1.NetworkPolicy) bool {
-	for _, rule := range netpol.Spec.Egress {
-		if len(rule.To) > 0 {
-			return true
-		}
-	}
-	return false
+// egressDestinationsRestricted reports whether the user restricted the set of
+// application egress destinations, i.e. Spec.Network.EgressTo is non-empty. It is
+// deliberately narrower than hasEgressDestinationRestriction (which also treats a
+// ports-only rule as restricted) and it intentionally ignores the operator's own
+// DNS egress carve-out: DNSEgressPeer gives the DNS rule a To, which must not make
+// a ports-only application egress read as restricting destinations. It is used
+// only to phrase the posture message accurately.
+func egressDestinationsRestricted(mcpServer *mcpv1beta1.MCPServer) bool {
+	return mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.EgressTo) > 0
 }

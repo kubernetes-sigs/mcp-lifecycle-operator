@@ -107,6 +107,28 @@ func TestNetworkPolicyPostureCondition(t *testing.T) {
 			wantMsgKeyword: "ports",
 			wantMsgAbsent:  "destinations",
 		},
+		{
+			// Ports-only application egress plus a DNS egress carve-out: the DNS
+			// rule gets a To from DNSEgressPeer, but that must NOT make the message
+			// claim application egress destinations are restricted - the user's
+			// egress still reaches any destination on the given ports.
+			name: "ports-only egress with DNS peer does not overstate destinations",
+			network: &mcpv1beta1.NetworkConfig{
+				IngressFrom: restrictedIngress,
+				EgressPorts: []networkingv1.NetworkPolicyPort{
+					{Port: ptrIntStr(443), Protocol: ptr.To(corev1.ProtocolTCP)},
+				},
+				DNSEgressPeer: &networkingv1.NetworkPolicyPeer{
+					NamespaceSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"kubernetes.io/metadata.name": "openshift-dns"},
+					},
+				},
+			},
+			wantStatus:     metav1.ConditionTrue,
+			wantReason:     ReasonNetworkPolicyRestricted,
+			wantMsgKeyword: "ports",
+			wantMsgAbsent:  "destinations",
+		},
 	}
 
 	for _, tt := range tests {

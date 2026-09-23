@@ -862,10 +862,13 @@ func (r *MCPServerReconciler) applyStatus(
 // appendPersistentConditions re-adds the status conditions that must survive
 // every apply. applyStatus uses Server-Side Apply under a single field manager,
 // so any condition that manager previously owned but omits from a later apply is
-// pruned. The GatewayRegistered condition is carried forward from existing
-// status, and the NetworkPolicy posture is recomputed from the desired policy,
-// so neither disappears on failure or short-circuit paths (both are otherwise
-// only set on the successful reconcile path).
+// pruned. Both GatewayRegistered and the NetworkPolicy posture are carried
+// forward from existing status here: they are computed fresh only on the
+// successful reconcile path, after the Gateway and NetworkPolicy have actually
+// been reconciled. Recomputing the posture from the desired policy on a failure
+// or short-circuit path (e.g. a reconcile that bails on invalid config before
+// reconcileNetworkPolicy runs) would advertise a posture that no applied policy
+// backs, so we preserve the last observed value instead.
 func (r *MCPServerReconciler) appendPersistentConditions(
 	mcpServer *mcpv1beta1.MCPServer,
 	conditions []*v1ac.ConditionApplyConfiguration,
@@ -873,11 +876,10 @@ func (r *MCPServerReconciler) appendPersistentConditions(
 	if gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered); gwCond != nil {
 		conditions = append(conditions, conditionToAC(*gwCond))
 	}
-	posture := r.networkPolicyPostureCondition(
-		mcpServer, mcpServer.Generation, mcpServer.Status.Conditions)
-	recordCondition(mcpServer.Name, mcpServer.Namespace,
-		posture.Type, string(posture.Status), posture.Reason)
-	conditions = append(conditions, conditionToAC(posture))
+	if postureCond := meta.FindStatusCondition(
+		mcpServer.Status.Conditions, ConditionTypeNetworkPolicyRestricted); postureCond != nil {
+		conditions = append(conditions, conditionToAC(*postureCond))
+	}
 	return conditions
 }
 

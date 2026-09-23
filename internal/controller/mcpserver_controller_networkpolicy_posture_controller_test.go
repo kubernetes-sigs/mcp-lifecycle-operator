@@ -162,12 +162,56 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 		Expect(changedCond.LastTransitionTime.Before(&firstStamp)).To(BeFalse())
 	})
 
-	It("keeps the posture condition when reconcile fails on invalid config", func() {
+	It("carries the previously-observed posture forward on a later invalid-config reconcile", func() {
 		// The posture is one of several conditions applied under a single field
-		// manager via Server-Side Apply. A failure/short-circuit path that omits it
-		// from the apply would prune the previously-set condition. This guards that
-		// the invalid-config path still carries the posture forward.
-		name := "posture-invalid-config"
+		// manager via Server-Side Apply, so a failure/short-circuit path that omits
+		// it would prune the previously-set condition. Once a healthy reconcile has
+		// established the posture (and applied the NetworkPolicy), a later
+		// invalid-config reconcile must carry that value forward.
+		name := "posture-carried-forward"
+		mcpServer := newTestMCPServer(name)
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			fresh := &mcpv1beta1.MCPServer{}
+			if k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, fresh) == nil {
+				Expect(k8sClient.Delete(ctx, fresh)).To(Succeed())
+			}
+		}()
+
+		By("a healthy reconcile establishing the posture and applying the NetworkPolicy")
+		got := reconcileOnce(name)
+		Expect(postureCondition(got)).NotTo(BeNil())
+		Expect(postureCondition(got).Reason).To(Equal(ReasonNetworkPolicyUnrestricted))
+
+		By("making the config invalid")
+		mcpServer = &mcpv1beta1.MCPServer{}
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, mcpServer)).To(Succeed())
+		mcpServer.Spec.Config.EnvFrom = []corev1.EnvFromSource{
+			{ConfigMapRef: &corev1.ConfigMapEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "does-not-exist"},
+			}},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+
+		got = reconcileOnce(name)
+
+		By("the reconcile landing on the invalid-config path")
+		available := meta.FindStatusCondition(got.Status.Conditions, ConditionTypeAvailable)
+		Expect(available).NotTo(BeNil())
+		Expect(available.Reason).To(Equal(ReasonConfigurationInvalid))
+
+		By("the NetworkPolicy posture condition still being present (carried forward)")
+		cond := postureCondition(got)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Reason).To(Equal(ReasonNetworkPolicyUnrestricted))
+	})
+
+	It("does not fabricate a posture when reconcile fails before the NetworkPolicy is applied", func() {
+		// A reconcile that bails on invalid config never reconciles the
+		// NetworkPolicy, so no policy exists in the cluster. The posture must not be
+		// asserted from desired intent in that case, otherwise an admin sees a
+		// posture that no applied policy backs.
+		name := "posture-no-fabricate"
 		mcpServer := newTestMCPServer(name)
 		mcpServer.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 			{ConfigMapRef: &corev1.ConfigMapEnvSource{
@@ -184,10 +228,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 		Expect(available).NotTo(BeNil())
 		Expect(available.Reason).To(Equal(ReasonConfigurationInvalid))
 
-		By("the NetworkPolicy posture condition still being present")
-		cond := postureCondition(got)
-		Expect(cond).NotTo(BeNil())
-		Expect(cond.Reason).To(Equal(ReasonNetworkPolicyUnrestricted))
+		By("no NetworkPolicy posture being asserted for a policy that was never applied")
+		Expect(postureCondition(got)).To(BeNil())
 	})
 
 	It("does not gate readiness: a False posture does not set Available for a posture reason (FR-006)", func() {
