@@ -2,8 +2,8 @@
 
 A Kubernetes operator that provides a declarative API to deploy, manage, and safely roll out [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers on Kubernetes, handling their full lifecycle with production-grade automation and ecosystem integrations.
 
-!!! warning "Alpha"
-    This project is currently in **alpha** (`v1alpha1`). APIs and behavior may change in future releases.
+!!! warning "Beta"
+    This project is currently in **beta** (`v1beta1`). APIs and behavior may change in future releases.
 
 ## Core Capabilities
 
@@ -20,7 +20,7 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 Deploy an MCP server with a simple YAML manifest:
 
 ```yaml
-apiVersion: mcp.x-k8s.io/v1alpha1
+apiVersion: mcp.x-k8s.io/v1beta1
 kind: MCPServer
 metadata:
   name: my-mcp-server

@@ -2,7 +2,7 @@
 
 A Kubernetes operator that provides a declarative API to deploy, manage, and safely roll out MCP Servers, handling their full lifecycle with production-grade automation and ecosystem integrations.
 
-> **Note:** This project is currently in **alpha** (`v1alpha1`). APIs and behavior may change in future releases.
+> **Note:** This project is currently in **beta** (`v1beta1`). APIs and behavior may change in future releases.
 
 ## Documentation
 
@@ -66,7 +66,7 @@ In a new terminal, create a test `MCPServer` resource:
 
 ```bash
 kubectl apply -f - <<EOF
-apiVersion: mcp.x-k8s.io/v1alpha1
+apiVersion: mcp.x-k8s.io/v1beta1
 kind: MCPServer
 metadata:
   name: test-server
