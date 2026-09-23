@@ -148,6 +148,10 @@ const (
 	// eventActionInsecureTLSConfigured is the reporting action when TLS verification is disabled via spec.
 	eventActionInsecureTLSConfigured = "InsecureTLSConfigured"
 
+	// requeueDelayConflict is the delay before requeuing after a transient
+	// optimistic-lock conflict on a resource update. Such conflicts self-resolve
+	// almost immediately, so a short delay is enough to pick up the fresh object.
+	requeueDelayConflict = 1 * time.Second
 	// requeueDelayMCPHandshake is the initial delay before requeuing when an MCP handshake fails.
 	requeueDelayMCPHandshake = 10 * time.Second
 	// maxRequeueDelayMCPHandshake is the maximum requeue delay after exponential backoff.
@@ -302,6 +306,17 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	existingDeployment, err := r.reconcileDeployment(ctx, mcpServer)
 	reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseDeployment}).Observe(time.Since(deploymentStart).Seconds())
 	if err != nil {
+		// Optimistic-lock conflicts are transient and self-resolve on the next
+		// reconcile. Requeue without touching status so the Available condition
+		// is not briefly flipped to DeploymentUnavailable, and requeue with a nil
+		// error so a benign conflict does not trip the reconcile error metric or
+		// log at ERROR, which would cause status thrashing and false monitoring
+		// alerts (issue #87).
+		if apierrors.IsConflict(err) {
+			logger.Info("Deployment update conflict, requeuing without status change",
+				keyName, mcpServer.Name, keyNamespace, mcpServer.Namespace)
+			return ctrl.Result{RequeueAfter: requeueDelayConflict}, nil
+		}
 		deploymentFailuresTotal.With(prometheus.Labels{
 			keyName:      mcpServer.Name,
 			keyNamespace: mcpServer.Namespace,
@@ -736,6 +751,17 @@ func (r *MCPServerReconciler) handleResourceFailure(
 	params resourceFailureParams,
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+
+	// Optimistic-lock conflicts are transient and self-resolve on the next
+	// reconcile. Requeue without touching status so the Available condition is
+	// not briefly flipped to False, and requeue with a nil error so a benign
+	// conflict does not trip the reconcile error metric or log at ERROR, which
+	// would cause status thrashing and false monitoring alerts (issue #87).
+	if apierrors.IsConflict(reconcileErr) {
+		logger.Info("Resource update conflict, requeuing without status change",
+			"resource", params.resource, keyName, mcpServer.Name, keyNamespace, mcpServer.Namespace)
+		return ctrl.Result{RequeueAfter: requeueDelayConflict}, nil
+	}
 
 	params.counter.With(prometheus.Labels{
 		keyName:      mcpServer.Name,
