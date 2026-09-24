@@ -38,12 +38,23 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
 ) error {
+	_, err := r.ensureNetworkPolicy(ctx, mcpServer)
+	return err
+}
+
+// ensureNetworkPolicy reconciles the operand NetworkPolicy and returns the
+// desired policy it built. Returning the policy lets the caller report the
+// posture from the same object instead of rebuilding it via createNetworkPolicy.
+func (r *MCPServerReconciler) ensureNetworkPolicy(
+	ctx context.Context,
+	mcpServer *mcpv1beta1.MCPServer,
+) (*networkingv1.NetworkPolicy, error) {
 	logger := log.FromContext(ctx)
 
 	netpol := r.createNetworkPolicy(mcpServer)
 	if err := controllerutil.SetControllerReference(mcpServer, netpol, r.Scheme); err != nil {
 		logger.Error(err, "Failed to set controller reference for NetworkPolicy")
-		return err
+		return nil, err
 	}
 
 	existingNetpol := &networkingv1.NetworkPolicy{}
@@ -51,11 +62,11 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 	if err != nil && apierrors.IsNotFound(err) {
 		logger.Info("Creating NetworkPolicy", keyName, netpol.Name)
 		if err := applyCustomNetworkPolicyMetadata(mcpServer, netpol); err != nil {
-			return fmt.Errorf("applying custom metadata failed; %w", err)
+			return nil, fmt.Errorf("applying custom metadata failed; %w", err)
 		}
 		if err := r.Create(ctx, netpol); err != nil {
 			logger.Error(err, "Failed to create NetworkPolicy")
-			return err
+			return nil, err
 		}
 		if mcpServer.Spec.Network == nil || len(mcpServer.Spec.Network.IngressFrom) == 0 {
 			logger.Info("NetworkPolicy created without ingress source restrictions", keyName, netpol.Name)
@@ -64,15 +75,15 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 			logger.Info("NetworkPolicy created without egress destination restrictions", keyName, netpol.Name)
 		}
 		auditNetworkPolicyCreated(ctx, mcpServer, netpol.Name, hasIngressSourceRestriction(netpol), hasEgressDestinationRestriction(netpol))
-		return nil
+		return netpol, nil
 	} else if err != nil {
 		logger.Error(err, "Failed to get NetworkPolicy")
-		return err
+		return nil, err
 	}
 
 	if err := r.validateOwnership(ctx, existingNetpol, mcpServer); err != nil {
 		logger.Error(err, "NetworkPolicy ownership validation failed")
-		return err
+		return nil, err
 	}
 
 	oldOwnerUID := ""
@@ -82,7 +93,7 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 
 	if err := controllerutil.SetControllerReference(mcpServer, existingNetpol, r.Scheme); err != nil {
 		logger.Error(err, "Failed to set controller reference for existing NetworkPolicy")
-		return err
+		return nil, err
 	}
 
 	ownershipChanged := false
@@ -101,19 +112,19 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 		}
 		maps.Copy(existingNetpol.Labels, netpol.Labels)
 		if err := applyCustomNetworkPolicyMetadata(mcpServer, existingNetpol); err != nil {
-			return fmt.Errorf("applying custom networkpolicy metadata; %w", err)
+			return nil, fmt.Errorf("applying custom networkpolicy metadata; %w", err)
 		}
 		existingNetpol.Spec = netpol.Spec
 		if err := r.Update(ctx, existingNetpol); err != nil {
 			logger.Error(err, "Failed to update NetworkPolicy")
-			return err
+			return nil, err
 		}
 		auditNetworkPolicyUpdated(ctx, mcpServer, existingNetpol.Name)
 	} else {
 		logger.Info("NetworkPolicy already exists and is up to date", keyName, netpol.Name)
 	}
 
-	return nil
+	return netpol, nil
 }
 
 func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1beta1.MCPServer) *networkingv1.NetworkPolicy {
@@ -200,7 +211,19 @@ func (r *MCPServerReconciler) networkPolicyPostureCondition(
 	generation int64,
 	existingConditions []metav1.Condition,
 ) metav1.Condition {
-	netpol := r.createNetworkPolicy(mcpServer)
+	return r.networkPolicyPostureConditionFor(
+		mcpServer, generation, existingConditions, r.createNetworkPolicy(mcpServer))
+}
+
+// networkPolicyPostureConditionFor derives the posture condition from an
+// already-built NetworkPolicy, so a caller that just reconciled the policy can
+// reuse that object instead of rebuilding it via createNetworkPolicy.
+func (r *MCPServerReconciler) networkPolicyPostureConditionFor(
+	mcpServer *mcpv1beta1.MCPServer,
+	generation int64,
+	existingConditions []metav1.Condition,
+	netpol *networkingv1.NetworkPolicy,
+) metav1.Condition {
 	ingressRestricted := hasIngressSourceRestriction(netpol)
 	egressRestricted := hasEgressDestinationRestriction(netpol)
 

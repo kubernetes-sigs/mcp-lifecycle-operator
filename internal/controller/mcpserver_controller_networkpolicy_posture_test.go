@@ -25,6 +25,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	v1ac "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/utils/ptr"
 
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
@@ -195,6 +196,55 @@ func TestNetworkPolicyPostureConditionPreservesTransitionTime(t *testing.T) {
 	changed := r.networkPolicyPostureCondition(postureTestServer("np-changed", restricted), 2, existing)
 	if changed.LastTransitionTime.Equal(&earlier) {
 		t.Errorf("transition LastTransitionTime should advance, got preserved %v", earlier)
+	}
+}
+
+// TestAppendPersistentConditionsPosture verifies how the NetworkPolicy posture
+// is persisted across an apply that would otherwise prune it. When the caller
+// passes a freshly computed posture (the NetworkPolicy reconciled successfully
+// this pass but a later step failed), that value is written; otherwise the last
+// observed posture is carried forward from status so a short-circuit path does
+// not advertise a posture no applied policy backs.
+func TestAppendPersistentConditionsPosture(t *testing.T) {
+	r := &MCPServerReconciler{}
+
+	stale := metav1.Condition{
+		Type:   ConditionTypeNetworkPolicyRestricted,
+		Status: metav1.ConditionFalse,
+		Reason: ReasonNetworkPolicyUnrestricted,
+	}
+	mcpServer := &mcpv1beta1.MCPServer{
+		Status: mcpv1beta1.MCPServerStatus{Conditions: []metav1.Condition{stale}},
+	}
+
+	postureReason := func(conds []*v1ac.ConditionApplyConfiguration) string {
+		for _, c := range conds {
+			if c.Type != nil && *c.Type == ConditionTypeNetworkPolicyRestricted {
+				if c.Reason == nil {
+					return ""
+				}
+				return *c.Reason
+			}
+		}
+		return "<absent>"
+	}
+
+	// No fresh posture: the last observed (stale) posture is carried forward.
+	carried := r.appendPersistentConditions(mcpServer, nil, nil)
+	if got := postureReason(carried); got != ReasonNetworkPolicyUnrestricted {
+		t.Errorf("carried-forward posture reason = %q, want %q", got, ReasonNetworkPolicyUnrestricted)
+	}
+
+	// Fresh posture provided: it wins over the stale value in status, so a
+	// post-NetworkPolicy failure path reports the posture the applied policy backs.
+	fresh := metav1.Condition{
+		Type:   ConditionTypeNetworkPolicyRestricted,
+		Status: metav1.ConditionTrue,
+		Reason: ReasonNetworkPolicyRestricted,
+	}
+	updated := r.appendPersistentConditions(mcpServer, nil, &fresh)
+	if got := postureReason(updated); got != ReasonNetworkPolicyRestricted {
+		t.Errorf("fresh posture reason = %q, want %q", got, ReasonNetworkPolicyRestricted)
 	}
 }
 
