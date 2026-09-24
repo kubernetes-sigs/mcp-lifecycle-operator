@@ -230,6 +230,21 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 					Completions: true,
 				},
 			},
+			ServerCard: &MCPServerCard{
+				Name:            "Full MCP Server",
+				Version:         "2.0.0",
+				ProtocolVersion: "2025-03-26",
+				Address:         "http://full-server.production.svc.cluster.local:9090/api/v1/mcp",
+				Capabilities: &MCPServerCapabilities{
+					Tools:       true,
+					Resources:   true,
+					Prompts:     true,
+					Logging:     true, //nolint:staticcheck // testing deprecated field round-trip
+					Completions: true,
+				},
+				Labels:      map[string]string{"team": "platform"},
+				Annotations: map[string]string{"env": "prod"},
+			},
 			Conditions: []metav1.Condition{
 				{
 					Type:               "Ready",
