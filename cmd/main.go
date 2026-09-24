@@ -128,7 +128,9 @@ func main() {
 	flag.StringVar(&networkPolicyDefaultPosture, "network-policy-default-posture", "open",
 		"Default NetworkPolicy posture applied to a managed workload when a network dimension is left "+
 			"unconfigured. \"open\" keeps the historical default; \"restricted\" denies unconfigured ingress by "+
-			"default and leaves unconfigured egress unmanaged. Explicit Spec.Network values are always honored.")
+			"default (set Spec.Network.IngressFrom to admit the operator pods and any gateway, otherwise the "+
+			"handshake cannot reach the server and it never becomes Verified) and leaves unconfigured egress "+
+			"unmanaged. Explicit Spec.Network values are always honored.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()

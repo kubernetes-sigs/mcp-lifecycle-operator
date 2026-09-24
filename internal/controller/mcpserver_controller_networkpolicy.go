@@ -265,7 +265,11 @@ func hasIngressSourceRestriction(netpol *networkingv1.NetworkPolicy) bool {
 		if len(rule.Ports) == 0 {
 			continue
 		}
-		if slices.ContainsFunc(rule.From, peerRestrictsSource) {
+		// Peers within a rule are OR'ed, so the rule restricts sources only when it
+		// names at least one peer and every peer narrows the source set. A single
+		// admit-all peer (e.g. 0.0.0.0/0 listed alongside a podSelector) opens the
+		// rule to every source, so it must not be reported as restricted.
+		if len(rule.From) > 0 && !slices.ContainsFunc(rule.From, peerAdmitsAllSources) {
 			return true
 		}
 	}
@@ -292,6 +296,13 @@ func peerRestrictsSource(peer networkingv1.NetworkPolicyPeer) bool {
 	// An empty podSelector with no namespaceSelector restricts to the policy's own
 	// namespace, which is a genuine (if broad) restriction.
 	return peer.PodSelector != nil && peer.NamespaceSelector == nil
+}
+
+// peerAdmitsAllSources reports whether an ingress peer admits every source. It is
+// the inverse of peerRestrictsSource and is used to detect an admit-all peer OR'ed
+// into an otherwise restrictive rule, which opens the rule to all sources.
+func peerAdmitsAllSources(peer networkingv1.NetworkPolicyPeer) bool {
+	return !peerRestrictsSource(peer)
 }
 
 func isEmptyLabelSelector(selector *metav1.LabelSelector) bool {

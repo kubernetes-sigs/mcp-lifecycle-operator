@@ -330,6 +330,32 @@ func TestHasIngressSourceRestriction(t *testing.T) {
 			}}),
 			want: false,
 		},
+		{
+			// Peers within a rule are OR'ed: a restrictive podSelector alongside a
+			// universal CIDR still admits every source, so it must not read as a
+			// restriction.
+			name: "restrictive peer OR'ed with universal CIDR does not restrict",
+			np: npWith([]networkingv1.NetworkPolicyIngressRule{{
+				Ports: ports,
+				From: []networkingv1.NetworkPolicyPeer{
+					{PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "x"}}},
+					{IPBlock: &networkingv1.IPBlock{CIDR: "0.0.0.0/0"}},
+				},
+			}}),
+			want: false,
+		},
+		{
+			// Every peer in the rule restricts, so the rule as a whole restricts.
+			name: "all peers restrict",
+			np: npWith([]networkingv1.NetworkPolicyIngressRule{{
+				Ports: ports,
+				From: []networkingv1.NetworkPolicyPeer{
+					{PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "x"}}},
+					{IPBlock: &networkingv1.IPBlock{CIDR: "10.0.0.0/8"}},
+				},
+			}}),
+			want: true,
+		},
 	}
 
 	for _, tc := range tt {
