@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -129,20 +130,8 @@ func (r *MCPServerReconciler) ensureNetworkPolicy(
 
 func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1beta1.MCPServer) *networkingv1.NetworkPolicy {
 	labels := managedWorkloadLabels(mcpServer.Name)
-	port := intstr.FromInt32(mcpServer.Spec.Config.Port)
-	protocol := corev1.ProtocolTCP
 
-	ingressRule := networkingv1.NetworkPolicyIngressRule{
-		Ports: []networkingv1.NetworkPolicyPort{
-			{
-				Port:     &port,
-				Protocol: &protocol,
-			},
-		},
-	}
-	if mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.IngressFrom) > 0 {
-		ingressRule.From = mcpServer.Spec.Network.DeepCopy().IngressFrom
-	}
+	ingressRules := defaultIngressRules(mcpServer, r.NetworkPolicyDefaultPosture)
 
 	egressRules := buildEgressRules(mcpServer)
 
@@ -160,10 +149,8 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1beta1.MCPServe
 				networkingv1.PolicyTypeIngress,
 				networkingv1.PolicyTypeEgress,
 			},
-			Ingress: []networkingv1.NetworkPolicyIngressRule{
-				ingressRule,
-			},
-			Egress: egressRules,
+			Ingress: ingressRules,
+			Egress:  egressRules,
 		},
 	}
 }
@@ -265,6 +252,12 @@ func (r *MCPServerReconciler) networkPolicyPostureConditionFor(
 }
 
 func hasIngressSourceRestriction(netpol *networkingv1.NetworkPolicy) bool {
+	// An empty ingress rule set with Ingress declared in policyTypes denies all
+	// ingress - the most restrictive posture - so it counts as restricted. Without
+	// this the deny-by-default policy would be misreported as source-unrestricted.
+	if len(netpol.Spec.Ingress) == 0 && slices.Contains(netpol.Spec.PolicyTypes, networkingv1.PolicyTypeIngress) {
+		return true
+	}
 	for _, rule := range netpol.Spec.Ingress {
 		for _, peer := range rule.From {
 			if peer.PodSelector != nil || peer.NamespaceSelector != nil || peer.IPBlock != nil {

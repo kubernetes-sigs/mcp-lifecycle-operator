@@ -206,6 +206,13 @@ type MCPServerReconciler struct {
 	// handshakeRetries tracks per-MCPServer handshake retry counts in memory.
 	// Key: "namespace/name", value: handshakeRetryState.
 	handshakeRetries sync.Map
+
+	// NetworkPolicyDefaultPosture selects the default operand NetworkPolicy
+	// content emitted when a network dimension is left unconfigured. The zero
+	// value behaves as PostureOpen, so a reconciler that does not set it keeps
+	// the historical default-open behavior. User-supplied Spec.Network values
+	// are always honored regardless of posture.
+	NetworkPolicyDefaultPosture NetworkPolicyDefaultPosture
 }
 
 type handshakeRetryState struct {
