@@ -250,6 +250,11 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 		By("the Available condition being driven by deployment state, not the posture")
 		available := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
 		Expect(available).NotTo(BeNil())
+		// A freshly created Deployment has no status yet, so the first reconcile
+		// initializes Available to Unknown. Asserting the status (not only the
+		// reason) guards against a regression to Available=False under a
+		// non-posture reason still passing this test.
+		Expect(available.Status).To(Equal(metav1.ConditionUnknown))
 		postureReasons := []string{
 			ReasonNetworkPolicyRestricted,
 			ReasonNetworkPolicyIngressUnrestricted,
