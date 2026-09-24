@@ -217,3 +217,126 @@ func TestRestrictedPostureReportingComposition(t *testing.T) {
 		})
 	}
 }
+
+// TestHasIngressSourceRestriction covers the source-restriction predicate,
+// including the deny-by-default carve-out and the patterns that match every
+// source and therefore must NOT read as a restriction (empty namespaceSelector,
+// universal CIDR, a rule that names a source but restricts no port).
+func TestHasIngressSourceRestriction(t *testing.T) {
+	ingressType := []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}
+	port := intstr.FromInt32(8080)
+	ports := []networkingv1.NetworkPolicyPort{{Port: &port}}
+
+	npWith := func(rules []networkingv1.NetworkPolicyIngressRule) *networkingv1.NetworkPolicy {
+		return &networkingv1.NetworkPolicy{
+			Spec: networkingv1.NetworkPolicySpec{PolicyTypes: ingressType, Ingress: rules},
+		}
+	}
+
+	tt := []struct {
+		name string
+		np   *networkingv1.NetworkPolicy
+		want bool
+	}{
+		{
+			name: "deny-by-default (empty ingress, Ingress in policyTypes)",
+			np:   npWith([]networkingv1.NetworkPolicyIngressRule{}),
+			want: true,
+		},
+		{
+			name: "port-only rule, no source",
+			np:   npWith([]networkingv1.NetworkPolicyIngressRule{{Ports: ports}}),
+			want: false,
+		},
+		{
+			name: "podSelector source with ports",
+			np: npWith([]networkingv1.NetworkPolicyIngressRule{{
+				Ports: ports,
+				From:  []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "x"}}}},
+			}}),
+			want: true,
+		},
+		{
+			// Finding 3: a named source without a port restriction admits that
+			// source on every port, so it is not a genuine restriction.
+			name: "source but no port restriction",
+			np: npWith([]networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "x"}}}},
+			}}),
+			want: false,
+		},
+		{
+			// Finding 4: an empty namespaceSelector matches all namespaces.
+			name: "empty namespaceSelector matches all namespaces",
+			np: npWith([]networkingv1.NetworkPolicyIngressRule{{
+				Ports: ports,
+				From:  []networkingv1.NetworkPolicyPeer{{NamespaceSelector: &metav1.LabelSelector{}}},
+			}}),
+			want: false,
+		},
+		{
+			name: "non-empty namespaceSelector restricts",
+			np: npWith([]networkingv1.NetworkPolicyIngressRule{{
+				Ports: ports,
+				From:  []networkingv1.NetworkPolicyPeer{{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "clients"}}}},
+			}}),
+			want: true,
+		},
+		{
+			// Finding 4: a universal CIDR matches every address.
+			name: "universal CIDR does not restrict",
+			np: npWith([]networkingv1.NetworkPolicyIngressRule{{
+				Ports: ports,
+				From:  []networkingv1.NetworkPolicyPeer{{IPBlock: &networkingv1.IPBlock{CIDR: "0.0.0.0/0"}}},
+			}}),
+			want: false,
+		},
+		{
+			name: "universal CIDR with an exception restricts",
+			np: npWith([]networkingv1.NetworkPolicyIngressRule{{
+				Ports: ports,
+				From:  []networkingv1.NetworkPolicyPeer{{IPBlock: &networkingv1.IPBlock{CIDR: "0.0.0.0/0", Except: []string{"10.0.0.0/8"}}}},
+			}}),
+			want: true,
+		},
+		{
+			name: "specific CIDR restricts",
+			np: npWith([]networkingv1.NetworkPolicyIngressRule{{
+				Ports: ports,
+				From:  []networkingv1.NetworkPolicyPeer{{IPBlock: &networkingv1.IPBlock{CIDR: "10.0.0.0/8"}}},
+			}}),
+			want: true,
+		},
+		{
+			// Empty podSelector with no namespaceSelector restricts to the policy's
+			// own namespace - a genuine (if broad) restriction.
+			name: "empty podSelector restricts to same namespace",
+			np: npWith([]networkingv1.NetworkPolicyIngressRule{{
+				Ports: ports,
+				From:  []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{}}},
+			}}),
+			want: true,
+		},
+		{
+			// Empty podSelector AND empty namespaceSelector = all pods, all
+			// namespaces = not a restriction.
+			name: "empty podSelector with empty namespaceSelector matches everything",
+			np: npWith([]networkingv1.NetworkPolicyIngressRule{{
+				Ports: ports,
+				From: []networkingv1.NetworkPolicyPeer{{
+					PodSelector:       &metav1.LabelSelector{},
+					NamespaceSelector: &metav1.LabelSelector{},
+				}},
+			}}),
+			want: false,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasIngressSourceRestriction(tc.np); got != tc.want {
+				t.Errorf("hasIngressSourceRestriction() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

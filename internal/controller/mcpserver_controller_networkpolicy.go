@@ -259,13 +259,47 @@ func hasIngressSourceRestriction(netpol *networkingv1.NetworkPolicy) bool {
 		return true
 	}
 	for _, rule := range netpol.Spec.Ingress {
-		for _, peer := range rule.From {
-			if peer.PodSelector != nil || peer.NamespaceSelector != nil || peer.IPBlock != nil {
-				return true
-			}
+		// A rule restricts ingress only when it constrains both the source and the
+		// destination port. A rule that names a source but leaves ports empty still
+		// admits that source on every port, so it is not a genuine restriction.
+		if len(rule.Ports) == 0 {
+			continue
+		}
+		if slices.ContainsFunc(rule.From, peerRestrictsSource) {
+			return true
 		}
 	}
 	return false
+}
+
+// peerRestrictsSource reports whether an ingress peer actually narrows the set of
+// allowed sources. Patterns that match every source - an empty namespaceSelector
+// (all namespaces), or a universal CIDR with no exceptions - do not count, so
+// they are not misreported as a restriction.
+func peerRestrictsSource(peer networkingv1.NetworkPolicyPeer) bool {
+	if peer.IPBlock != nil {
+		return len(peer.IPBlock.Except) > 0 || !isUniversalCIDR(peer.IPBlock.CIDR)
+	}
+	// A podSelector with match criteria narrows sources regardless of namespace.
+	if peer.PodSelector != nil && !isEmptyLabelSelector(peer.PodSelector) {
+		return true
+	}
+	// A namespaceSelector narrows sources only when it selects a subset of
+	// namespaces; an empty selector matches all namespaces.
+	if peer.NamespaceSelector != nil && !isEmptyLabelSelector(peer.NamespaceSelector) {
+		return true
+	}
+	// An empty podSelector with no namespaceSelector restricts to the policy's own
+	// namespace, which is a genuine (if broad) restriction.
+	return peer.PodSelector != nil && peer.NamespaceSelector == nil
+}
+
+func isEmptyLabelSelector(selector *metav1.LabelSelector) bool {
+	return selector != nil && len(selector.MatchLabels) == 0 && len(selector.MatchExpressions) == 0
+}
+
+func isUniversalCIDR(cidr string) bool {
+	return cidr == "0.0.0.0/0" || cidr == "::/0"
 }
 
 func hasEgressDestinationRestriction(netpol *networkingv1.NetworkPolicy) bool {
