@@ -1,4 +1,4 @@
-apiVersion: mcp.x-k8s.io/v1alpha1
+apiVersion: mcp.x-k8s.io/v1beta1
 kind: MCPServer
 metadata:
   name: everything-mcp-server

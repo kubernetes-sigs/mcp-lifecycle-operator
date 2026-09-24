@@ -54,7 +54,7 @@ In a new terminal, create a basic `MCPServer` resource using the [kubernetes-mcp
 
 ```bash
 kubectl apply -f - <<EOF
-apiVersion: mcp.x-k8s.io/v1alpha1
+apiVersion: mcp.x-k8s.io/v1beta1
 kind: MCPServer
 metadata:
   name: kubernetes-mcp-server
@@ -183,7 +183,7 @@ data:
     toolsets = ["core", "config"]
 ---
 # MCPServer resource with ServiceAccount for RBAC
-apiVersion: mcp.x-k8s.io/v1alpha1
+apiVersion: mcp.x-k8s.io/v1beta1
 kind: MCPServer
 metadata:
   name: kubernetes-mcp-server-rbac
