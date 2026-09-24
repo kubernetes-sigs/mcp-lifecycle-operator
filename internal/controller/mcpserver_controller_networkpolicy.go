@@ -133,7 +133,16 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1beta1.MCPServe
 
 	ingressRules := defaultIngressRules(mcpServer, r.NetworkPolicyIngressPosture)
 
-	egressRules := buildEgressRules(mcpServer)
+	egressRules, manageEgress := defaultEgressRules(mcpServer, r.NetworkPolicyEgressPosture)
+
+	// Ingress is always managed (deny-by-default is expressed as an empty ingress
+	// rule set with Ingress still in policyTypes). Egress is only listed when it is
+	// managed; a restricted, unconfigured egress leaves the dimension unmanaged
+	// rather than allow-all or deny-all.
+	policyTypes := []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}
+	if manageEgress {
+		policyTypes = append(policyTypes, networkingv1.PolicyTypeEgress)
+	}
 
 	return &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -145,12 +154,9 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1beta1.MCPServe
 			PodSelector: metav1.LabelSelector{
 				MatchLabels: managedWorkloadSelector(mcpServer.Name),
 			},
-			PolicyTypes: []networkingv1.PolicyType{
-				networkingv1.PolicyTypeIngress,
-				networkingv1.PolicyTypeEgress,
-			},
-			Ingress: ingressRules,
-			Egress:  egressRules,
+			PolicyTypes: policyTypes,
+			Ingress:     ingressRules,
+			Egress:      egressRules,
 		},
 	}
 }

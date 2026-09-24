@@ -148,3 +148,116 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 		Expect(netpol.Spec.Ingress[0].From[0].PodSelector).NotTo(BeNil())
 	})
 })
+
+var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (egress)", func() {
+	ctx := context.Background()
+
+	restrictedEgressReconciler := func() *MCPServerReconciler {
+		return &MCPServerReconciler{
+			Client:                     k8sClient,
+			Scheme:                     k8sClient.Scheme(),
+			APIReader:                  k8sClient,
+			NetworkPolicyEgressPosture: PostureRestricted,
+		}
+	}
+
+	It("should leave egress unmanaged when no egress config is set", func() {
+		mcpServer := newTestMCPServer("test-netpol-restricted-noegress")
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		Expect(restrictedEgressReconciler().reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-restricted-noegress",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying Egress is dropped from policyTypes (unmanaged, not allow-all)")
+		Expect(netpol.Spec.PolicyTypes).NotTo(ContainElement(networkingv1.PolicyTypeEgress))
+
+		By("Verifying no egress rule is emitted")
+		Expect(netpol.Spec.Egress).To(BeEmpty())
+
+		By("Verifying Ingress is still managed under the default ingress posture")
+		Expect(netpol.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeIngress))
+	})
+
+	It("should honor EgressTo unchanged under restricted egress posture", func() {
+		mcpServer := newTestMCPServer("test-netpol-restricted-egress")
+		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+			EgressTo: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{CIDR: "10.0.0.0/8"},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		Expect(restrictedEgressReconciler().reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-restricted-egress",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying Egress is managed when the user declares a destination")
+		Expect(netpol.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeEgress))
+
+		By("Verifying the DNS carve-out and the declared destination are both present")
+		Expect(netpol.Spec.Egress).To(HaveLen(2))
+		var sawDestination bool
+		for _, rule := range netpol.Spec.Egress {
+			for _, peer := range rule.To {
+				if peer.IPBlock != nil && peer.IPBlock.CIDR == "10.0.0.0/8" {
+					sawDestination = true
+				}
+			}
+		}
+		Expect(sawDestination).To(BeTrue(), "declared EgressTo destination must be honored")
+	})
+
+	It("should transition from unmanaged egress to honored destination when EgressTo is added", func() {
+		mcpServer := newTestMCPServer("test-netpol-restricted-egress-transition")
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, mcpServer)
+		}()
+
+		reconciler := restrictedEgressReconciler()
+
+		By("Initial reconcile with no egress leaves egress unmanaged")
+		Expect(reconciler.reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-restricted-egress-transition",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+		Expect(netpol.Spec.PolicyTypes).NotTo(ContainElement(networkingv1.PolicyTypeEgress))
+		Expect(netpol.Spec.Egress).To(BeEmpty())
+
+		By("Adding a destination and reconciling again")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
+		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+			EgressTo: []networkingv1.NetworkPolicyPeer{
+				{IPBlock: &networkingv1.IPBlock{CIDR: "192.168.0.0/16"}},
+			},
+		}
+		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
+		Expect(reconciler.reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-restricted-egress-transition",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+		Expect(netpol.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeEgress))
+		Expect(netpol.Spec.Egress).NotTo(BeEmpty())
+	})
+})
