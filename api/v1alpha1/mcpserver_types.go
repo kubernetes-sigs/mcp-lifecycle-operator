@@ -511,6 +511,23 @@ type MCPServerCapabilities struct {
 	Completions bool `json:"completions,omitempty"`
 }
 
+// CatalogCounts contains the number of tools, resources, and prompt templates
+// reported by the MCP server via list calls after a successful handshake.
+type CatalogCounts struct {
+	// ToolCount is the number of tools reported by the server.
+	// Nil when the server does not support tools.
+	// +optional
+	ToolCount *int32 `json:"toolCount,omitempty"`
+	// ResourceCount is the number of resources reported by the server.
+	// Nil when the server does not support resources.
+	// +optional
+	ResourceCount *int32 `json:"resourceCount,omitempty"`
+	// PromptCount is the number of prompt templates reported by the server.
+	// Nil when the server does not support prompts.
+	// +optional
+	PromptCount *int32 `json:"promptCount,omitempty"`
+}
+
 // MCPServerInfo contains identity and capability information reported by the
 // MCP server during the protocol handshake (initialize or server/discover).
 type MCPServerInfo struct {
@@ -533,6 +550,11 @@ type MCPServerInfo struct {
 	// Capabilities lists which MCP protocol features the server supports.
 	// +optional
 	Capabilities *MCPServerCapabilities `json:"capabilities,omitempty"`
+	// CatalogCounts contains the number of tools, resources, and prompts
+	// reported by the server. Populated only after a successful handshake
+	// that includes list calls.
+	// +optional
+	CatalogCounts *CatalogCounts `json:"catalogCounts,omitempty"`
 }
 
 // MCPServerStatus defines the observed state of MCPServer.

@@ -229,6 +229,11 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 					Logging:     true, //nolint:staticcheck // testing deprecated field round-trip
 					Completions: true,
 				},
+				CatalogCounts: &CatalogCounts{
+					ToolCount:     ptr.To(int32(7)), //nolint:modernize // value is 7, not zero
+					ResourceCount: ptr.To(int32(3)), //nolint:modernize // value is 3, not zero
+					PromptCount:   ptr.To(int32(2)), //nolint:modernize // value is 2, not zero
+				},
 			},
 			Conditions: []metav1.Condition{
 				{
