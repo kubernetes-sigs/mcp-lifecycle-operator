@@ -54,3 +54,7 @@ ignore:
   # TODO: lift when sigs.k8s.io/e2e-framework supports fake client unit testing
   # See: https://github.com/kubernetes-sigs/e2e-framework/pull/590
   - "test/e2e/**"
+  # main() is the manager composition root (flag wiring, os.Exit, mgr.Start) that
+  # is not unit-testable; the testable helpers it calls live in their own files
+  # (loglevel.go, tlsconfig.go, ...) and stay covered.
+  - "cmd/main.go"
