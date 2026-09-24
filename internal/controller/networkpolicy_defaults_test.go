@@ -28,11 +28,11 @@ import (
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
-func TestParseDefaultPosture(t *testing.T) {
+func TestParsePosture(t *testing.T) {
 	tt := []struct {
 		name    string
 		in      string
-		want    NetworkPolicyDefaultPosture
+		want    NetworkPolicyPosture
 		wantErr bool
 	}{
 		{name: "empty resolves to open", in: "", want: PostureOpen},
@@ -45,7 +45,7 @@ func TestParseDefaultPosture(t *testing.T) {
 	}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ParseDefaultPosture(tc.in)
+			got, err := ParsePosture(tc.in)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error for %q, got none", tc.in)
@@ -56,7 +56,7 @@ func TestParseDefaultPosture(t *testing.T) {
 				t.Fatalf("unexpected error for %q: %v", tc.in, err)
 			}
 			if got != tc.want {
-				t.Fatalf("ParseDefaultPosture(%q) = %q, want %q", tc.in, got, tc.want)
+				t.Fatalf("ParsePosture(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
 	}
@@ -87,7 +87,7 @@ func TestDefaultIngressRules(t *testing.T) {
 	tt := []struct {
 		name    string
 		server  *mcpv1beta1.MCPServer
-		posture NetworkPolicyDefaultPosture
+		posture NetworkPolicyPosture
 		want    []networkingv1.NetworkPolicyIngressRule
 	}{
 		{
@@ -169,7 +169,7 @@ func TestDefaultIngressRules(t *testing.T) {
 // restricted, not as source-unrestricted. Egress under US1 is still allow-all,
 // so with no egress config the overall condition stays False for egress.
 func TestRestrictedPostureReportingComposition(t *testing.T) {
-	r := &MCPServerReconciler{NetworkPolicyDefaultPosture: PostureRestricted}
+	r := &MCPServerReconciler{NetworkPolicyIngressPosture: PostureRestricted}
 
 	tt := []struct {
 		name       string
