@@ -206,6 +206,21 @@ type MCPServerReconciler struct {
 	// handshakeRetries tracks per-MCPServer handshake retry counts in memory.
 	// Key: "namespace/name", value: handshakeRetryState.
 	handshakeRetries sync.Map
+
+	// NetworkPolicyIngressPosture selects the default ingress rules of the operand
+	// NetworkPolicy emitted when an MCPServer leaves ingress unconfigured. The zero
+	// value behaves as PostureOpen, so a reconciler that does not set it keeps the
+	// historical default-open behavior. User-supplied Spec.Network values are
+	// always honored regardless of posture.
+	NetworkPolicyIngressPosture NetworkPolicyPosture
+
+	// NetworkPolicyEgressPosture selects the default egress rules of the operand
+	// NetworkPolicy emitted when an MCPServer leaves egress unconfigured. The zero
+	// value behaves as PostureOpen, so a reconciler that does not set it keeps the
+	// historical allow-all egress. Under PostureRestricted an unconfigured egress is
+	// left unmanaged (Egress dropped from policyTypes) rather than allow-all.
+	// User-supplied Spec.Network values are always honored regardless of posture.
+	NetworkPolicyEgressPosture NetworkPolicyPosture
 }
 
 type handshakeRetryState struct {

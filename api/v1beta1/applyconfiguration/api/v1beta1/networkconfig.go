@@ -30,7 +30,10 @@ type NetworkConfigApplyConfiguration struct {
 	// IngressFrom restricts which sources can reach the MCP server port.
 	// Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,
 	// namespaceSelector, ipBlock).
-	// When empty, any pod in the cluster can reach the MCP server (default).
+	// When empty, the source is governed by the operator's default NetworkPolicy
+	// posture: under the "open" posture (the default) any pod in the cluster can
+	// reach the MCP server, while under the "restricted" posture ingress is denied
+	// by default.
 	IngressFrom []v1.NetworkPolicyPeer `json:"ingressFrom,omitempty"`
 	// EgressTo restricts which destinations the MCP server pod can reach.
 	// Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,

@@ -59,6 +59,9 @@ spec:
 !!! warning "DNS is always permitted when egress is restricted"
     As soon as `egressTo` or `egressPorts` is set, the operator prepends an egress rule allowing UDP and TCP port `53` so pods can still resolve names. Use `dnsEgressPeer` to narrow that rule to your cluster's DNS service. `dnsEgressPeer` on its own does **not** activate egress restrictions.
 
+!!! warning "Restricted default posture needs an explicit `ingressFrom`"
+    The operator can be started with `--network-policy-default-posture=restricted`. Under that posture an MCPServer that omits `spec.network.ingressFrom` gets a **deny-all** ingress policy instead of the open default. The operator completes the MCP handshake by connecting to the server pod, so a deny-all ingress also blocks the operator itself (and any gateway): the server never reaches `Verified` and no `status.address` is published. Under restricted posture always set `ingressFrom` with peers that match the operator pods and every gateway source that must reach the server - the operator never adds an implicit peer for itself. This flag only changes the default for *unconfigured* dimensions; an explicit `spec.network` value is always honored regardless of posture.
+
 Peers use the standard Kubernetes `NetworkPolicyPeer` shape (`podSelector`, `namespaceSelector`, `ipBlock`); `ipBlock` cannot be combined with the selector fields. These constraints are checked during **reconciliation**, not by an admission webhook: an MCPServer with an invalid CIDR is still admitted by the API server and then reports a `ValidationError` status condition, so validate config before applying rather than relying on `kubectl apply` to reject it.
 
 ## Gateway integration

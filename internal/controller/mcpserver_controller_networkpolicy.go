@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -129,22 +130,19 @@ func (r *MCPServerReconciler) ensureNetworkPolicy(
 
 func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1beta1.MCPServer) *networkingv1.NetworkPolicy {
 	labels := managedWorkloadLabels(mcpServer.Name)
-	port := intstr.FromInt32(mcpServer.Spec.Config.Port)
-	protocol := corev1.ProtocolTCP
 
-	ingressRule := networkingv1.NetworkPolicyIngressRule{
-		Ports: []networkingv1.NetworkPolicyPort{
-			{
-				Port:     &port,
-				Protocol: &protocol,
-			},
-		},
-	}
-	if mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.IngressFrom) > 0 {
-		ingressRule.From = mcpServer.Spec.Network.DeepCopy().IngressFrom
-	}
+	ingressRules := defaultIngressRules(mcpServer, r.NetworkPolicyIngressPosture)
 
-	egressRules := buildEgressRules(mcpServer)
+	egressRules, manageEgress := defaultEgressRules(mcpServer, r.NetworkPolicyEgressPosture)
+
+	// Ingress is always managed (deny-by-default is expressed as an empty ingress
+	// rule set with Ingress still in policyTypes). Egress is only listed when it is
+	// managed; a restricted, unconfigured egress leaves the dimension unmanaged
+	// rather than allow-all or deny-all.
+	policyTypes := []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}
+	if manageEgress {
+		policyTypes = append(policyTypes, networkingv1.PolicyTypeEgress)
+	}
 
 	return &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
@@ -156,14 +154,9 @@ func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1beta1.MCPServe
 			PodSelector: metav1.LabelSelector{
 				MatchLabels: managedWorkloadSelector(mcpServer.Name),
 			},
-			PolicyTypes: []networkingv1.PolicyType{
-				networkingv1.PolicyTypeIngress,
-				networkingv1.PolicyTypeEgress,
-			},
-			Ingress: []networkingv1.NetworkPolicyIngressRule{
-				ingressRule,
-			},
-			Egress: egressRules,
+			PolicyTypes: policyTypes,
+			Ingress:     ingressRules,
+			Egress:      egressRules,
 		},
 	}
 }
@@ -265,14 +258,65 @@ func (r *MCPServerReconciler) networkPolicyPostureConditionFor(
 }
 
 func hasIngressSourceRestriction(netpol *networkingv1.NetworkPolicy) bool {
+	// An empty ingress rule set with Ingress declared in policyTypes denies all
+	// ingress - the most restrictive posture - so it counts as restricted. Without
+	// this the deny-by-default policy would be misreported as source-unrestricted.
+	if len(netpol.Spec.Ingress) == 0 && slices.Contains(netpol.Spec.PolicyTypes, networkingv1.PolicyTypeIngress) {
+		return true
+	}
 	for _, rule := range netpol.Spec.Ingress {
-		for _, peer := range rule.From {
-			if peer.PodSelector != nil || peer.NamespaceSelector != nil || peer.IPBlock != nil {
-				return true
-			}
+		// A rule restricts ingress only when it constrains both the source and the
+		// destination port. A rule that names a source but leaves ports empty still
+		// admits that source on every port, so it is not a genuine restriction.
+		if len(rule.Ports) == 0 {
+			continue
+		}
+		// Peers within a rule are OR'ed, so the rule restricts sources only when it
+		// names at least one peer and every peer narrows the source set. A single
+		// admit-all peer (e.g. 0.0.0.0/0 listed alongside a podSelector) opens the
+		// rule to every source, so it must not be reported as restricted.
+		if len(rule.From) > 0 && !slices.ContainsFunc(rule.From, peerAdmitsAllSources) {
+			return true
 		}
 	}
 	return false
+}
+
+// peerRestrictsSource reports whether an ingress peer actually narrows the set of
+// allowed sources. Patterns that match every source - an empty namespaceSelector
+// (all namespaces), or a universal CIDR with no exceptions - do not count, so
+// they are not misreported as a restriction.
+func peerRestrictsSource(peer networkingv1.NetworkPolicyPeer) bool {
+	if peer.IPBlock != nil {
+		return len(peer.IPBlock.Except) > 0 || !isUniversalCIDR(peer.IPBlock.CIDR)
+	}
+	// A podSelector with match criteria narrows sources regardless of namespace.
+	if peer.PodSelector != nil && !isEmptyLabelSelector(peer.PodSelector) {
+		return true
+	}
+	// A namespaceSelector narrows sources only when it selects a subset of
+	// namespaces; an empty selector matches all namespaces.
+	if peer.NamespaceSelector != nil && !isEmptyLabelSelector(peer.NamespaceSelector) {
+		return true
+	}
+	// An empty podSelector with no namespaceSelector restricts to the policy's own
+	// namespace, which is a genuine (if broad) restriction.
+	return peer.PodSelector != nil && peer.NamespaceSelector == nil
+}
+
+// peerAdmitsAllSources reports whether an ingress peer admits every source. It is
+// the inverse of peerRestrictsSource and is used to detect an admit-all peer OR'ed
+// into an otherwise restrictive rule, which opens the rule to all sources.
+func peerAdmitsAllSources(peer networkingv1.NetworkPolicyPeer) bool {
+	return !peerRestrictsSource(peer)
+}
+
+func isEmptyLabelSelector(selector *metav1.LabelSelector) bool {
+	return selector != nil && len(selector.MatchLabels) == 0 && len(selector.MatchExpressions) == 0
+}
+
+func isUniversalCIDR(cidr string) bool {
+	return cidr == "0.0.0.0/0" || cidr == "::/0"
 }
 
 func hasEgressDestinationRestriction(netpol *networkingv1.NetworkPolicy) bool {
