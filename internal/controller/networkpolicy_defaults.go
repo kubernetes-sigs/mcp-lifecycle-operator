@@ -92,6 +92,36 @@ func defaultIngressRules(
 	}
 }
 
+// defaultEgressRules returns the egress rules for an operand NetworkPolicy and
+// whether egress should be managed at all (i.e. whether Egress belongs in the
+// policy's policyTypes).
+//
+// When the MCPServer declares egress (Spec.Network.EgressTo or EgressPorts),
+// those rules are honored regardless of posture and egress is managed. When no
+// egress is declared:
+//   - PostureOpen emits a single allow-all egress rule and manages egress
+//     (historical behavior; the workload may reach any destination).
+//   - PostureRestricted emits no egress rule and leaves egress unmanaged by
+//     dropping Egress from policyTypes, so the policy neither allows-all nor
+//     denies-all egress; it simply does not constrain that dimension.
+func defaultEgressRules(
+	mcpServer *mcpv1beta1.MCPServer,
+	posture NetworkPolicyPosture,
+) (rules []networkingv1.NetworkPolicyEgressRule, manageEgress bool) {
+	hasEgressConfig := mcpServer.Spec.Network != nil &&
+		(len(mcpServer.Spec.Network.EgressTo) > 0 || len(mcpServer.Spec.Network.EgressPorts) > 0)
+
+	if hasEgressConfig {
+		return buildEgressRules(mcpServer), true
+	}
+
+	if posture == PostureRestricted {
+		return nil, false
+	}
+
+	return []networkingv1.NetworkPolicyEgressRule{{}}, true
+}
+
 // ingressPorts returns the single-port allow-list (server port, TCP) shared by
 // every non-deny ingress rule.
 func ingressPorts(mcpServer *mcpv1beta1.MCPServer) []networkingv1.NetworkPolicyPort {

@@ -163,6 +163,103 @@ func TestDefaultIngressRules(t *testing.T) {
 	}
 }
 
+func TestDefaultEgressRules(t *testing.T) {
+	newServer := func(network *mcpv1beta1.NetworkConfig) *mcpv1beta1.MCPServer {
+		s := &mcpv1beta1.MCPServer{}
+		s.Spec.Config.Port = 8080
+		s.Spec.Network = network
+		return s
+	}
+
+	tt := []struct {
+		name             string
+		server           *mcpv1beta1.MCPServer
+		posture          NetworkPolicyPosture
+		wantManageEgress bool
+		wantRules        []networkingv1.NetworkPolicyEgressRule
+	}{
+		{
+			name:             "open, no egress config -> allow-all, managed (historical)",
+			server:           newServer(nil),
+			posture:          PostureOpen,
+			wantManageEgress: true,
+			wantRules:        []networkingv1.NetworkPolicyEgressRule{{}},
+		},
+		{
+			name:             "empty posture behaves as open",
+			server:           newServer(nil),
+			posture:          "",
+			wantManageEgress: true,
+			wantRules:        []networkingv1.NetworkPolicyEgressRule{{}},
+		},
+		{
+			name:             "open, network without egress -> allow-all, managed",
+			server:           newServer(&mcpv1beta1.NetworkConfig{}),
+			posture:          PostureOpen,
+			wantManageEgress: true,
+			wantRules:        []networkingv1.NetworkPolicyEgressRule{{}},
+		},
+		{
+			name:             "restricted, no egress config -> unmanaged (no rules, drop Egress)",
+			server:           newServer(nil),
+			posture:          PostureRestricted,
+			wantManageEgress: false,
+			wantRules:        nil,
+		},
+		{
+			name:             "restricted, network without egress -> unmanaged",
+			server:           newServer(&mcpv1beta1.NetworkConfig{}),
+			posture:          PostureRestricted,
+			wantManageEgress: false,
+			wantRules:        nil,
+		},
+		{
+			name: "restricted, EgressTo set -> honored (DNS + user rule), managed",
+			server: newServer(&mcpv1beta1.NetworkConfig{
+				EgressTo: []networkingv1.NetworkPolicyPeer{
+					{IPBlock: &networkingv1.IPBlock{CIDR: "10.0.0.0/8"}},
+				},
+			}),
+			posture:          PostureRestricted,
+			wantManageEgress: true,
+		},
+		{
+			name: "open, EgressTo set -> honored, managed",
+			server: newServer(&mcpv1beta1.NetworkConfig{
+				EgressTo: []networkingv1.NetworkPolicyPeer{
+					{IPBlock: &networkingv1.IPBlock{CIDR: "10.0.0.0/8"}},
+				},
+			}),
+			posture:          PostureOpen,
+			wantManageEgress: true,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			rules, manageEgress := defaultEgressRules(tc.server, tc.posture)
+			if manageEgress != tc.wantManageEgress {
+				t.Fatalf("manageEgress = %v, want %v", manageEgress, tc.wantManageEgress)
+			}
+			// When egress is configured the rules are delegated to buildEgressRules,
+			// which is exercised elsewhere; only assert the exact shape when we expect
+			// a fixed default (allow-all or none).
+			if tc.wantRules != nil || !tc.wantManageEgress {
+				if !reflect.DeepEqual(rules, tc.wantRules) {
+					t.Fatalf("defaultEgressRules() rules = %#v, want %#v", rules, tc.wantRules)
+				}
+			} else if len(rules) == 0 {
+				t.Fatalf("defaultEgressRules() returned no rules for configured egress")
+			}
+			// An unmanaged egress must never emit rules: rules present with
+			// manageEgress=false would silently apply without Egress in policyTypes.
+			if !manageEgress && len(rules) != 0 {
+				t.Fatalf("unmanaged egress emitted %d rules, want none", len(rules))
+			}
+		})
+	}
+}
+
 // TestRestrictedPostureReportingComposition verifies that the restricted ingress
 // end-state composes with the informational NetworkPolicyRestricted condition:
 // a deny-by-default ingress (empty ingress rules) must be reported as ingress
