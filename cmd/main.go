@@ -85,7 +85,7 @@ func main() {
 	var requireImageDigest bool
 	var maxStorageMounts int
 	var requiredLabels string
-	var networkPolicyDefaultPosture string
+	var networkPolicyIngressPosture string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -125,12 +125,12 @@ func main() {
 	flag.StringVar(&requiredLabels, "required-labels", "",
 		"Comma-separated list of labels that must be present on MCPServer resources. "+
 			"Falls back to REQUIRED_LABELS env var if not set. Empty means no requirement.")
-	flag.StringVar(&networkPolicyDefaultPosture, "network-policy-default-posture", "open",
-		"Default NetworkPolicy posture applied to a managed workload when a network dimension is left "+
-			"unconfigured. \"open\" keeps the historical default; \"restricted\" denies unconfigured ingress by "+
-			"default (set Spec.Network.IngressFrom to admit the operator pods and any gateway, otherwise the "+
-			"handshake cannot reach the server and it never becomes Verified) and leaves unconfigured egress "+
-			"unmanaged. Explicit Spec.Network values are always honored.")
+	flag.StringVar(&networkPolicyIngressPosture, "network-policy-ingress-posture", "open",
+		"Default ingress posture for a managed workload's NetworkPolicy when ingress is left "+
+			"unconfigured. \"open\" keeps the historical default (any source may reach the server port); "+
+			"\"restricted\" denies unconfigured ingress by default (set Spec.Network.IngressFrom to admit "+
+			"the operator pods and any gateway, otherwise the handshake cannot reach the server and it "+
+			"never becomes Verified). Explicit Spec.Network.IngressFrom is always honored.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -139,12 +139,12 @@ func main() {
 	opts.Level = &atomicLevel
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	defaultPosture, err := controller.ParseDefaultPosture(networkPolicyDefaultPosture)
+	ingressPosture, err := controller.ParsePosture(networkPolicyIngressPosture)
 	if err != nil {
-		setupLog.Error(err, "invalid --network-policy-default-posture value")
+		setupLog.Error(err, "invalid --network-policy-ingress-posture value")
 		os.Exit(1)
 	}
-	setupLog.Info("NetworkPolicy default posture configured", "posture", defaultPosture)
+	setupLog.Info("NetworkPolicy ingress posture configured", "posture", ingressPosture)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -255,7 +255,7 @@ func main() {
 		Recorder:                    mgr.GetEventRecorder("mcpserver-controller"),
 		APIReader:                   mgr.GetAPIReader(),
 		TLSProfile:                  tlsCfg.tlsConfigFunc(),
-		NetworkPolicyDefaultPosture: defaultPosture,
+		NetworkPolicyIngressPosture: ingressPosture,
 	}
 	if strings.EqualFold(os.Getenv("PROPAGATE_TLS_ENV_VARS"), "true") {
 		reconciler.TLSEnvVars = tlsCfg.envVars()

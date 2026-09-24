@@ -207,12 +207,12 @@ type MCPServerReconciler struct {
 	// Key: "namespace/name", value: handshakeRetryState.
 	handshakeRetries sync.Map
 
-	// NetworkPolicyDefaultPosture selects the default operand NetworkPolicy
-	// content emitted when a network dimension is left unconfigured. The zero
-	// value behaves as PostureOpen, so a reconciler that does not set it keeps
-	// the historical default-open behavior. User-supplied Spec.Network values
-	// are always honored regardless of posture.
-	NetworkPolicyDefaultPosture NetworkPolicyDefaultPosture
+	// NetworkPolicyIngressPosture selects the default ingress rules of the operand
+	// NetworkPolicy emitted when an MCPServer leaves ingress unconfigured. The zero
+	// value behaves as PostureOpen, so a reconciler that does not set it keeps the
+	// historical default-open behavior. User-supplied Spec.Network values are
+	// always honored regardless of posture.
+	NetworkPolicyIngressPosture NetworkPolicyPosture
 }
 
 type handshakeRetryState struct {

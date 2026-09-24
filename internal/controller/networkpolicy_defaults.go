@@ -27,27 +27,28 @@ import (
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
-// NetworkPolicyDefaultPosture selects the operand NetworkPolicy content emitted
-// for an MCPServer that leaves a network dimension unconfigured. It never
-// affects user-supplied Spec.Network values, which are always honored. The empty
-// value is treated as PostureOpen, so a reconciler that does not set it behaves
-// exactly as it did before this option existed.
-type NetworkPolicyDefaultPosture string
+// NetworkPolicyPosture selects the operand NetworkPolicy content emitted for an
+// MCPServer that leaves a network dimension (ingress or egress) unconfigured. It
+// never affects user-supplied Spec.Network values, which are always honored. The
+// empty value is treated as PostureOpen, so a reconciler that does not set it
+// behaves exactly as it did before this option existed.
+type NetworkPolicyPosture string
 
 const (
 	// PostureOpen preserves the operator's historical default: an ingress rule
-	// scoped to the server port but open to any source when no source is
-	// configured.
-	PostureOpen NetworkPolicyDefaultPosture = "open"
-	// PostureRestricted applies a least-privilege default: deny-by-default
-	// ingress when no source is configured, without fabricating a source.
-	PostureRestricted NetworkPolicyDefaultPosture = "restricted"
+	// scoped to the server port but open to any source, and an allow-all egress
+	// rule, when the respective dimension is left unconfigured.
+	PostureOpen NetworkPolicyPosture = "open"
+	// PostureRestricted applies a least-privilege default: deny-by-default ingress
+	// when no source is configured (without fabricating a source), and unmanaged
+	// egress (Egress dropped from the policy) when no egress is configured.
+	PostureRestricted NetworkPolicyPosture = "restricted"
 )
 
-// ParseDefaultPosture parses a posture value case-insensitively. An empty value
+// ParsePosture parses a posture value case-insensitively. An empty value
 // resolves to PostureOpen. An unrecognized value returns an error so callers can
 // fail fast instead of silently applying an unexpected default.
-func ParseDefaultPosture(value string) (NetworkPolicyDefaultPosture, error) {
+func ParsePosture(value string) (NetworkPolicyPosture, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", string(PostureOpen):
 		return PostureOpen, nil
@@ -69,7 +70,7 @@ func ParseDefaultPosture(value string) (NetworkPolicyDefaultPosture, error) {
 //     placeholder source such as an empty peer or a universal CIDR.
 func defaultIngressRules(
 	mcpServer *mcpv1beta1.MCPServer,
-	posture NetworkPolicyDefaultPosture,
+	posture NetworkPolicyPosture,
 ) []networkingv1.NetworkPolicyIngressRule {
 	if mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.IngressFrom) > 0 {
 		return []networkingv1.NetworkPolicyIngressRule{

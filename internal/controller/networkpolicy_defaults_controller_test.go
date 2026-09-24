@@ -38,7 +38,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 			Client:                      k8sClient,
 			Scheme:                      k8sClient.Scheme(),
 			APIReader:                   k8sClient,
-			NetworkPolicyDefaultPosture: PostureRestricted,
+			NetworkPolicyIngressPosture: PostureRestricted,
 		}
 	}
 

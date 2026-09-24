@@ -131,7 +131,7 @@ func (r *MCPServerReconciler) ensureNetworkPolicy(
 func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1beta1.MCPServer) *networkingv1.NetworkPolicy {
 	labels := managedWorkloadLabels(mcpServer.Name)
 
-	ingressRules := defaultIngressRules(mcpServer, r.NetworkPolicyDefaultPosture)
+	ingressRules := defaultIngressRules(mcpServer, r.NetworkPolicyIngressPosture)
 
 	egressRules := buildEgressRules(mcpServer)
 
