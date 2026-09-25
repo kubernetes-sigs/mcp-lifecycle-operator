@@ -33,7 +33,9 @@ type NetworkConfigApplyConfiguration struct {
 	// When empty, the source is governed by the operator's default NetworkPolicy
 	// posture: under the "open" posture (the default) any pod in the cluster can
 	// reach the MCP server, while under the "restricted" posture ingress is denied
-	// by default.
+	// by default. Under "restricted" this field must include peers matching the
+	// operator pods and each required gateway source, otherwise the server never
+	// becomes Verified and its address is not published.
 	IngressFrom []v1.NetworkPolicyPeer `json:"ingressFrom,omitempty"`
 	// EgressTo restricts which destinations the MCP server pod can reach.
 	// Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,

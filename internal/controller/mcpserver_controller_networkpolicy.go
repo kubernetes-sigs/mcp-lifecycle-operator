@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"net"
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
@@ -309,8 +310,17 @@ func isEmptyLabelSelector(selector *metav1.LabelSelector) bool {
 	return selector != nil && len(selector.MatchLabels) == 0 && len(selector.MatchExpressions) == 0
 }
 
+// isUniversalCIDR reports whether cidr covers every address, i.e. it has a prefix
+// length of zero. Detecting universality by mask size rather than by matching the
+// canonical literals "0.0.0.0/0" / "::/0" also catches non-canonical spellings
+// such as "10.0.0.0/0" or "0::/0". Invalid input is not universal.
 func isUniversalCIDR(cidr string) bool {
-	return cidr == "0.0.0.0/0" || cidr == "::/0"
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false
+	}
+	ones, _ := ipNet.Mask.Size()
+	return ones == 0
 }
 
 func hasEgressDestinationRestriction(netpol *networkingv1.NetworkPolicy) bool {

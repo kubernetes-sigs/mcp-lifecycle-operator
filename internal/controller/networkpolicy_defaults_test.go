@@ -366,3 +366,28 @@ func TestHasIngressSourceRestriction(t *testing.T) {
 		})
 	}
 }
+
+func TestIsUniversalCIDR(t *testing.T) {
+	tt := []struct {
+		name string
+		cidr string
+		want bool
+	}{
+		{name: "canonical IPv4 universal", cidr: "0.0.0.0/0", want: true},
+		{name: "canonical IPv6 universal", cidr: "::/0", want: true},
+		{name: "non-canonical IPv4 universal", cidr: "10.0.0.0/0", want: true},
+		{name: "non-canonical IPv6 universal", cidr: "0::/0", want: true},
+		{name: "non-universal IPv4", cidr: "10.0.0.0/8", want: false},
+		{name: "non-universal IPv6", cidr: "2001:db8::/32", want: false},
+		{name: "invalid input", cidr: "not-a-cidr", want: false},
+		{name: "empty input", cidr: "", want: false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isUniversalCIDR(tc.cidr); got != tc.want {
+				t.Errorf("isUniversalCIDR(%q) = %v, want %v", tc.cidr, got, tc.want)
+			}
+		})
+	}
+}
