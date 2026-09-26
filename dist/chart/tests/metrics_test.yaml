@@ -1,0 +1,45 @@
+suite: test metrics
+templates:
+  - metrics/controller-manager-metrics-service.yaml
+tests:
+  - it: should render metrics service by default
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-mcp-lifecycle-o-controller-manager-metrics-service
+      - equal:
+          path: metadata.namespace
+          value: NAMESPACE
+      - equal:
+          path: spec.ports[0].name
+          value: https
+      - equal:
+          path: spec.ports[0].port
+          value: 8443
+      - equal:
+          path: spec.ports[0].protocol
+          value: TCP
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 8443
+
+  - it: should not render metrics service when metrics.enable is false
+    set:
+      metrics.enable: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should use custom metrics port
+    set:
+      metrics.port: 9090
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 9090
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 9090
+
