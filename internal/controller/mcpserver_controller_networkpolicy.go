@@ -70,7 +70,7 @@ func (r *MCPServerReconciler) ensureNetworkPolicy(
 			logger.Error(err, "Failed to create NetworkPolicy")
 			return nil, err
 		}
-		if mcpServer.Spec.Network == nil || len(mcpServer.Spec.Network.IngressFrom) == 0 {
+		if !hasIngressSourceRestriction(netpol) {
 			logger.Info("NetworkPolicy created without ingress source restrictions", keyName, netpol.Name)
 		}
 		if mcpServer.Spec.Network == nil || (len(mcpServer.Spec.Network.EgressTo) == 0 && len(mcpServer.Spec.Network.EgressPorts) == 0) {
