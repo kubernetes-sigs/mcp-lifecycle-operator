@@ -26,6 +26,11 @@ const (
 // in operator-created Deployments.
 const ManagedWorkloadName = "mcp-server"
 
+// mcpPortName is the canonical name of the MCP endpoint port on managed
+// Deployments and Services, and the preferred port name when resolving a BYO
+// Service endpoint.
+const mcpPortName = "mcp"
+
 // Metric label and structured-log field keys. The same value is used both as a
 // Prometheus label name and as a logr key so metrics and logs stay correlated.
 const (

@@ -129,9 +129,9 @@ func (r *MCPServerReconciler) createService(mcpServer *mcpv1beta1.MCPServer) *co
 			Selector: managedWorkloadSelector(mcpServer.Name),
 			Ports: []corev1.ServicePort{
 				{
-					Name:       "mcp",
+					Name:       mcpPortName,
 					Port:       mcpServer.Spec.Config.Port,
-					TargetPort: intstr.FromString("mcp"),
+					TargetPort: intstr.FromString(mcpPortName),
 					Protocol:   corev1.ProtocolTCP,
 				},
 			},

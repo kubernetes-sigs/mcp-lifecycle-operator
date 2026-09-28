@@ -177,12 +177,18 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: runtime
       type:
         namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.RuntimeConfig
+    - name: serviceRef
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.ServiceReference
     - name: source
       type:
         namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.Source
     - name: transport
       type:
         namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.TransportConfig
+    - name: workloadRef
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.WorkloadReference
 - name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerStatus
   map:
     fields:
@@ -216,6 +222,12 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerInfo
     - name: serviceName
+      type:
+        scalar: string
+    - name: workloadName
+      type:
+        scalar: string
+    - name: workloadSummary
       type:
         scalar: string
 - name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MountPermissions
@@ -313,6 +325,12 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - path
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.ServiceReference
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
 - name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.Source
   map:
     fields:
@@ -372,6 +390,17 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: tls
       type:
         namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.TLSClientConfig
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.WorkloadKind
+  scalar: string
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.WorkloadReference
+  map:
+    fields:
+    - name: kind
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.WorkloadKind
+    - name: name
+      type:
+        scalar: string
 - name: io.k8s.api.core.v1.AppArmorProfile
   map:
     fields:
