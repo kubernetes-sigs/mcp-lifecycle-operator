@@ -978,10 +978,14 @@ spec:
                       namespaceSelector, ipBlock).
                       When empty, the source is governed by the operator's default NetworkPolicy
                       posture: under the "open" posture (the default) any pod in the cluster can
-                      reach the MCP server, while under the "restricted" posture ingress is denied
-                      by default. Under "restricted" this field must include peers matching the
-                      operator pods and each required gateway source, otherwise the server never
-                      becomes Verified and its address is not published.
+                      reach the MCP server, while under the "restricted" posture the
+                      operator-generated policy denies ingress by default. That deny only takes
+                      effect where a NetworkPolicy-enforcing network plugin is installed, and it is
+                      unioned with any other NetworkPolicy selecting the same pod, so another policy
+                      may still admit traffic. Under "restricted" this field must include peers
+                      matching the operator pods and each required gateway source; otherwise, where
+                      the policy is enforced, the operator handshake cannot reach the server, so it
+                      never becomes Verified and its address is not published.
                     items:
                       description: |-
                         NetworkPolicyPeer describes a peer to allow traffic to/from. Only certain combinations of
@@ -3334,10 +3338,14 @@ spec:
                       namespaceSelector, ipBlock).
                       When empty, the source is governed by the operator's default NetworkPolicy
                       posture: under the "open" posture (the default) any pod in the cluster can
-                      reach the MCP server, while under the "restricted" posture ingress is denied
-                      by default. Under "restricted" this field must include peers matching the
-                      operator pods and each required gateway source, otherwise the server never
-                      becomes Verified and its address is not published.
+                      reach the MCP server, while under the "restricted" posture the
+                      operator-generated policy denies ingress by default. That deny only takes
+                      effect where a NetworkPolicy-enforcing network plugin is installed, and it is
+                      unioned with any other NetworkPolicy selecting the same pod, so another policy
+                      may still admit traffic. Under "restricted" this field must include peers
+                      matching the operator pods and each required gateway source; otherwise, where
+                      the policy is enforced, the operator handshake cannot reach the server, so it
+                      never becomes Verified and its address is not published.
                     items:
                       description: |-
                         NetworkPolicyPeer describes a peer to allow traffic to/from. Only certain combinations of
