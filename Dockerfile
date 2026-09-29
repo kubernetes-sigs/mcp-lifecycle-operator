@@ -80,7 +80,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
 # Coverage runtime image. Unlike the distroless production image, this uses a
 # busybox base so that `kubectl cp` (which shells out to `tar` inside the
 # container) can extract the collected coverage data from the running pod.
-FROM busybox:1.37.0 AS coverage
+FROM busybox:1.38.0 AS coverage
 WORKDIR /
 COPY --from=coverage-builder /workspace/manager .
 USER 65532:65532

@@ -26,7 +26,7 @@ import (
 const (
 	DefaultMCPServerImage   = "quay.io/containers/kubernetes_mcp_server@sha256:6d650f4bd6ac303ad82713c997e73a2d001602f9bf17392c9b9a0e30e29c6423" // :v0.0.66
 	AlternateMCPServerImage = "quay.io/containers/kubernetes_mcp_server@sha256:5df586e2c7ced2a3125f6e78923388d80b69de0a2ad1470325b05318f12725bd" // :v0.0.65
-	BusyboxImage            = "docker.io/library/busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0"                // :1.37
+	BusyboxImage            = "docker.io/library/busybox@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e"                // :1.38
 )
 
 // MCPServerOption configures an MCPServer for testing.
