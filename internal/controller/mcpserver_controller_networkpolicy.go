@@ -73,7 +73,13 @@ func (r *MCPServerReconciler) ensureNetworkPolicy(
 		if !hasIngressSourceRestriction(netpol) {
 			logger.Info("NetworkPolicy created without ingress source restrictions", keyName, netpol.Name)
 		}
-		if mcpServer.Spec.Network == nil || (len(mcpServer.Spec.Network.EgressTo) == 0 && len(mcpServer.Spec.Network.EgressPorts) == 0) {
+		// Report egress from the built policy, not the spec: under the restricted
+		// egress posture an unconfigured egress is left unmanaged (Egress dropped
+		// from policyTypes), which is neither allow-all nor a restriction, so it
+		// must not be logged as "without egress destination restrictions".
+		if !slices.Contains(netpol.Spec.PolicyTypes, networkingv1.PolicyTypeEgress) {
+			logger.Info("NetworkPolicy created with egress left unmanaged", keyName, netpol.Name)
+		} else if !hasEgressDestinationRestriction(netpol) {
 			logger.Info("NetworkPolicy created without egress destination restrictions", keyName, netpol.Name)
 		}
 		auditNetworkPolicyCreated(ctx, mcpServer, netpol.Name, hasIngressSourceRestriction(netpol), hasEgressDestinationRestriction(netpol))
