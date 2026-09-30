@@ -86,3 +86,50 @@ COPY --from=coverage-builder /workspace/manager .
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]
+
+# Code-mode data-plane images. These are built from the same module as the
+# manager but ship as separate binaries/images so the dispatcher and runner
+# stay off the operator's reconcile hot path (design invariant, FR-009).
+
+# Build the code-mode dispatcher (execute_code MCP server).
+FROM --platform=${BUILDPLATFORM} golang:1.27.1 AS dispatcher-builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o execute-code ./cmd/execute-code
+
+FROM gcr.io/distroless/static:nonroot AS dispatcher
+WORKDIR /
+COPY --from=dispatcher-builder /workspace/execute-code .
+USER 65532:65532
+
+ENTRYPOINT ["/execute-code"]
+
+# Build the portable code-mode runner. The same image runs unchanged under any
+# SandboxProvider (portability contract).
+FROM --platform=${BUILDPLATFORM} golang:1.27.1 AS runner-builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o runner ./runner
+
+FROM gcr.io/distroless/static:nonroot AS runner
+WORKDIR /
+COPY --from=runner-builder /workspace/runner .
+USER 65532:65532
+
+ENTRYPOINT ["/runner"]
