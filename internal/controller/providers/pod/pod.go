@@ -23,11 +23,15 @@ package pod
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/sandbox"
@@ -43,18 +47,34 @@ const (
 	// The provider mounts it into EnvCredential via a secretKeyRef so the value
 	// never passes through the operator or the Pod spec in plain text.
 	credentialSecretKey = "credential"
+	// awaitPollInterval is how often Await re-checks the sandbox Pod phase.
+	awaitPollInterval = 250 * time.Millisecond
 )
+
+// logFetcher retrieves the finished sandbox's stdout - the runner's result
+// envelope. It is abstracted behind a function type so the client-go dependency
+// (Pod log streaming, which the controller-runtime client cannot do) stays out
+// of the core provider logic and so tests can supply canned output.
+type logFetcher func(ctx context.Context, namespace, name string) ([]byte, error)
 
 // Provider is the baseline pod SandboxProvider. It holds a call-time client used
 // by Claim/Release; the client operates directly against the API server and does
 // not depend on the controller reconcile loop (FR-009/SC-006).
 type Provider struct {
-	client client.Client
+	client    client.Client
+	fetchLogs logFetcher
 }
 
-// New returns a pod Provider backed by the given client.
+// New returns a pod Provider backed by the given client. Await additionally
+// requires a log fetcher (see NewWithLogs / SetLogFetcher).
 func New(c client.Client) *Provider {
 	return &Provider{client: c}
+}
+
+// NewWithLogs returns a pod Provider that can also retrieve results via the
+// given log fetcher.
+func NewWithLogs(c client.Client, f logFetcher) *Provider {
+	return &Provider{client: c, fetchLogs: f}
 }
 
 // singleton is the instance registered in the sandbox registry. Its client is
@@ -71,6 +91,27 @@ func init() {
 // dispatcher (and the operator, for Setup) call this once at startup.
 func SetClient(c client.Client) {
 	singleton.client = c
+}
+
+// SetLogFetcher wires the result-retrieval mechanism into the registered
+// provider. Only the dispatcher (which awaits results) needs this; the operator
+// does not. NewClientsetFetcher builds the production implementation.
+func SetLogFetcher(f logFetcher) {
+	singleton.fetchLogs = f
+}
+
+// NewClientsetFetcher builds a logFetcher that streams a Pod's runner-container
+// logs via client-go.
+func NewClientsetFetcher(cs kubernetes.Interface) logFetcher {
+	return func(ctx context.Context, namespace, name string) ([]byte, error) {
+		req := cs.CoreV1().Pods(namespace).GetLogs(name, &corev1.PodLogOptions{Container: runnerContainerName})
+		stream, err := req.Stream(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("pod provider: streaming logs for %s/%s: %w", namespace, name, err)
+		}
+		defer func() { _ = stream.Close() }()
+		return io.ReadAll(stream)
+	}
 }
 
 // Name implements sandbox.SandboxProvider.
@@ -121,6 +162,35 @@ func (p *Provider) Claim(ctx context.Context, spec sandbox.RunnerSpec) (sandbox.
 	}
 
 	return sandbox.RunnerHandle{Namespace: pod.Namespace, Name: pod.Name}, nil
+}
+
+// Await blocks until the sandbox Pod reaches a terminal phase and returns the
+// runner container's stdout (the result envelope). It polls the Pod phase via
+// the controller-runtime client and reads logs via the configured fetcher. A
+// ctx deadline returns promptly so the dispatcher can surface a timeout.
+func (p *Provider) Await(ctx context.Context, h sandbox.RunnerHandle) ([]byte, error) {
+	if p.client == nil {
+		return nil, fmt.Errorf("pod provider: client not configured (call SetClient)")
+	}
+	if p.fetchLogs == nil {
+		return nil, fmt.Errorf("pod provider: log fetcher not configured (call SetLogFetcher)")
+	}
+
+	for {
+		var pod corev1.Pod
+		if err := p.client.Get(ctx, types.NamespacedName{Namespace: h.Namespace, Name: h.Name}, &pod); err != nil {
+			return nil, fmt.Errorf("pod provider: getting sandbox Pod %s/%s: %w", h.Namespace, h.Name, err)
+		}
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			return p.fetchLogs(ctx, h.Namespace, h.Name)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(awaitPollInterval):
+		}
+	}
 }
 
 // Release deletes the sandbox Pod identified by the handle. A not-found Pod is

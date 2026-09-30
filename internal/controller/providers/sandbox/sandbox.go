@@ -164,6 +164,12 @@ type SandboxProvider interface {
 
 	// Claim provisions a fresh isolated sandbox for one execution.
 	Claim(ctx context.Context, spec RunnerSpec) (RunnerHandle, error)
+	// Await blocks until the claimed sandbox finishes and returns the raw result
+	// envelope the runner produced on stdout (JSON: {"result":...} or
+	// {"error":{...}}). It does not release the sandbox; the caller Releases
+	// regardless of outcome. A ctx deadline returns promptly so the dispatcher can
+	// surface a timeout rather than hang.
+	Await(ctx context.Context, h RunnerHandle) ([]byte, error)
 	// Release tears the sandbox down after the execution.
 	Release(ctx context.Context, h RunnerHandle) error
 }
