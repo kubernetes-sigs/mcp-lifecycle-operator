@@ -31,6 +31,9 @@ func (f fakeProvider) Name() string                                   { return f
 func (f fakeProvider) IsolationGuarantees() IsolationGuarantees       { return f.guarantees }
 func (f fakeProvider) Setup(context.Context, ToolsetContext) error    { return nil }
 func (f fakeProvider) Teardown(context.Context, ToolsetContext) error { return nil }
+func (f fakeProvider) Await(context.Context, RunnerHandle) ([]byte, error) {
+	return []byte(`{"result":null}`), nil
+}
 func (f fakeProvider) Claim(context.Context, RunnerSpec) (RunnerHandle, error) {
 	return RunnerHandle{}, nil
 }

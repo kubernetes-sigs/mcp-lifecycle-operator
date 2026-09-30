@@ -202,6 +202,70 @@ func TestReleaseDeletesPod(t *testing.T) {
 	}
 }
 
+func TestAwaitReturnsRunnerOutputOnCompletion(t *testing.T) {
+	c := newFakeClient(t)
+	fetched := false
+	fetch := func(_ context.Context, ns, name string) ([]byte, error) {
+		fetched = true
+		return []byte(`{"result":42}`), nil
+	}
+	p := NewWithLogs(c, fetch)
+
+	h, err := p.Claim(context.Background(), sampleSpec())
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+
+	// Drive the sandbox Pod to a terminal phase so Await returns.
+	var pod corev1.Pod
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: h.Namespace, Name: h.Name}, &pod); err != nil {
+		t.Fatalf("get pod: %v", err)
+	}
+	pod.Status.Phase = corev1.PodSucceeded
+	if err := c.Status().Update(context.Background(), &pod); err != nil {
+		t.Fatalf("update pod status: %v", err)
+	}
+
+	out, err := p.Await(context.Background(), h)
+	if err != nil {
+		t.Fatalf("Await: %v", err)
+	}
+	if !fetched {
+		t.Errorf("log fetcher was not called")
+	}
+	if string(out) != `{"result":42}` {
+		t.Errorf("Await output = %q; want the runner envelope", out)
+	}
+}
+
+func TestAwaitRespectsContextDeadline(t *testing.T) {
+	c := newFakeClient(t)
+	p := NewWithLogs(c, func(context.Context, string, string) ([]byte, error) {
+		t.Fatal("log fetcher must not run while the Pod is still running")
+		return nil, nil
+	})
+
+	h, err := p.Claim(context.Background(), sampleSpec())
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	// Pod stays Pending; Await must return promptly when the context expires.
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := p.Await(ctx, h); err == nil {
+		t.Errorf("Await: want context error while Pod never completes")
+	}
+}
+
+func TestAwaitRequiresClientAndFetcher(t *testing.T) {
+	if _, err := (&Provider{}).Await(context.Background(), sandbox.RunnerHandle{Namespace: "demo", Name: "x"}); err == nil {
+		t.Errorf("Await without client: want error")
+	}
+	if _, err := New(newFakeClient(t)).Await(context.Background(), sandbox.RunnerHandle{Namespace: "demo", Name: "x"}); err == nil {
+		t.Errorf("Await without fetcher: want error")
+	}
+}
+
 func TestClaimRequiresClientAndImage(t *testing.T) {
 	// No client configured.
 	if _, err := (&Provider{}).Claim(context.Background(), sampleSpec()); err == nil {
