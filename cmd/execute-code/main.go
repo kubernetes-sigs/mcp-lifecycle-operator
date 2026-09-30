@@ -67,6 +67,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The MVP injects a single static, long-lived scoped credential into every
+	// sandbox rather than a per-execution brokered identity. This is explicitly
+	// NOT production grade: per-execution identity via RFC 8693 token exchange is
+	// deferred (see the code-mode design, section 7). Surface it loudly at startup.
+	logger.Info("WARNING: code-mode credential model is NOT production grade: "+
+		"sandboxes receive a single static scoped credential, not a per-execution "+
+		"brokered identity (RFC 8693 token exchange is deferred; see design section 7)",
+		"toolset", d.toolset, "credentialSecret", d.credential.SecretName)
+
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		s := mcp.NewServer(&mcp.Implementation{Name: serverName, Version: serverVersion}, nil)
 		d.register(s)

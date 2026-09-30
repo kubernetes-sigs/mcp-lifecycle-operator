@@ -82,6 +82,11 @@ type MCPToolsetSpec struct {
 	// TimeoutSeconds is the default per-execution time budget applied to code
 	// submitted against this toolset. It also caps the lifetime of the scoped
 	// credential injected into the sandbox. Defaults to 120 seconds.
+	//
+	// Note: the MVP injects a single static, long-lived scoped credential into
+	// each sandbox rather than a per-execution brokered identity. This is NOT
+	// production grade; per-execution identity via RFC 8693 token exchange is
+	// deferred (see the code-mode design, section 7).
 	// +optional
 	// +kubebuilder:default=120
 	// +kubebuilder:validation:Minimum=1
