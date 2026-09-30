@@ -26,6 +26,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -147,6 +148,92 @@ var _ = Describe("MCPToolset Controller", func() {
 			Expect(k8sClient.Get(ctx, dispKey, &corev1.ServiceAccount{})).To(Succeed())
 			Expect(k8sClient.Get(ctx, dispKey, &rbacv1.Role{})).To(Succeed())
 			Expect(k8sClient.Get(ctx, dispKey, &rbacv1.RoleBinding{})).To(Succeed())
+		})
+	})
+
+	Context("When a toolset cannot become ready (US3, quickstart S1 negative)", func() {
+		// reconcileToolset creates a toolset, reconciles it once, and returns the
+		// refreshed object. It registers cleanup for the toolset and any dispatcher
+		// resources it might own.
+		reconcileToolset := func(name string, spec mcpv1alpha1.MCPToolsetSpec) *mcpv1alpha1.MCPToolset {
+			toolset := &mcpv1alpha1.MCPToolset{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: toolsetTestNamespace},
+				Spec:       spec,
+			}
+			Expect(k8sClient.Create(ctx, toolset)).To(Succeed())
+			DeferCleanup(func() { deleteToolsetResources(ctx, name) })
+
+			_, err := newToolsetReconciler().Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: name, Namespace: toolsetTestNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			got := &mcpv1alpha1.MCPToolset{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: toolsetTestNamespace}, got)).To(Succeed())
+			return got
+		}
+
+		expectNoDispatcher := func(toolset string) {
+			key := types.NamespacedName{Name: dispatcherName(toolset), Namespace: toolsetTestNamespace}
+			err := k8sClient.Get(ctx, key, &appsv1.Deployment{})
+			Expect(apierrors.IsNotFound(err)).To(BeTrue(), "no dispatcher must be deployed for a not-ready toolset")
+		}
+
+		It("reports ServersResolved=False and Ready=False naming a missing server (SC-007)", func() {
+			const name = "toolset-missing-server"
+			got := reconcileToolset(name, mcpv1alpha1.MCPToolsetSpec{
+				Servers:  []string{"ghost-server"},
+				Provider: "pod",
+			})
+
+			resolved := meta.FindStatusCondition(got.Status.Conditions, ConditionTypeServersResolved)
+			Expect(resolved).NotTo(BeNil())
+			Expect(resolved.Status).To(Equal(metav1.ConditionFalse))
+			Expect(resolved.Reason).To(Equal(ReasonServersMissing))
+			Expect(resolved.Message).To(ContainSubstring("ghost-server"))
+
+			ready := meta.FindStatusCondition(got.Status.Conditions, ConditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(ReasonServersNotResolved))
+
+			Expect(got.Status.ExecuteEndpoint).To(BeEmpty())
+			expectNoDispatcher(name)
+		})
+
+		It("reports Ready=False reason UnknownProvider for an unregistered provider", func() {
+			const name = "toolset-unknown-provider"
+			got := reconcileToolset(name, mcpv1alpha1.MCPToolsetSpec{
+				Servers:  []string{"ghost-server"},
+				Provider: "does-not-exist",
+			})
+
+			ready := meta.FindStatusCondition(got.Status.Conditions, ConditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(ReasonUnknownProvider))
+
+			Expect(got.Status.ExecuteEndpoint).To(BeEmpty())
+			expectNoDispatcher(name)
+		})
+
+		It("reports Ready=False reason InsufficientIsolation when the provider is too weak", func() {
+			const name = "toolset-weak-isolation"
+			// The pod provider guarantees only baseline isolation, so requiring
+			// egress isolation must be rejected before any dispatcher is deployed.
+			got := reconcileToolset(name, mcpv1alpha1.MCPToolsetSpec{
+				Servers:  []string{"ghost-server"},
+				Provider: "pod",
+				Policy:   mcpv1alpha1.MCPToolsetPolicy{MinIsolation: mcpv1alpha1.IsolationEgress},
+			})
+
+			ready := meta.FindStatusCondition(got.Status.Conditions, ConditionTypeReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			Expect(ready.Reason).To(Equal(ReasonInsufficientIsolation))
+
+			Expect(got.Status.ExecuteEndpoint).To(BeEmpty())
+			expectNoDispatcher(name)
 		})
 	})
 })
