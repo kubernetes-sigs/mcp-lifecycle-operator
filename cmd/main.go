@@ -57,6 +57,9 @@ import (
 	// The kuadrant provider is imported by name (not blank) so its opt-in
 	// extension-namespace allowlist can be configured from startup flags.
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant"
+
+	// Code-mode sandbox providers register themselves via init().
+	_ "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/pod"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -98,6 +101,8 @@ func main() {
 	var httprouteAllowedGatewayNamespaces string
 	var kuadrantAllowedExtensionNamespaces string
 	var clusterDomain string
+	var dispatcherImage string
+	var runnerImage string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -165,6 +170,12 @@ func main() {
 			"Empty means no restriction (any namespace named in a binding's ConfigMap is trusted).")
 	flag.StringVar(&clusterDomain, "cluster-domain", controller.DefaultClusterDomain,
 		"Kubernetes DNS cluster domain used for MCP Service handshakes and status addresses; must be a DNS subdomain.")
+	flag.StringVar(&dispatcherImage, "dispatcher-image", os.Getenv("DISPATCHER_IMAGE"),
+		"Image for the code-mode execute_code dispatcher the MCPToolset controller deploys. "+
+			"Falls back to the DISPATCHER_IMAGE env var. Required to reconcile MCPToolsets.")
+	flag.StringVar(&runnerImage, "runner-image", os.Getenv("RUNNER_IMAGE"),
+		"Portable code-mode runner image the dispatcher launches per execution. "+
+			"Falls back to the RUNNER_IMAGE env var.")
 
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
@@ -379,6 +390,15 @@ func main() {
 	}
 	if err := providers.SetupAll(mgr); err != nil {
 		setupLog.Error(err, "unable to set up gateway providers")
+		os.Exit(1)
+	}
+	if err := (&controller.MCPToolsetReconciler{
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		DispatcherImage: dispatcherImage,
+		RunnerImage:     runnerImage,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "MCPToolset")
 		os.Exit(1)
 	}
 	if enableWebhook {
