@@ -358,6 +358,45 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 			Expect(names).To(ConsistOf("config-a", "config-b", "config-c"))
 		})
 
+		It("should extract the gateway ConfigRef so gateway ConfigMap changes trigger re-reconcile", func() {
+			mcpServer := &mcpv1beta1.MCPServer{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Gateway: &mcpv1beta1.GatewaySpec{
+						Provider:  "httproute",
+						ConfigRef: "gw-config",
+					},
+				},
+			}
+
+			names := extractConfigMapNames(mcpServer)
+			Expect(names).To(ConsistOf("gw-config"))
+		})
+
+		It("should not duplicate the gateway ConfigRef when it also appears elsewhere", func() {
+			mcpServer := &mcpv1beta1.MCPServer{
+				Spec: mcpv1beta1.MCPServerSpec{
+					Config: mcpv1beta1.ServerConfig{
+						EnvFrom: []corev1.EnvFromSource{
+							{
+								ConfigMapRef: &corev1.ConfigMapEnvSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "shared-config",
+									},
+								},
+							},
+						},
+					},
+					Gateway: &mcpv1beta1.GatewaySpec{
+						Provider:  "httproute",
+						ConfigRef: "shared-config",
+					},
+				},
+			}
+
+			names := extractConfigMapNames(mcpServer)
+			Expect(names).To(ConsistOf("shared-config"))
+		})
+
 		It("should return empty slice when no ConfigMaps are referenced", func() {
 			mcpServer := &mcpv1beta1.MCPServer{
 				Spec: mcpv1beta1.MCPServerSpec{

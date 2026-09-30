@@ -53,7 +53,12 @@ func (r *MCPServerReconciler) ensureNetworkPolicy(
 ) (*networkingv1.NetworkPolicy, error) {
 	logger := log.FromContext(ctx)
 
-	netpol := r.createNetworkPolicy(mcpServer)
+	gatewayPeers, gwErr := r.gatewayIngressPeers(ctx, mcpServer)
+	if gwErr != nil {
+		logger.Error(gwErr, "Failed to resolve gateway ingress peers")
+		return nil, gwErr
+	}
+	netpol := r.createNetworkPolicy(mcpServer, gatewayPeers)
 	if err := controllerutil.SetControllerReference(mcpServer, netpol, r.Scheme); err != nil {
 		logger.Error(err, "Failed to set controller reference for NetworkPolicy")
 		return nil, err
@@ -129,10 +134,18 @@ func (r *MCPServerReconciler) ensureNetworkPolicy(
 	return netpol, nil
 }
 
-func (r *MCPServerReconciler) createNetworkPolicy(mcpServer *mcpv1beta1.MCPServer) *networkingv1.NetworkPolicy {
+// createNetworkPolicy builds the desired operand NetworkPolicy. It is pure (no
+// API access): the caller resolves any gateway ingress peer beforehand and
+// passes it in, so the posture-reporting path can rebuild the policy without a
+// client. gatewayPeers is nil unless the server is gateway-routed under the
+// restricted posture.
+func (r *MCPServerReconciler) createNetworkPolicy(
+	mcpServer *mcpv1beta1.MCPServer,
+	gatewayPeers []networkingv1.NetworkPolicyPeer,
+) *networkingv1.NetworkPolicy {
 	labels := managedWorkloadLabels(mcpServer.Name)
 
-	ingressRules := defaultIngressRules(mcpServer, r.NetworkPolicyDefaultPosture)
+	ingressRules := defaultIngressRules(mcpServer, r.NetworkPolicyDefaultPosture, gatewayPeers)
 
 	egressRules := buildEgressRules(mcpServer)
 
@@ -203,13 +216,18 @@ func buildEgressRules(mcpServer *mcpv1beta1.MCPServer) []networkingv1.NetworkPol
 // the posture from the desired policy built by createNetworkPolicy, using the
 // same restriction-detection helpers as the audit signal so the two never
 // disagree. The condition is informational and never gates readiness.
+//
+// This path builds the policy without a gateway ingress peer (nil): both the
+// deny-by-default rule set and a gateway-scoped rule set report as ingress
+// restricted, so the posture verdict is unaffected. The success path reports
+// from the actually-applied policy via networkPolicyPostureConditionFor.
 func (r *MCPServerReconciler) networkPolicyPostureCondition(
 	mcpServer *mcpv1beta1.MCPServer,
 	generation int64,
 	existingConditions []metav1.Condition,
 ) metav1.Condition {
 	return r.networkPolicyPostureConditionFor(
-		mcpServer, generation, existingConditions, r.createNetworkPolicy(mcpServer))
+		mcpServer, generation, existingConditions, r.createNetworkPolicy(mcpServer, nil))
 }
 
 // networkPolicyPostureConditionFor derives the posture condition from an

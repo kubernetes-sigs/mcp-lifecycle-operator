@@ -142,7 +142,7 @@ func TestDefaultIngressRules(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run("ingress/"+tc.name, func(t *testing.T) {
-			got := defaultIngressRules(tc.server, tc.posture)
+			got := defaultIngressRules(tc.server, tc.posture, nil)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("defaultIngressRules() = %#v, want %#v", got, tc.want)
 			}

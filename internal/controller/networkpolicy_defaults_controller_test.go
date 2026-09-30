@@ -147,4 +147,55 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 		Expect(netpol.Spec.Ingress[0].From).To(HaveLen(1))
 		Expect(netpol.Spec.Ingress[0].From[0].PodSelector).NotTo(BeNil())
 	})
+
+	It("should admit the gateway namespace for a gateway-routed server with no IngressFrom", func() {
+		gwConfig := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "gw-cfg-resolvable", Namespace: "default"},
+			Data:       map[string]string{gatewayConfigKeyNamespace: "gateway-system"},
+		}
+		Expect(k8sClient.Create(ctx, gwConfig)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gwConfig) }()
+
+		mcpServer := newTestMCPServer("test-netpol-gw-resolvable")
+		mcpServer.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-cfg-resolvable"}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, mcpServer) }()
+
+		Expect(restrictedReconciler().reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-gw-resolvable",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying ingress admits the gateway namespace on the server port")
+		Expect(netpol.Spec.Ingress).To(HaveLen(1))
+		Expect(netpol.Spec.Ingress[0].From).To(HaveLen(1))
+		Expect(netpol.Spec.Ingress[0].From[0].NamespaceSelector).NotTo(BeNil())
+		Expect(netpol.Spec.Ingress[0].From[0].NamespaceSelector.MatchLabels).To(
+			HaveKeyWithValue(namespaceNameLabel, "gateway-system"))
+		Expect(netpol.Spec.Ingress[0].From[0].PodSelector).To(BeNil())
+		Expect(netpol.Spec.Ingress[0].Ports).To(HaveLen(1))
+		Expect(netpol.Spec.Ingress[0].Ports[0].Port.IntValue()).To(Equal(8080))
+	})
+
+	It("should stay deny-by-default for a gateway-routed server whose gateway config cannot be resolved", func() {
+		mcpServer := newTestMCPServer("test-netpol-gw-unresolvable")
+		mcpServer.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-cfg-absent"}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, mcpServer) }()
+
+		Expect(restrictedReconciler().reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-gw-unresolvable",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying ingress remains deny-by-default with Ingress still in policyTypes")
+		Expect(netpol.Spec.Ingress).To(BeEmpty())
+		Expect(netpol.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeIngress))
+	})
 })

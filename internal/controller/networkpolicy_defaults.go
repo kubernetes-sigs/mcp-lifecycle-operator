@@ -65,11 +65,18 @@ func ParseDefaultPosture(value string) (NetworkPolicyDefaultPosture, error) {
 // source is honored regardless of posture. When no source is declared:
 //   - PostureOpen emits a single rule scoped to the server port with no source
 //     (historical behavior; any source may reach the port).
-//   - PostureRestricted emits no rule (deny-by-default). It never fabricates a
-//     placeholder source such as an empty peer or a universal CIDR.
+//   - PostureRestricted emits no rule (deny-by-default), unless the server is
+//     gateway-routed and the caller resolved a gateway ingress peer: then it
+//     emits a single port-scoped rule admitting that peer, so the gateway can
+//     still reach the server. It never fabricates a placeholder source such as
+//     an empty peer or a universal CIDR.
+//
+// gatewayPeers is consulted only under PostureRestricted; it is resolved by the
+// caller (which has API access) and is nil whenever no gateway peer applies.
 func defaultIngressRules(
 	mcpServer *mcpv1beta1.MCPServer,
 	posture NetworkPolicyDefaultPosture,
+	gatewayPeers []networkingv1.NetworkPolicyPeer,
 ) []networkingv1.NetworkPolicyIngressRule {
 	if mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.IngressFrom) > 0 {
 		return []networkingv1.NetworkPolicyIngressRule{
@@ -81,6 +88,14 @@ func defaultIngressRules(
 	}
 
 	if posture == PostureRestricted {
+		if len(gatewayPeers) > 0 {
+			return []networkingv1.NetworkPolicyIngressRule{
+				{
+					Ports: ingressPorts(mcpServer),
+					From:  gatewayPeers,
+				},
+			}
+		}
 		return []networkingv1.NetworkPolicyIngressRule{}
 	}
 

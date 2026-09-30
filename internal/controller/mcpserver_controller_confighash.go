@@ -236,6 +236,18 @@ func extractConfigMapNames(obj client.Object) []string {
 		}
 	}
 
+	// Extract from the gateway configuration. The gateway provider ConfigMap is
+	// read when deriving the gateway ingress peer under the restricted posture,
+	// so indexing it here keeps the ConfigMap watch mapping gateway ConfigMap
+	// events back to the MCPServer for re-reconciliation.
+	if mcpServer.Spec.Gateway != nil && mcpServer.Spec.Gateway.ConfigRef != "" {
+		name := mcpServer.Spec.Gateway.ConfigRef
+		if !seen[name] {
+			configMaps = append(configMaps, name)
+			seen[name] = true
+		}
+	}
+
 	return configMaps
 }
 
