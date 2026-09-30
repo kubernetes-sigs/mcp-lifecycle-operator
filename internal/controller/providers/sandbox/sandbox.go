@@ -79,13 +79,14 @@ func (g IsolationGuarantees) Satisfies(minIsolation string) bool {
 }
 
 // Endpoint is a resolved MCP server reachable from a sandbox: the toolset-local
-// server name and its in-cluster URL (scheme://host:port/path).
+// server name and its in-cluster URL (scheme://host:port/path). The JSON tags
+// are the wire format used to pass endpoints into the runner (see EnvEndpoints).
 type Endpoint struct {
 	// Server is the toolset-local name (matches an MCPServer resource name and
 	// the name scripts use in tools.call(server, ...)).
-	Server string
+	Server string `json:"server"`
 	// URL is the in-cluster MCP endpoint URL for the server.
-	URL string
+	URL string `json:"url"`
 }
 
 // CredentialRef references the scoped credential injected into a sandbox. MVP:
