@@ -56,6 +56,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.MCPServerSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("MCPServerStatus"):
 		return &apiv1alpha1.MCPServerStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("MCPToolset"):
+		return &apiv1alpha1.MCPToolsetApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("MCPToolsetPolicy"):
+		return &apiv1alpha1.MCPToolsetPolicyApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("MCPToolsetSpec"):
+		return &apiv1alpha1.MCPToolsetSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("MCPToolsetStatus"):
+		return &apiv1alpha1.MCPToolsetStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("NetworkConfig"):
 		return &apiv1alpha1.NetworkConfigApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RuntimeConfig"):
