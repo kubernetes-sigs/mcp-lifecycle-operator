@@ -9,7 +9,6 @@ rules:
   resources:
   - configmaps
   - namespaces
-  - pods
   - secrets
   verbs:
   - get
@@ -18,12 +17,30 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/log
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
   - services
   verbs:
   - create
   - delete
   - get
   - list
+  - patch
   - update
   - watch
 - apiGroups:
@@ -59,6 +76,7 @@ rules:
   - create
   - get
   - list
+  - patch
   - update
   - watch
 - apiGroups:
@@ -116,6 +134,7 @@ rules:
   resources:
   - mcpgatewaybindings/finalizers
   - mcpservers/finalizers
+  - mcptoolsets/finalizers
   verbs:
   - update
 - apiGroups:
@@ -123,6 +142,7 @@ rules:
   resources:
   - mcpgatewaybindings/status
   - mcpservers/status
+  - mcptoolsets/status
   verbs:
   - get
   - patch
@@ -131,6 +151,7 @@ rules:
   - mcp.x-k8s.io
   resources:
   - mcpservers
+  - mcptoolsets
   verbs:
   - get
   - list
@@ -145,5 +166,17 @@ rules:
   - create
   - get
   - list
+  - update
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  - roles
+  verbs:
+  - create
+  - get
+  - list
+  - patch
   - update
   - watch
