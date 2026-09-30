@@ -161,6 +161,15 @@ func buildEgressRules(mcpServer *mcpv1beta1.MCPServer) []networkingv1.NetworkPol
 	hasEgressPorts := mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.EgressPorts) > 0
 
 	if !hasEgressTo && !hasEgressPorts {
+		// Default egress is allow-all: a single empty rule permits unrestricted
+		// outbound traffic to any destination on any port. This is intentional -
+		// MCP servers commonly reach arbitrary external endpoints (the APIs they
+		// front), and standard NetworkPolicy cannot select DNS names or reliably
+		// represent dynamically addressed destinations, so a narrower default
+		// would break legitimate traffic. Callers that need to restrict egress
+		// set Spec.Network.EgressTo/EgressPorts, or govern it with a separate
+		// network control (an allow-all rule is additive and cannot be narrowed
+		// by another NetworkPolicy).
 		return []networkingv1.NetworkPolicyEgressRule{{}}
 	}
 

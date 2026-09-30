@@ -56,6 +56,9 @@ spec:
 !!! warning "NetworkPolicies are additive"
     These rows describe only the policy the operator manages. Kubernetes unions every NetworkPolicy that selects a pod, so another policy in the namespace can still admit broader ingress or egress than what you configure here. Audit the other policies that select the server pod when you rely on these restrictions.
 
+!!! warning "Default egress is allow-all (unrestricted outbound)"
+    When an MCPServer sets neither `egressTo` nor `egressPorts`, the managed policy declares `Egress` in `policyTypes` with a single empty rule (`egress: [{}]`), which permits **unrestricted outbound traffic** to any destination on any port. This is the default because MCP servers commonly need to reach arbitrary external endpoints (the APIs they front), and standard Kubernetes NetworkPolicy cannot select DNS names or reliably represent dynamically addressed destinations - a narrower default rule would break legitimate traffic. Because NetworkPolicies are additive, another policy cannot narrow an allow-all rule; only a separate network control can. To restrict a server's outbound traffic, set `spec.network.egressTo` / `egressPorts` (which also documents the intended destinations), or govern egress with a dedicated network control outside this operator.
+
 !!! warning "DNS is always permitted when egress is restricted"
     As soon as `egressTo` or `egressPorts` is set, the operator prepends an egress rule allowing UDP and TCP port `53` so pods can still resolve names. Use `dnsEgressPeer` to narrow that rule to your cluster's DNS service. `dnsEgressPeer` on its own does **not** activate egress restrictions.
 
