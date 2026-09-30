@@ -1,0 +1,44 @@
+# Code Mode MVP: an MCPToolset that lets an agent submit a script composing
+# multiple MCP tool calls against a set of MCPServers. The script runs in an
+# isolated sandbox (the "pod" provider runs each execution in a bare Kubernetes
+# Pod) and only the final result is returned.
+#
+# Apply the MCPServer first, wait for it to become Verified, then apply the
+# MCPToolset. Once the toolset reports Ready=True, submit code to the URL in
+# status.executeEndpoint.
+#
+#   kubectl apply -f examples/mcptoolset-ops.yaml
+#   kubectl wait --for=condition=Ready mcptoolset/ops-toolset
+#   kubectl get mcptoolset ops-toolset -o jsonpath='{.status.executeEndpoint}'
+---
+apiVersion: mcp.x-k8s.io/v1beta1
+kind: MCPServer
+metadata:
+  name: kubernetes
+  namespace: default
+spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: quay.io/containers/kubernetes_mcp_server:latest
+  config:
+    port: 8080
+---
+apiVersion: mcp.x-k8s.io/v1alpha1
+kind: MCPToolset
+metadata:
+  name: ops-toolset
+  namespace: default
+spec:
+  # The servers a submitted script may reach (the containment boundary).
+  servers:
+    - kubernetes
+  # The sandbox execution backend. "pod" runs each execution in a bare Pod
+  # (baseline isolation: per-execution, ephemeral, filesystem-isolated).
+  provider: pod
+  # Minimum isolation the provider must satisfy. "baseline" is the default and
+  # is satisfied by the pod provider.
+  policy:
+    minIsolation: baseline
+  # Default per-execution time budget (also caps the scoped credential lifetime).
+  timeoutSeconds: 120
