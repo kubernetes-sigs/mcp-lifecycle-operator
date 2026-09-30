@@ -190,6 +190,14 @@ func TestListToolsets(t *testing.T) {
 	if len(out.Toolsets[0].Servers) != 2 {
 		t.Errorf("servers = %v; want kubernetes and github", out.Toolsets[0].Servers)
 	}
+
+	// US2 scenario 2 (coarse MVP authz): under one-dispatcher-per-CRD this
+	// dispatcher serves only its own toolset, so any other toolset is omitted.
+	for _, ts := range out.Toolsets {
+		if ts.Name != d.toolset {
+			t.Errorf("listed a toolset this dispatcher does not serve: %q", ts.Name)
+		}
+	}
 }
 
 // TestExecuteCodeOverMCP exercises the full MCP round-trip: a client calls
