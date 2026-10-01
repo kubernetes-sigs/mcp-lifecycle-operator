@@ -1,0 +1,219 @@
+suite: test deployment
+templates:
+  - manager/manager.yaml
+tests:
+  - it: should render deployment with default values
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-mcp-lifecycle-operator-controller-manager
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "controller:latest"
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: IfNotPresent
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--leader-elect"
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: RELEASE-NAME-mcp-lifecycle-operator-controller-manager
+
+  - it: should use custom image tag
+    set:
+      manager.image.tag: "v1.2.3"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "controller:v1.2.3"
+
+  - it: should use custom image repository
+    set:
+      manager.image.repository: "myregistry/mycontroller"
+      manager.image.tag: "v2.0.0"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "myregistry/mycontroller:v2.0.0"
+
+  - it: should use custom image pull policy
+    set:
+      manager.image.pullPolicy: Always
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+
+  - it: should set custom replicas
+    set:
+      manager.replicas: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: should apply custom resources
+    set:
+      manager.resources:
+        limits:
+          cpu: "2"
+          memory: "2Gi"
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: "2"
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: "2Gi"
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: "500m"
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: "512Mi"
+
+  - it: should apply nodeSelector
+    set:
+      manager.nodeSelector:
+        disktype: ssd
+        kubernetes.io/os: linux
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector.disktype
+          value: ssd
+      - equal:
+          path: spec.template.spec.nodeSelector["kubernetes.io/os"]
+          value: linux
+
+  - it: should apply tolerations
+    set:
+      manager.tolerations:
+        - key: "key1"
+          operator: "Equal"
+          value: "value1"
+          effect: "NoSchedule"
+        - key: "key2"
+          operator: "Exists"
+          effect: "NoExecute"
+    asserts:
+      - equal:
+          path: spec.template.spec.tolerations[0].key
+          value: "key1"
+      - equal:
+          path: spec.template.spec.tolerations[0].operator
+          value: "Equal"
+      - equal:
+          path: spec.template.spec.tolerations[0].value
+          value: "value1"
+      - equal:
+          path: spec.template.spec.tolerations[0].effect
+          value: "NoSchedule"
+      - equal:
+          path: spec.template.spec.tolerations[1].key
+          value: "key2"
+      - equal:
+          path: spec.template.spec.tolerations[1].operator
+          value: "Exists"
+      - equal:
+          path: spec.template.spec.tolerations[1].effect
+          value: "NoExecute"
+
+  - it: should apply affinity
+    set:
+      manager.affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values:
+                      - amd64
+                      - arm64
+    asserts:
+      - equal:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key
+          value: kubernetes.io/arch
+      - equal:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].operator
+          value: In
+      - contains:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].values
+          content: amd64
+
+  - it: should disable leader election
+    set:
+      manager.args:
+        - --some-other-arg
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: "--leader-elect"
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--some-other-arg"
+
+  - it: should enable metrics by default
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--metrics-bind-address=:8443"
+
+  - it: should disable metrics when metrics.enable is false
+    set:
+      metrics.enable: false
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--metrics-bind-address=0"
+
+  - it: should use custom metrics port
+    set:
+      metrics.port: 9090
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--metrics-bind-address=:9090"
+
+  - it: should apply security context
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          content: ALL
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault
+
+  - it: should have health probes configured
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /healthz
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.port
+          value: 8081
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /readyz
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.port
+          value: 8081
+
