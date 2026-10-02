@@ -20,6 +20,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -183,12 +185,31 @@ func TestRunTimeoutIsTimeoutError(t *testing.T) {
 
 func TestListToolsets(t *testing.T) {
 	d := testDispatcher(&fakeProvider{})
-	out := d.listToolsets()
+	// Inject a catalog per server so discovery is exercised without a live backend.
+	d.listBackend = func(_ context.Context, ep sandbox.Endpoint) ([]backendTool, error) {
+		return []backendTool{
+			{Name: ep.Server + "_list", Description: "list " + ep.Server + " objects"},
+		}, nil
+	}
+
+	out := d.listToolsets(context.Background())
 	if len(out.Toolsets) != 1 || out.Toolsets[0].Name != "ops-toolset" {
 		t.Fatalf("toolsets = %+v; want the single configured toolset", out.Toolsets)
 	}
-	if len(out.Toolsets[0].Servers) != 2 {
-		t.Errorf("servers = %v; want kubernetes and github", out.Toolsets[0].Servers)
+
+	servers := out.Toolsets[0].Servers
+	if len(servers) != 2 {
+		t.Fatalf("servers = %+v; want kubernetes and github", servers)
+	}
+	// Progressive disclosure: each server advertises its tool names.
+	for _, s := range servers {
+		if s.Error != "" {
+			t.Errorf("server %q reported error: %s", s.Name, s.Error)
+		}
+		want := s.Name + "_list"
+		if len(s.Tools) != 1 || s.Tools[0].Name != want {
+			t.Errorf("server %q tools = %+v; want one tool %q", s.Name, s.Tools, want)
+		}
 	}
 
 	// US2 scenario 2 (coarse MVP authz): under one-dispatcher-per-CRD this
@@ -198,6 +219,116 @@ func TestListToolsets(t *testing.T) {
 			t.Errorf("listed a toolset this dispatcher does not serve: %q", ts.Name)
 		}
 	}
+}
+
+// TestListToolsetsDegradesOnBackendError proves a server whose catalog cannot be
+// fetched is still listed (with its error) rather than dropped or failing the
+// whole call.
+func TestListToolsetsDegradesOnBackendError(t *testing.T) {
+	d := testDispatcher(&fakeProvider{})
+	d.listBackend = func(_ context.Context, ep sandbox.Endpoint) ([]backendTool, error) {
+		if ep.Server == "github" {
+			return nil, errors.New("connection refused")
+		}
+		return []backendTool{{Name: "pods_list"}}, nil
+	}
+
+	servers := d.listToolsets(context.Background()).Toolsets[0].Servers
+	if len(servers) != 2 {
+		t.Fatalf("servers = %+v; want both listed despite one failing", servers)
+	}
+	for _, s := range servers {
+		switch s.Name {
+		case "kubernetes":
+			if s.Error != "" || len(s.Tools) != 1 {
+				t.Errorf("kubernetes = %+v; want one tool, no error", s)
+			}
+		case "github":
+			if s.Error == "" || len(s.Tools) != 0 {
+				t.Errorf("github = %+v; want error and no tools", s)
+			}
+		}
+	}
+}
+
+func TestDescribeTool(t *testing.T) {
+	schema := map[string]any{"type": "object"}
+	d := testDispatcher(&fakeProvider{})
+	d.listBackend = func(_ context.Context, ep sandbox.Endpoint) ([]backendTool, error) {
+		return []backendTool{
+			{Name: "pods_list", Description: "list pods", InputSchema: schema},
+		}, nil
+	}
+
+	// Found.
+	out := d.describeTool(context.Background(), describeToolInput{Server: "kubernetes", Tool: "pods_list"})
+	if out.Error != nil {
+		t.Fatalf("unexpected error: %+v", out.Error)
+	}
+	if out.Description != "list pods" || out.InputSchema == nil {
+		t.Errorf("describe = %+v; want description and schema", out)
+	}
+
+	// Unknown server -> BackendError, no backend dial needed.
+	out = d.describeTool(context.Background(), describeToolInput{Server: "nope", Tool: "x"})
+	if out.Error == nil || out.Error.Type != errTypeBackend {
+		t.Errorf("unknown server: out = %+v; want BackendError", out)
+	}
+
+	// Unknown tool on a known server -> BackendError.
+	out = d.describeTool(context.Background(), describeToolInput{Server: "kubernetes", Tool: "missing"})
+	if out.Error == nil || out.Error.Type != errTypeBackend {
+		t.Errorf("unknown tool: out = %+v; want BackendError", out)
+	}
+}
+
+// TestListToolsetsLive exercises liveBackendTools against a real streamable-HTTP
+// MCP backend, proving the discovery path reads tools/list over the wire (not
+// just the injected fake).
+func TestListToolsetsLive(t *testing.T) {
+	backend := newTestMCPBackend(t, "pods_list", "namespaces_list")
+	d := &dispatcher{
+		toolset:        "ops-toolset",
+		provider:       &fakeProvider{},
+		namespace:      "demo",
+		defaultTimeout: 60 * time.Second,
+		endpoints:      []sandbox.Endpoint{{Server: "kubernetes", URL: backend}},
+		// listBackend left nil: use the live liveBackendTools path.
+	}
+
+	servers := d.listToolsets(context.Background()).Toolsets[0].Servers
+	if len(servers) != 1 {
+		t.Fatalf("servers = %+v; want one", servers)
+	}
+	if servers[0].Error != "" {
+		t.Fatalf("live discovery failed: %s", servers[0].Error)
+	}
+	names := map[string]bool{}
+	for _, tl := range servers[0].Tools {
+		names[tl.Name] = true
+	}
+	if !names["pods_list"] || !names["namespaces_list"] {
+		t.Errorf("tools = %+v; want pods_list and namespaces_list", servers[0].Tools)
+	}
+}
+
+// newTestMCPBackend starts an in-process streamable-HTTP MCP server exposing the
+// named tools (each a no-op) and returns its /mcp endpoint URL.
+func newTestMCPBackend(t *testing.T, toolNames ...string) string {
+	t.Helper()
+	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+		s := mcp.NewServer(&mcp.Implementation{Name: "backend", Version: "v0"}, nil)
+		for _, name := range toolNames {
+			mcp.AddTool(s, &mcp.Tool{Name: name, Description: name + " tool"},
+				func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, any, error) {
+					return nil, nil, nil
+				})
+		}
+		return s
+	}, nil)
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return srv.URL
 }
 
 // TestExecuteCodeOverMCP exercises the full MCP round-trip: a client calls
