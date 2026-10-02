@@ -125,11 +125,57 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o runner ./runner
+# Output to /out/runner, not /workspace/runner: the latter is the source package
+# directory, and `go build -o` into an existing directory fails (or nests the
+# binary). /out keeps the binary path unambiguous for the COPY stages below.
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o /out/runner ./runner
 
 FROM gcr.io/distroless/static:nonroot AS runner
 WORKDIR /
-COPY --from=runner-builder /workspace/runner .
+COPY --from=runner-builder /out/runner .
 USER 65532:65532
 
 ENTRYPOINT ["/runner"]
+
+# Build the agent-sandbox sandboxd runtime daemon. The agentsandbox provider
+# drives executions through sandboxd (not kubectl exec), so the sandbox image must
+# run it. sandboxd lives in the sigs.k8s.io/agent-sandbox module we already depend
+# on; `go install <pkg>@<version>` resolves that module's own build graph in
+# isolation (it does NOT touch this repo's go.mod/go.sum, which omit sandboxd's
+# server-side deps). GOTOOLCHAIN=local reuses this 1.27.1 toolchain instead of
+# fetching agent-sandbox's pinned 1.26.x.
+FROM --platform=${BUILDPLATFORM} golang:1.27.1 AS sandboxd-builder
+ARG TARGETOS
+ARG TARGETARCH
+ARG AGENT_SANDBOX_VERSION=v1.0.4
+
+ENV GOTOOLCHAIN=local
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} GOBIN=/out \
+    go install sigs.k8s.io/agent-sandbox/packages/sandboxd/cmd/sandboxd@${AGENT_SANDBOX_VERSION}
+
+# The mcplo-agentsandbox sandbox image: sandboxd (the runtime server the SDK
+# talks to) + our portable runner binary + a shell. It is NOT distroless because
+# sandboxd execs user commands (the runner) via /bin/sh and needs coreutils;
+# procps supplies ps/kill for sandboxd's process management. This image is the
+# value the operator passes to --runner-image (baked into the SandboxTemplate).
+FROM debian:bookworm-slim AS agentsandbox
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates procps \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=sandboxd-builder /out/sandboxd /usr/local/bin/sandboxd
+COPY --from=runner-builder /out/runner /runner
+
+# /codemode is sandboxd's --root-dir (set in the SandboxTemplate) and the
+# dispatcher's writable input dir. It is a mounted emptyDir at runtime; create it
+# here owned by the non-root runtime user so writes succeed before the mount and
+# the directory exists for local runs.
+RUN mkdir -p /codemode && chown 1000:1000 /codemode
+WORKDIR /codemode
+USER 1000
+
+# sandboxd REST (:8080) and gRPC (:9090) default ports the SDK connects to.
+EXPOSE 8080 9090
+
+ENTRYPOINT ["/usr/local/bin/sandboxd"]

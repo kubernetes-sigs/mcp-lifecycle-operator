@@ -19,8 +19,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"flag"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -30,7 +33,37 @@ import (
 // defaultTimeout bounds a single execution when the sandbox does not supply one.
 const defaultTimeout = 60 * time.Second
 
+// envInputDir selects file-input mode (also settable via --input-dir).
+const envInputDir = "CODEMODE_INPUT_DIR"
+
+// Input file names used in file-input mode. Their contents mirror the env-var
+// wire contract in runner_contract.go.
+const (
+	fileNameCode       = "code"
+	fileNameEndpoints  = "endpoints.json"
+	fileNameCredential = "credential"
+	fileNameTimeout    = "timeout"
+)
+
 func main() {
+	var inputDir string
+	flag.StringVar(&inputDir, "input-dir", os.Getenv(envInputDir),
+		"directory to read execution inputs from (file-input mode); env-var mode when empty")
+	flag.Parse()
+
+	if inputDir != "" {
+		// File-input mode: the sandbox provider wrote the inputs as files (the
+		// agent-sandbox SDK has no per-exec env/stdin channel).
+		env, err := envFromDir(inputDir)
+		if err != nil {
+			writeEnvelope(os.Stdout, errorEnvelope(backendError("reading input dir %q: %v", inputDir, err)))
+			return
+		}
+		env.run(context.Background(), os.Stdout)
+		return
+	}
+
+	// Env-var mode: local/standalone runs and the existing test path.
 	env := runnerEnv{
 		endpoints:  os.Getenv(sandbox.EnvEndpoints),
 		code:       os.Getenv(sandbox.EnvCode),
@@ -39,6 +72,41 @@ func main() {
 	}
 
 	env.run(context.Background(), os.Stdout)
+}
+
+// envFromDir reads the per-execution inputs from files in dir. Absent files
+// (notably the optional credential and timeout) read as empty, matching env-var
+// mode where an unset variable is "". A genuine read error is returned.
+func envFromDir(dir string) (runnerEnv, error) {
+	code, err := readInputFile(dir, fileNameCode)
+	if err != nil {
+		return runnerEnv{}, err
+	}
+	endpoints, err := readInputFile(dir, fileNameEndpoints)
+	if err != nil {
+		return runnerEnv{}, err
+	}
+	credential, err := readInputFile(dir, fileNameCredential)
+	if err != nil {
+		return runnerEnv{}, err
+	}
+	timeout, err := readInputFile(dir, fileNameTimeout)
+	if err != nil {
+		return runnerEnv{}, err
+	}
+	return runnerEnv{endpoints: endpoints, code: code, timeout: timeout, credential: credential}, nil
+}
+
+// readInputFile reads dir/name, treating a missing file as empty.
+func readInputFile(dir, name string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(data), nil
 }
 
 // runnerEnv is the sandbox-injected input, kept as a struct so run is testable
@@ -61,7 +129,12 @@ func (e runnerEnv) run(ctx context.Context, out io.Writer) {
 		env = resultEnvelope(result)
 	}
 
-	// A marshalling failure of the result itself is a backend/harness failure.
+	writeEnvelope(out, env)
+}
+
+// writeEnvelope writes exactly one JSON envelope to out, falling back to an error
+// envelope if the result itself fails to marshal (a backend/harness failure).
+func writeEnvelope(out io.Writer, env Envelope) {
 	if data, mErr := json.Marshal(env); mErr == nil {
 		_, _ = out.Write(append(data, '\n'))
 	} else {
