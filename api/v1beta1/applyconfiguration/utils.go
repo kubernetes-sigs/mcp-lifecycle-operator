@@ -64,6 +64,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1beta1.SecurityConfigApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("ServerConfig"):
 		return &apiv1beta1.ServerConfigApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("ServiceReference"):
+		return &apiv1beta1.ServiceReferenceApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("Source"):
 		return &apiv1beta1.SourceApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("StorageMount"):
@@ -74,6 +76,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1beta1.TLSClientConfigApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("TransportConfig"):
 		return &apiv1beta1.TransportConfigApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("WorkloadReference"):
+		return &apiv1beta1.WorkloadReferenceApplyConfiguration{}
 
 	}
 	return nil
