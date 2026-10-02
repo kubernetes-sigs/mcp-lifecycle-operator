@@ -191,10 +191,16 @@ once. The script runs in an isolated sandbox and only the final result is
 returned, instead of the agent round-tripping every individual tool call.
 
 An `MCPToolset` binds a set of `MCPServer` resources to a sandbox provider (the
-MVP ships a single `pod` provider) and, once reconciled, publishes a
-`status.executeEndpoint`. The operator reconciles only the long-lived dispatcher
-infrastructure; it is never on the per-execution path (the dispatcher claims
-sandboxes directly from the provider).
+`agentsandbox` provider, built on
+[agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)) and, once
+reconciled, publishes a `status.executeEndpoint`. The operator reconciles only
+the long-lived dispatcher infrastructure; it is never on the per-execution path
+(the dispatcher claims sandboxes directly from the provider).
+
+**Prerequisite:** the agent-sandbox controller and its CRDs must be installed in
+the cluster, and the `mcplo-agentsandbox` sandbox image (sandboxd + the runner,
+built via `make docker-build-agentsandbox`) must be reachable as the operator's
+`--runner-image`.
 
 ```bash
 kubectl apply -f examples/mcptoolset-ops.yaml

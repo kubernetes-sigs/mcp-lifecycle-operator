@@ -34,9 +34,8 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
-
-	// Register the "pod" sandbox provider so the reconciler can resolve it.
-	_ "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/pod"
+	// The agentsandbox provider is registered (and wired) in suite_test.go, so the
+	// reconciler can resolve the "agentsandbox" provider these tests select.
 )
 
 const (
@@ -111,7 +110,7 @@ var _ = Describe("MCPToolset Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: toolsetName, Namespace: toolsetTestNamespace},
 				Spec: mcpv1alpha1.MCPToolsetSpec{
 					Servers:  []string{serverName},
-					Provider: "pod",
+					Provider: "agentsandbox",
 				},
 			}
 			Expect(k8sClient.Create(ctx, toolset)).To(Succeed())
@@ -135,7 +134,7 @@ var _ = Describe("MCPToolset Controller", func() {
 			container := deploy.Spec.Template.Spec.Containers[0]
 			Expect(container.Image).To(Equal(toolsetDispImage))
 			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: envDispRunnerImage, Value: toolsetRunnerImage}))
-			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: envDispProvider, Value: "pod"}))
+			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: envDispProvider, Value: "agentsandbox"}))
 			Expect(deploy.Spec.Template.Spec.ServiceAccountName).To(Equal(dispKey.Name))
 
 			By("creating the dispatcher Service on the execute port")
@@ -183,7 +182,7 @@ var _ = Describe("MCPToolset Controller", func() {
 			const name = "toolset-missing-server"
 			got := reconcileToolset(name, mcpv1alpha1.MCPToolsetSpec{
 				Servers:  []string{"ghost-server"},
-				Provider: "pod",
+				Provider: "agentsandbox",
 			})
 
 			resolved := meta.FindStatusCondition(got.Status.Conditions, ConditionTypeServersResolved)
@@ -223,7 +222,7 @@ var _ = Describe("MCPToolset Controller", func() {
 			// egress isolation must be rejected before any dispatcher is deployed.
 			got := reconcileToolset(name, mcpv1alpha1.MCPToolsetSpec{
 				Servers:  []string{"ghost-server"},
-				Provider: "pod",
+				Provider: "agentsandbox",
 				Policy:   mcpv1alpha1.MCPToolsetPolicy{MinIsolation: mcpv1alpha1.IsolationEgress},
 			})
 

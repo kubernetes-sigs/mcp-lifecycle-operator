@@ -7,8 +7,8 @@ metadata:
   name: mcptoolset-sample
 spec:
   servers:
-    - kubernetes
-  provider: pod
+    - k8s-mcp
+  provider: agentsandbox
   policy:
     minIsolation: baseline
   timeoutSeconds: 120

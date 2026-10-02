@@ -43,6 +43,9 @@ const (
 	dispatcherMCPPath = "/mcp"
 	// dispatcherComponent labels the dispatcher resources.
 	dispatcherComponent = "code-mode-dispatcher"
+	// verbGet and verbList are RBAC verbs used across the dispatcher Role rules.
+	verbGet  = "get"
+	verbList = "list"
 )
 
 // Dispatcher configuration wire contract. These env var names MUST match the
@@ -97,8 +100,9 @@ func dispatcherSelector(toolset string) map[string]string {
 
 // reconcileDispatcher creates or updates every resource the dispatcher needs:
 // a ServiceAccount, a namespace-scoped Role + RoleBinding granting the call-time
-// sandbox permissions (pods create/delete and pods/log get), the Deployment, and
-// the Service. All are owner-referenced to the toolset for garbage collection.
+// sandbox permissions (sandboxclaims create/delete, sandboxes + pods read, and the
+// credential secret read), the Deployment, and the Service. All are
+// owner-referenced to the toolset for garbage collection.
 func (r *MCPToolsetReconciler) reconcileDispatcher(
 	ctx context.Context,
 	toolset *mcpv1alpha1.MCPToolset,
@@ -125,14 +129,31 @@ func (r *MCPToolsetReconciler) reconcileDispatcher(
 		role.Labels = dispatcherLabels(toolset.Name)
 		role.Rules = []rbacv1.PolicyRule{
 			{
-				APIGroups: []string{""},
-				Resources: []string{"pods"},
-				Verbs:     []string{"get", "list", "watch", "create", "delete"},
+				// The agent-sandbox SDK creates one SandboxClaim per execution and
+				// deletes it on Release.
+				APIGroups: []string{"extensions.agents.x-k8s.io"},
+				Resources: []string{"sandboxclaims"},
+				Verbs:     []string{verbGet, verbList, "create", "delete"},
 			},
 			{
+				// The SDK reads the materialized Sandbox to learn the backing pod.
+				APIGroups: []string{"agents.x-k8s.io"},
+				Resources: []string{"sandboxes"},
+				Verbs:     []string{verbGet, verbList},
+			},
+			{
+				// InClusterPodIP connectivity reaches sandboxd on the sandbox pod's
+				// IP, so the dispatcher must read the pod.
 				APIGroups: []string{""},
-				Resources: []string{"pods/log"},
-				Verbs:     []string{"get"},
+				Resources: []string{"pods"},
+				Verbs:     []string{verbGet, verbList},
+			},
+			{
+				// The static scoped credential (MVP) is read from its Secret at
+				// call time and written into the sandbox.
+				APIGroups: []string{""},
+				Resources: []string{"secrets"},
+				Verbs:     []string{verbGet},
 			},
 		}
 		return controllerutil.SetControllerReference(toolset, role, r.Scheme)

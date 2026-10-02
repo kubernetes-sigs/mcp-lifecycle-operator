@@ -36,8 +36,13 @@ import (
 )
 
 // Opt-in and configuration for the code-mode SC-006 scenario. It is skipped by
-// default because it requires the dispatcher and runner images to be built and
-// an MCPToolset already reconciled to Ready on the cluster.
+// default because it requires:
+//   - the agent-sandbox controller and its CRDs installed on the cluster
+//     (https://github.com/kubernetes-sigs/agent-sandbox); the agentsandbox
+//     provider claims agent-sandbox Sandboxes at execution time,
+//   - the dispatcher and mcplo-agentsandbox images built and reachable
+//     (the latter wired as the operator's --runner-image), and
+//   - an MCPToolset already reconciled to Ready on the cluster.
 const (
 	// codeModeE2EEnv, when set to a non-empty value, enables this scenario.
 	codeModeE2EEnv = "CODEMODE_E2E"

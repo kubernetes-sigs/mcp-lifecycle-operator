@@ -18,6 +18,13 @@ IMG ?= $(IMAGE_TAG_BASE):$(IMAGE_TAG)
 # reconcile hot path (design invariant, FR-009).
 DISPATCHER_IMG ?= $(IMAGE_TAG_BASE)-execute-code:$(IMAGE_TAG)
 RUNNER_IMG ?= $(IMAGE_TAG_BASE)-runner:$(IMAGE_TAG)
+# AGENTSANDBOX_IMG is the code-mode sandbox image (sandboxd + the runner binary +
+# a shell) the agentsandbox provider bakes into the SandboxTemplate. It is the
+# value the operator passes via --runner-image / RUNNER_IMAGE.
+AGENTSANDBOX_IMG ?= $(IMAGE_TAG_BASE)-agentsandbox:$(IMAGE_TAG)
+# AGENT_SANDBOX_VERSION pins the sandboxd daemon built into AGENTSANDBOX_IMG; keep
+# it in step with the sigs.k8s.io/agent-sandbox version in go.mod.
+AGENT_SANDBOX_VERSION ?= v1.0.4
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -363,6 +370,12 @@ docker-build-dispatcher: ## Build the code-mode dispatcher (execute_code) image.
 .PHONY: docker-build-runner
 docker-build-runner: ## Build the portable code-mode runner image.
 	$(CONTAINER_TOOL) build --target runner -t $(RUNNER_IMG) .
+
+.PHONY: docker-build-agentsandbox
+docker-build-agentsandbox: ## Build the code-mode sandbox image (sandboxd + runner).
+	$(CONTAINER_TOOL) build --target agentsandbox \
+		--build-arg AGENT_SANDBOX_VERSION=$(AGENT_SANDBOX_VERSION) \
+		-t $(AGENTSANDBOX_IMG) .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

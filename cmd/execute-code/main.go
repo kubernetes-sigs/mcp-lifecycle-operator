@@ -24,13 +24,11 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/pod"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/agentsandbox"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/sandbox"
 )
 
@@ -98,8 +96,8 @@ func main() {
 }
 
 // buildDispatcher assembles the dispatcher from the environment and wires the
-// selected provider's call-time client (and, for the pod provider, its log
-// fetcher) directly against the API server - no controller involved (SC-006).
+// agentsandbox provider's call-time half (Claim/Await/Release) directly against
+// the API server via the agent-sandbox SDK - no controller involved (SC-006).
 func buildDispatcher() (*dispatcher, string, error) {
 	providerName := os.Getenv(envProvider)
 	provider, ok := sandbox.Get(providerName)
@@ -111,18 +109,10 @@ func buildDispatcher() (*dispatcher, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("loading kube config: %w", err)
 	}
-	c, err := client.New(cfg, client.Options{})
-	if err != nil {
-		return nil, "", fmt.Errorf("building client: %w", err)
-	}
-	cs, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return nil, "", fmt.Errorf("building clientset: %w", err)
-	}
-	// Wire the pod provider's call-time dependencies. Other providers are
-	// self-contained; this is a no-op for them.
-	pod.SetClient(c)
-	pod.SetLogFetcher(pod.NewClientsetFetcher(cs))
+	// Wire the agentsandbox provider's call-time dependency. It builds the
+	// agent-sandbox SDK client and the credential Secret reader from this config
+	// on first use; there is no controller on the execution hot path.
+	agentsandbox.SetConfig(cfg)
 
 	endpoints, err := sandbox.UnmarshalEndpoints(os.Getenv(envEndpoints))
 	if err != nil {
