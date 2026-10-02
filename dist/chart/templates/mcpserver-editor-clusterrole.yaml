@@ -1,0 +1,28 @@
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "mcp-lifecycle-operator.fullname" . }}-mcpserver-editor-role
+  labels:
+    {{- include "mcp-lifecycle-operator.labels" . | nindent 4 }}
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+rules:
+  - apiGroups:
+      - mcp.x-k8s.io
+    resources:
+      - mcpservers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - mcp.x-k8s.io
+    resources:
+      - mcpservers/status
+    verbs:
+      - get
+{{- end }}
