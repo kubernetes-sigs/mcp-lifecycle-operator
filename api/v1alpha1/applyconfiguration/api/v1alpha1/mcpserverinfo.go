@@ -38,6 +38,10 @@ type MCPServerInfoApplyConfiguration struct {
 	Instructions *string `json:"instructions,omitempty"`
 	// Capabilities lists which MCP protocol features the server supports.
 	Capabilities *MCPServerCapabilitiesApplyConfiguration `json:"capabilities,omitempty"`
+	// CatalogCounts contains the number of tools, resources, and prompts
+	// reported by the server. Populated only after a successful handshake
+	// that includes list calls.
+	CatalogCounts *CatalogCountsApplyConfiguration `json:"catalogCounts,omitempty"`
 }
 
 // MCPServerInfoApplyConfiguration constructs a declarative configuration of the MCPServerInfo type for use with
@@ -83,5 +87,13 @@ func (b *MCPServerInfoApplyConfiguration) WithInstructions(value string) *MCPSer
 // If called multiple times, the Capabilities field is set to the value of the last call.
 func (b *MCPServerInfoApplyConfiguration) WithCapabilities(value *MCPServerCapabilitiesApplyConfiguration) *MCPServerInfoApplyConfiguration {
 	b.Capabilities = value
+	return b
+}
+
+// WithCatalogCounts sets the CatalogCounts field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CatalogCounts field is set to the value of the last call.
+func (b *MCPServerInfoApplyConfiguration) WithCatalogCounts(value *CatalogCountsApplyConfiguration) *MCPServerInfoApplyConfiguration {
+	b.CatalogCounts = value
 	return b
 }

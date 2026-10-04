@@ -335,6 +335,13 @@ func convertServerInfoTo(in *MCPServerInfo) *v1beta1.MCPServerInfo {
 			Completions: in.Capabilities.Completions,
 		}
 	}
+	if in.CatalogCounts != nil {
+		out.CatalogCounts = &v1beta1.CatalogCounts{
+			ToolCount:     in.CatalogCounts.ToolCount,
+			ResourceCount: in.CatalogCounts.ResourceCount,
+			PromptCount:   in.CatalogCounts.PromptCount,
+		}
+	}
 	return out
 }
 
@@ -355,6 +362,13 @@ func convertServerInfoFrom(in *v1beta1.MCPServerInfo) *MCPServerInfo {
 			Prompts:     in.Capabilities.Prompts,
 			Logging:     in.Capabilities.Logging, //nolint:staticcheck // deprecated field must be preserved for round-trip conversion
 			Completions: in.Capabilities.Completions,
+		}
+	}
+	if in.CatalogCounts != nil {
+		out.CatalogCounts = &CatalogCounts{
+			ToolCount:     in.CatalogCounts.ToolCount,
+			ResourceCount: in.CatalogCounts.ResourceCount,
+			PromptCount:   in.CatalogCounts.PromptCount,
 		}
 	}
 	return out
