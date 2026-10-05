@@ -24,4 +24,4 @@ spec:
   issuerRef:
     kind: Issuer
     name: selfsigned-issuer
-  secretName: webhook-server-cert
+  secretName: mcplo-webhook-server-cert
