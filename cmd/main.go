@@ -257,6 +257,23 @@ func main() {
 		APIReader:                   mgr.GetAPIReader(),
 		TLSProfile:                  tlsCfg.tlsConfigFunc(),
 		NetworkPolicyDefaultPosture: defaultPosture,
+		// Operator identity for the restricted-posture self ingress peer, so the
+		// MCP verification handshake can reach an operand that declares no ingress
+		// source of its own. These are the controller Deployment's own
+		// selector.matchLabels (config/manager/manager.yaml): Kubernetes forbids
+		// mutating a Deployment selector after creation, so the operator pod is
+		// guaranteed to carry them. The podSelector matches on a label subset, so
+		// extra labels added by a deployment overlay keep the match valid.
+		OperatorNamespace: detectOperatorNamespace(),
+		OperatorPodLabels: map[string]string{
+			"control-plane":          "controller-manager",
+			"app.kubernetes.io/name": "mcp-lifecycle-operator",
+		},
+	}
+	if defaultPosture == controller.PostureRestricted && reconciler.OperatorNamespace == "" {
+		setupLog.Info("Restricted NetworkPolicy posture is set but the operator namespace could not be " +
+			"determined; operator verification traffic to operands without an explicit ingress source will " +
+			"be blocked and they may never become Ready")
 	}
 	if strings.EqualFold(os.Getenv("PROPAGATE_TLS_ENV_VARS"), "true") {
 		reconciler.TLSEnvVars = tlsCfg.envVars()

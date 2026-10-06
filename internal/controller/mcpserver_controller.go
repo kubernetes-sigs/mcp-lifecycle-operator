@@ -213,6 +213,21 @@ type MCPServerReconciler struct {
 	// the historical default-open behavior. User-supplied Spec.Network values
 	// are always honored regardless of posture.
 	NetworkPolicyDefaultPosture NetworkPolicyDefaultPosture
+
+	// OperatorNamespace is the namespace the operator pod runs in. Under the
+	// restricted posture it is used to derive an ingress peer admitting the
+	// operator's own controller pod, so the MCP verification handshake can reach
+	// an operand that declares no ingress source of its own. Empty when the
+	// namespace cannot be determined, in which case no operator peer is derived.
+	OperatorNamespace string
+
+	// OperatorPodLabels identifies the operator controller pod within
+	// OperatorNamespace. It narrows the derived operator ingress peer from the
+	// whole operator namespace to the controller pod. Empty means the operator
+	// cannot pin its own identity, so no operator peer is derived (the operand
+	// stays deny-by-default) rather than admitting the whole namespace.
+	// User-supplied Spec.Network values are unaffected.
+	OperatorPodLabels map[string]string
 }
 
 type handshakeRetryState struct {

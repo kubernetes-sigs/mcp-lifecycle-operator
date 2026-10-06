@@ -88,7 +88,16 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 			_ = k8sClient.Delete(ctx, mcpServer)
 		}()
 
-		Expect(restrictedReconciler().reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+		// Configure operator identity so this exercises the realistic restricted
+		// case where a self-peer could be derived, and guards that it still does
+		// not leak into the final policy when the server declares its own source:
+		// a regression in the derived-peer suppression would surface here as a
+		// second From peer (the isolated operatorIngressFrom guard is covered by
+		// the unit test).
+		reconciler := restrictedReconciler()
+		reconciler.OperatorNamespace = "mcp-operator-system"
+		reconciler.OperatorPodLabels = map[string]string{"control-plane": "controller-manager"}
+		Expect(reconciler.reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
 
 		netpol := &networkingv1.NetworkPolicy{}
 		Expect(k8sClient.Get(ctx, client.ObjectKey{
@@ -96,7 +105,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 			Namespace: "default",
 		}, netpol)).To(Succeed())
 
-		By("Verifying the declared source is honored with the server port")
+		By("Verifying only the declared source is honored (no derived operator peer) with the server port")
 		Expect(netpol.Spec.Ingress).To(HaveLen(1))
 		Expect(netpol.Spec.Ingress[0].From).To(HaveLen(1))
 		Expect(netpol.Spec.Ingress[0].From[0].NamespaceSelector).NotTo(BeNil())
@@ -197,5 +206,81 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 		By("Verifying ingress remains deny-by-default with Ingress still in policyTypes")
 		Expect(netpol.Spec.Ingress).To(BeEmpty())
 		Expect(netpol.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeIngress))
+	})
+
+	It("should admit the operator's own pod for a plain server under restricted posture", func() {
+		reconciler := restrictedReconciler()
+		reconciler.OperatorNamespace = "mcp-operator-system"
+		reconciler.OperatorPodLabels = map[string]string{"control-plane": "controller-manager"}
+
+		mcpServer := newTestMCPServer("test-netpol-operator-peer")
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, mcpServer) }()
+
+		Expect(reconciler.reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-operator-peer",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying ingress admits the operator pod (namespace AND pod selector) on the server port")
+		Expect(netpol.Spec.Ingress).To(HaveLen(1))
+		Expect(netpol.Spec.Ingress[0].From).To(HaveLen(1))
+		Expect(netpol.Spec.Ingress[0].From[0].NamespaceSelector).NotTo(BeNil())
+		Expect(netpol.Spec.Ingress[0].From[0].NamespaceSelector.MatchLabels).To(
+			HaveKeyWithValue(namespaceNameLabel, "mcp-operator-system"))
+		Expect(netpol.Spec.Ingress[0].From[0].PodSelector).NotTo(BeNil())
+		Expect(netpol.Spec.Ingress[0].From[0].PodSelector.MatchLabels).To(
+			HaveKeyWithValue("control-plane", "controller-manager"))
+		Expect(netpol.Spec.Ingress[0].Ports).To(HaveLen(1))
+		Expect(netpol.Spec.Ingress[0].Ports[0].Port.IntValue()).To(Equal(8080))
+	})
+
+	It("should admit both the operator and the gateway for a gateway-routed server", func() {
+		gwConfig := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "gw-cfg-operator", Namespace: "default"},
+			Data:       map[string]string{gatewayConfigKeyNamespace: "gateway-system"},
+		}
+		Expect(k8sClient.Create(ctx, gwConfig)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gwConfig) }()
+
+		reconciler := restrictedReconciler()
+		reconciler.OperatorNamespace = "mcp-operator-system"
+		reconciler.OperatorPodLabels = map[string]string{"control-plane": "controller-manager"}
+
+		mcpServer := newTestMCPServer("test-netpol-operator-and-gw")
+		mcpServer.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-cfg-operator"}
+		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, mcpServer) }()
+
+		Expect(reconciler.reconcileNetworkPolicy(ctx, mcpServer)).To(Succeed())
+
+		netpol := &networkingv1.NetworkPolicy{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{
+			Name:      "test-netpol-operator-and-gw",
+			Namespace: "default",
+		}, netpol)).To(Succeed())
+
+		By("Verifying a single port-scoped rule OR's the operator and gateway peers")
+		Expect(netpol.Spec.Ingress).To(HaveLen(1))
+		Expect(netpol.Spec.Ingress[0].From).To(HaveLen(2))
+
+		var operatorAdmitted, gatewayAdmitted bool
+		for _, peer := range netpol.Spec.Ingress[0].From {
+			if peer.NamespaceSelector == nil {
+				continue
+			}
+			switch peer.NamespaceSelector.MatchLabels[namespaceNameLabel] {
+			case "mcp-operator-system":
+				operatorAdmitted = peer.PodSelector != nil &&
+					peer.PodSelector.MatchLabels["control-plane"] == "controller-manager"
+			case "gateway-system":
+				gatewayAdmitted = true
+			}
+		}
+		Expect(operatorAdmitted).To(BeTrue(), "operator pod peer must be present")
+		Expect(gatewayAdmitted).To(BeTrue(), "gateway namespace peer must be present")
 	})
 })

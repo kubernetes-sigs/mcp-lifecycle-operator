@@ -54,6 +54,18 @@ const (
 	namespaceNameLabel = "kubernetes.io/metadata.name"
 )
 
+// namespaceNamePeer builds an ingress peer that selects an entire namespace by
+// its immutable kubernetes.io/metadata.name label, so the operator can target a
+// namespace without having to label it first. Callers may narrow the result
+// further by setting PodSelector on the returned peer.
+func namespaceNamePeer(namespace string) networkingv1.NetworkPolicyPeer {
+	return networkingv1.NetworkPolicyPeer{
+		NamespaceSelector: &metav1.LabelSelector{
+			MatchLabels: map[string]string{namespaceNameLabel: namespace},
+		},
+	}
+}
+
 // gatewayIngressPeers returns the ingress peers that keep a gateway-routed
 // MCPServer reachable under the restricted default ingress posture, which would
 // otherwise deny all ingress when the server declares no source of its own.
@@ -116,13 +128,7 @@ func (r *MCPServerReconciler) gatewayIngressPeers(
 		return nil, nil
 	}
 
-	return []networkingv1.NetworkPolicyPeer{
-		{
-			NamespaceSelector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{namespaceNameLabel: namespace},
-			},
-		},
-	}, nil
+	return []networkingv1.NetworkPolicyPeer{namespaceNamePeer(namespace)}, nil
 }
 
 // resolveGatewayNamespace reads the gateway namespace from the ConfigMap
