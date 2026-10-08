@@ -147,6 +147,8 @@ const (
 	eventActionCapabilityChangeDetected = "CapabilityChangeDetected"
 	// eventActionInsecureTLSConfigured is the reporting action when TLS verification is disabled via spec.
 	eventActionInsecureTLSConfigured = "InsecureTLSConfigured"
+	// eventActionHandshakeAuthSkipped is the reporting action when an auth error is treated as reachable without protocol verification.
+	eventActionHandshakeAuthSkipped = "HandshakeAuthSkipped"
 
 	// requeueDelayConflict is the delay before requeuing after a transient
 	// optimistic-lock conflict on a resource update. Such conflicts self-resolve
@@ -715,6 +717,21 @@ func (r *MCPServerReconciler) emitInsecureTLSWarning(mcpServer *mcpv1beta1.MCPSe
 	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonInsecureTLS, eventActionInsecureTLSConfigured,
 		"MCPServer %s: spec.transport.tls.insecureSkipVerify is enabled; TLS certificate verification is disabled for MCP handshakes, exposing connections to man-in-the-middle attacks",
 		mcpServer.Name)
+}
+
+// emitHandshakeAuthSkip records a Warning event when the MCP endpoint answered the
+// handshake with an HTTP 401/403 auth error. The endpoint is treated as reachable
+// and Verified is still set to True, but the MCP protocol was never actually
+// confirmed because the unauthenticated operator cannot complete the handshake.
+// Surfacing this as a Warning makes the unverified-but-published state visible in
+// `kubectl describe`, not just the audit log.
+func (r *MCPServerReconciler) emitHandshakeAuthSkip(mcpServer *mcpv1beta1.MCPServer, mcpURL string) {
+	if r.Recorder == nil {
+		return
+	}
+	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonAuthSkipped, eventActionHandshakeAuthSkipped,
+		"MCPServer %s: endpoint %s is reachable but the MCP protocol was NOT verified because it requires authentication; it is treated as reachable and its address is published",
+		mcpServer.Name, mcpURL)
 }
 
 func (r *MCPServerReconciler) maybeEmitDeploymentUnavailableEvent(

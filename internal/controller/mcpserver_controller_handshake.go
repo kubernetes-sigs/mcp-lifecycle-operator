@@ -125,11 +125,12 @@ func (r *MCPServerReconciler) reconcileHandshake(
 			handshakeTotal.With(withResult(metricLabels, "auth_skip")).Inc()
 			logger.Info("MCP endpoint returned auth error, treating as reachable", "url", mcpURL, "error", err)
 			auditHandshakeAuthSkip(ctx, mcpServer, mcpURL, err)
+			r.emitHandshakeAuthSkip(mcpServer, mcpURL)
 			cond := newCondition(
 				ConditionTypeVerified,
 				metav1.ConditionTrue,
 				ReasonAuthSkipped,
-				"Endpoint returned auth error, treated as reachable",
+				"Endpoint reachable but MCP protocol not verified: requires authentication",
 				mcpServer.Generation,
 			)
 			preserveLastTransitionTime(&cond, mcpServer.Status.Conditions)

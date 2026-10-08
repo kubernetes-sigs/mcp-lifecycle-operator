@@ -815,13 +815,9 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 	})
 
 	It("should treat 401 Unauthorized as a reachable endpoint", func() {
-		reconciler := &MCPServerReconciler{
-			Client: k8sClient,
-			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
-				return nil, fmt.Errorf("POST %s: Unauthorized", url)
-			},
-			APIReader: k8sClient,
+		reconciler, fr := newReconcilerForTestWithFakeEvents(k8sClient, k8sClient.Scheme())
+		reconciler.MCPDialer = func(ctx context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+			return nil, fmt.Errorf("POST %s: Unauthorized", url)
 		}
 
 		By("Creating deployment and marking it available")
@@ -855,9 +851,18 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(verifiedCondition).NotTo(BeNil())
 		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(verifiedCondition.Reason).To(Equal(ReasonAuthSkipped))
+		Expect(verifiedCondition.Message).To(ContainSubstring("not verified"))
+		Expect(verifiedCondition.Message).To(ContainSubstring("authentication"))
 		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil(), "auth error should set non-nil empty serverInfo to prevent re-dial")
 		Expect(mcpServer.Status.Address).NotTo(BeNil(), "auth-guarded endpoint is reachable and must publish an address")
 		Expect(mcpServer.Status.Address.URL).NotTo(BeEmpty())
+
+		By("Emitting a Warning event that the protocol was not verified")
+		Eventually(fr.Events).Should(Receive(And(
+			ContainSubstring(corev1.EventTypeWarning),
+			ContainSubstring(ReasonAuthSkipped),
+			ContainSubstring("NOT verified"),
+		)))
 	})
 
 	It("should populate status.serverInfo from successful handshake", func() {
@@ -1056,13 +1061,9 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 	})
 
 	It("should treat 403 Forbidden as a reachable endpoint", func() {
-		reconciler := &MCPServerReconciler{
-			Client: k8sClient,
-			Scheme: k8sClient.Scheme(),
-			MCPDialer: func(ctx context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
-				return nil, fmt.Errorf("POST %s: Forbidden", url)
-			},
-			APIReader: k8sClient,
+		reconciler, fr := newReconcilerForTestWithFakeEvents(k8sClient, k8sClient.Scheme())
+		reconciler.MCPDialer = func(ctx context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+			return nil, fmt.Errorf("POST %s: Forbidden", url)
 		}
 
 		By("Creating deployment and marking it available")
@@ -1096,9 +1097,18 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(verifiedCondition).NotTo(BeNil())
 		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
 		Expect(verifiedCondition.Reason).To(Equal(ReasonAuthSkipped))
+		Expect(verifiedCondition.Message).To(ContainSubstring("not verified"))
+		Expect(verifiedCondition.Message).To(ContainSubstring("authentication"))
 		Expect(mcpServer.Status.ServerInfo).NotTo(BeNil(), "auth error should set non-nil empty serverInfo to prevent re-dial")
 		Expect(mcpServer.Status.Address).NotTo(BeNil(), "auth-guarded endpoint is reachable and must publish an address")
 		Expect(mcpServer.Status.Address.URL).NotTo(BeEmpty())
+
+		By("Emitting a Warning event that the protocol was not verified")
+		Eventually(fr.Events).Should(Receive(And(
+			ContainSubstring(corev1.EventTypeWarning),
+			ContainSubstring(ReasonAuthSkipped),
+			ContainSubstring("NOT verified"),
+		)))
 	})
 })
 
