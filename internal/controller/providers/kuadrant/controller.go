@@ -191,7 +191,7 @@ type Reconciler struct {
 	AllowedExtensionNamespaces []string
 }
 
-// +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings,verbs=get;list;watch
+// +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings/finalizers,verbs=update
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch
@@ -274,6 +274,17 @@ func (r *Reconciler) parseConfig(ctx context.Context, binding *mcpv1alpha1.MCPGa
 		path = mcpcontroller.DefaultMCPPath
 	}
 
+	// Record which MCPGatewayExtension this binding resolves to so
+	// findBindingsForGatewayExtension can select it from the cached binding list
+	// on extension events without reading the uncached ConfigMap. Stamp before the
+	// extension existence check so a not-yet-created extension still enqueues this
+	// binding once it appears.
+	if err := providers.EnsureBindingAnnotations(ctx, r.Client, binding, map[string]string{
+		providers.AnnotationExtensionRef: providers.RefKey(extNamespace, extName),
+	}); err != nil {
+		return nil, err
+	}
+
 	return &parsedConfig{
 		extensionName:       extName,
 		extensionNamespace:  extNamespace,
@@ -323,6 +334,24 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		return ctrl.Result{}, err
 	}
+
+	ref := ext.Spec.TargetRef
+	gwName := ref.Name
+	gwNamespace := ref.Namespace
+	if gwNamespace == "" {
+		gwNamespace = ext.Namespace
+	}
+
+	// Record the Gateway (resolved via the extension's targetRef) so
+	// findBindingsForGateway can select this binding on Gateway events without
+	// reading the uncached ConfigMap. Stamp regardless of extension readiness so
+	// the reverse index stays complete while the extension is still converging.
+	if err := providers.EnsureBindingAnnotations(ctx, r.Client, binding, map[string]string{
+		providers.AnnotationGatewayRef: providers.RefKey(gwNamespace, gwName),
+	}); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	if !isExtensionReady(ext) {
 		msg := fmt.Sprintf("MCPGatewayExtension %q is not ready", cfg.extensionName)
 		if readyCond := meta.FindStatusCondition(ext.Status.Conditions, "Ready"); readyCond != nil && readyCond.Message != "" {
@@ -331,13 +360,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		statusErr := providers.UpdateBindingStatus(ctx, r.Status(), binding, metav1.ConditionFalse,
 			reasonExtensionNotReady, msg, "")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, statusErr
-	}
-
-	ref := ext.Spec.TargetRef
-	gwName := ref.Name
-	gwNamespace := ref.Namespace
-	if gwNamespace == "" {
-		gwNamespace = ext.Namespace
 	}
 
 	sectionName := cfg.sectionName
@@ -883,45 +905,24 @@ func (r *Reconciler) findBindingsForConfigMap(ctx context.Context, obj client.Ob
 	return requests
 }
 
+// findBindingsForGateway selects the bindings that reference the changed Gateway
+// using the gateway-ref annotation stamped during Reconcile (resolved via the
+// extension's targetRef). Matching against the cached binding list avoids reading
+// each eligible binding's (uncached) ConfigMap and its extension on every Gateway
+// event.
 func (r *Reconciler) findBindingsForGateway(ctx context.Context, obj client.Object) []ctrl.Request {
 	bindingList := &mcpv1alpha1.MCPGatewayBindingList{}
 	if err := r.List(ctx, bindingList); err != nil {
 		return nil
 	}
+	want := providers.RefKey(obj.GetNamespace(), obj.GetName())
 	var requests []ctrl.Request
 	for i := range bindingList.Items {
 		b := &bindingList.Items[i]
-		if b.Spec.Provider != ProviderName || b.Spec.ConfigRef == "" {
+		if b.Spec.Provider != ProviderName {
 			continue
 		}
-		cm := &corev1.ConfigMap{}
-		if err := r.APIReader.Get(ctx, client.ObjectKey{Name: b.Spec.ConfigRef, Namespace: b.Namespace}, cm); err != nil {
-			// The read is uncached, so a transient failure must not silently drop
-			// this binding - that would be a missed reconcile until an unrelated
-			// event re-triggers it. Enqueue it anyway and let the idempotent
-			// Reconcile surface and requeue the error.
-			log.FromContext(ctx).V(1).Info("enqueuing binding despite uncached ConfigMap read error",
-				"binding", client.ObjectKeyFromObject(b), "configRef", b.Spec.ConfigRef, "error", err)
-			requests = append(requests, ctrl.Request{
-				NamespacedName: client.ObjectKeyFromObject(b),
-			})
-			continue
-		}
-		extName := cm.Data[configKeyExtensionName]
-		extNS := cm.Data[configKeyExtensionNamespace]
-		if extName == "" || extNS == "" {
-			continue
-		}
-		ext := &kuadrantapi.MCPGatewayExtension{}
-		if err := r.Get(ctx, client.ObjectKey{Name: extName, Namespace: extNS}, ext); err != nil {
-			continue
-		}
-		ref := ext.Spec.TargetRef
-		gwNS := ref.Namespace
-		if gwNS == "" {
-			gwNS = ext.Namespace
-		}
-		if ref.Name == obj.GetName() && gwNS == obj.GetNamespace() {
+		if b.Annotations[providers.AnnotationGatewayRef] == want {
 			requests = append(requests, ctrl.Request{
 				NamespacedName: client.ObjectKeyFromObject(b),
 			})
@@ -930,32 +931,23 @@ func (r *Reconciler) findBindingsForGateway(ctx context.Context, obj client.Obje
 	return requests
 }
 
+// findBindingsForGatewayExtension selects the bindings that reference the changed
+// MCPGatewayExtension using the extension-ref annotation stamped during Reconcile.
+// Matching against the cached binding list avoids reading each eligible binding's
+// (uncached) ConfigMap on every extension event.
 func (r *Reconciler) findBindingsForGatewayExtension(ctx context.Context, obj client.Object) []ctrl.Request {
 	bindingList := &mcpv1alpha1.MCPGatewayBindingList{}
 	if err := r.List(ctx, bindingList); err != nil {
 		return nil
 	}
+	want := providers.RefKey(obj.GetNamespace(), obj.GetName())
 	var requests []ctrl.Request
 	for i := range bindingList.Items {
 		b := &bindingList.Items[i]
-		if b.Spec.Provider != ProviderName || b.Spec.ConfigRef == "" {
+		if b.Spec.Provider != ProviderName {
 			continue
 		}
-		cm := &corev1.ConfigMap{}
-		if err := r.APIReader.Get(ctx, client.ObjectKey{Name: b.Spec.ConfigRef, Namespace: b.Namespace}, cm); err != nil {
-			// The read is uncached, so a transient failure must not silently drop
-			// this binding - that would be a missed reconcile until an unrelated
-			// event re-triggers it. Enqueue it anyway and let the idempotent
-			// Reconcile surface and requeue the error.
-			log.FromContext(ctx).V(1).Info("enqueuing binding despite uncached ConfigMap read error",
-				"binding", client.ObjectKeyFromObject(b), "configRef", b.Spec.ConfigRef, "error", err)
-			requests = append(requests, ctrl.Request{
-				NamespacedName: client.ObjectKeyFromObject(b),
-			})
-			continue
-		}
-		if cm.Data[configKeyExtensionName] == obj.GetName() &&
-			cm.Data[configKeyExtensionNamespace] == obj.GetNamespace() {
+		if b.Annotations[providers.AnnotationExtensionRef] == want {
 			requests = append(requests, ctrl.Request{
 				NamespacedName: client.ObjectKeyFromObject(b),
 			})

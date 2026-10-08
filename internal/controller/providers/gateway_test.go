@@ -684,6 +684,144 @@ func TestUpdateBindingStatus(t *testing.T) {
 	})
 }
 
+func TestRefKey(t *testing.T) {
+	tests := []struct {
+		name      string
+		namespace string
+		refName   string
+		want      string
+	}{
+		{name: "namespace and name", namespace: "ns", refName: "gw", want: "ns/gw"},
+		{name: "empty namespace", namespace: "", refName: "gw", want: "/gw"},
+		{name: "empty name", namespace: "ns", refName: "", want: "ns/"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RefKey(tt.namespace, tt.refName); got != tt.want {
+				t.Errorf("RefKey(%q, %q) = %q, want %q", tt.namespace, tt.refName, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEnsureBindingAnnotations(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := mcpv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("patches when annotation is absent", func(t *testing.T) {
+		binding := &mcpv1alpha1.MCPGatewayBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "default"},
+		}
+		patches := 0
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Patch: func(ctx context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+					patches++
+					return cl.Patch(ctx, obj, patch, opts...)
+				},
+			}).Build()
+
+		err := EnsureBindingAnnotations(context.Background(), c, binding,
+			map[string]string{AnnotationGatewayRef: "ns/gw"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if patches != 1 {
+			t.Errorf("expected 1 patch, got %d", patches)
+		}
+		if binding.Annotations[AnnotationGatewayRef] != "ns/gw" {
+			t.Errorf("annotation = %q, want %q", binding.Annotations[AnnotationGatewayRef], "ns/gw")
+		}
+		persisted := &mcpv1alpha1.MCPGatewayBinding{}
+		if err := c.Get(context.Background(), client.ObjectKeyFromObject(binding), persisted); err != nil {
+			t.Fatalf("get after patch: %v", err)
+		}
+		if persisted.Annotations[AnnotationGatewayRef] != "ns/gw" {
+			t.Errorf("persisted annotation = %q, want %q", persisted.Annotations[AnnotationGatewayRef], "ns/gw")
+		}
+	})
+
+	t.Run("patches when annotation value differs", func(t *testing.T) {
+		binding := &mcpv1alpha1.MCPGatewayBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "b",
+				Namespace:   "default",
+				Annotations: map[string]string{AnnotationGatewayRef: "old-ns/old-gw"},
+			},
+		}
+		patches := 0
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Patch: func(ctx context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+					patches++
+					return cl.Patch(ctx, obj, patch, opts...)
+				},
+			}).Build()
+
+		err := EnsureBindingAnnotations(context.Background(), c, binding,
+			map[string]string{AnnotationGatewayRef: "ns/gw"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if patches != 1 {
+			t.Errorf("expected 1 patch, got %d", patches)
+		}
+		if binding.Annotations[AnnotationGatewayRef] != "ns/gw" {
+			t.Errorf("annotation = %q, want %q", binding.Annotations[AnnotationGatewayRef], "ns/gw")
+		}
+	})
+
+	t.Run("no-op when annotations already match", func(t *testing.T) {
+		binding := &mcpv1alpha1.MCPGatewayBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "b",
+				Namespace: "default",
+				Annotations: map[string]string{
+					AnnotationGatewayRef:   "ns/gw",
+					AnnotationExtensionRef: "ns/ext",
+				},
+			},
+		}
+		patches := 0
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Patch: func(ctx context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+					patches++
+					return cl.Patch(ctx, obj, patch, opts...)
+				},
+			}).Build()
+
+		err := EnsureBindingAnnotations(context.Background(), c, binding,
+			map[string]string{AnnotationGatewayRef: "ns/gw"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if patches != 0 {
+			t.Errorf("expected 0 patches (no-op), got %d", patches)
+		}
+	})
+
+	t.Run("returns error when patch fails", func(t *testing.T) {
+		binding := &mcpv1alpha1.MCPGatewayBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "default"},
+		}
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Patch: func(_ context.Context, _ client.WithWatch, _ client.Object, _ client.Patch, _ ...client.PatchOption) error {
+					return fmt.Errorf("transient API server error")
+				},
+			}).Build()
+
+		err := EnsureBindingAnnotations(context.Background(), c, binding,
+			map[string]string{AnnotationGatewayRef: "ns/gw"})
+		if err == nil {
+			t.Fatal("expected error when patch fails, got nil")
+		}
+	})
+}
+
 func sectionNamePtr(s string) *gatewayv1.SectionName {
 	sn := gatewayv1.SectionName(s)
 	return &sn

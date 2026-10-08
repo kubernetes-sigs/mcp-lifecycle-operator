@@ -40,6 +40,7 @@ import (
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers"
 	kuadrantapi "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant/api"
 )
 
@@ -130,6 +131,21 @@ func TestResolveAllowedExtensionNamespaces(t *testing.T) {
 			}
 		})
 	}
+}
+
+// failReader is a client.Reader whose Get fails the test. The Gateway and
+// MCPGatewayExtension watch mappers must select bindings from the cached binding
+// list via the stamped gateway-ref/extension-ref annotations and must never fall
+// back to an uncached ConfigMap read, so wiring it as the Reconciler's APIReader
+// proves no ConfigMap read happens.
+type failReader struct {
+	client.Reader
+}
+
+func (failReader) Get(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error {
+	defer GinkgoRecover()
+	Fail("mapper unexpectedly performed an uncached APIReader.Get (ConfigMap read)")
+	return nil
 }
 
 func hostnamePtr(h string) *gatewayv1.Hostname {
@@ -1725,13 +1741,77 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(metav1.GetControllerOf(reg).Name).To(Equal(bindingName))
 	})
 
-	Describe("findBindingsForGateway", func() {
-		It("should return requests for bindings whose extension references the gateway", func() {
-			createGatewayExtension("myserver.mcp.local", true)
-			createConfigMap(validConfigData())
-			createBinding()
+	// createAnnotatedBinding creates a binding carrying the gateway-ref and
+	// extension-ref annotations that Reconcile stamps, without any ConfigMap.
+	createAnnotatedBinding := func(provider, gatewayRef, extensionRef string) {
+		annotations := map[string]string{}
+		if gatewayRef != "" {
+			annotations[providers.AnnotationGatewayRef] = gatewayRef
+		}
+		if extensionRef != "" {
+			annotations[providers.AnnotationExtensionRef] = extensionRef
+		}
+		binding := &mcpv1alpha1.MCPGatewayBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        bindingName,
+				Namespace:   testNamespace,
+				Annotations: annotations,
+			},
+			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
+				MCPServerRef: mcpServerName,
+				Provider:     provider,
+				ConfigRef:    configMapName,
+			},
+		}
+		Expect(k8sClient.Create(ctx, binding)).To(Succeed())
+	}
 
-			r := newReconciler()
+	// mapperReconciler wires a failing APIReader to prove the mappers never read a
+	// ConfigMap; they select bindings purely from the cached binding list.
+	mapperReconciler := func() *Reconciler {
+		return &Reconciler{
+			Client:    k8sClient,
+			APIReader: failReader{},
+			Scheme:    k8sClient.Scheme(),
+		}
+	}
+
+	It("should stamp gateway-ref and extension-ref so Gateway/Extension events need no ConfigMap read", func() {
+		createMCPServer()
+		createGatewayExtension("myserver.mcp.local", true)
+		createConfigMap(validConfigData())
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		Expect(binding.Annotations).To(HaveKeyWithValue(
+			providers.AnnotationExtensionRef, providers.RefKey("gateway-ns", gatewayExtensionName)))
+		Expect(binding.Annotations).To(HaveKeyWithValue(
+			providers.AnnotationGatewayRef, providers.RefKey("gateway-ns", "my-gateway")))
+
+		By("matching that binding from Gateway and Extension events without any ConfigMap read")
+		mapper := &Reconciler{Client: k8sClient, APIReader: failReader{}, Scheme: k8sClient.Scheme()}
+		gwReqs := mapper.findBindingsForGateway(ctx, &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: "my-gateway", Namespace: "gateway-ns"},
+		})
+		Expect(gwReqs).To(HaveLen(1))
+		Expect(gwReqs[0].Name).To(Equal(bindingName))
+
+		extReqs := mapper.findBindingsForGatewayExtension(ctx, &kuadrantapi.MCPGatewayExtension{
+			ObjectMeta: metav1.ObjectMeta{Name: gatewayExtensionName, Namespace: "gateway-ns"},
+		})
+		Expect(extReqs).To(HaveLen(1))
+		Expect(extReqs[0].Name).To(Equal(bindingName))
+	})
+
+	Describe("findBindingsForGateway", func() {
+		It("should return requests for bindings annotated with the gateway without reading a ConfigMap", func() {
+			createAnnotatedBinding(ProviderName, providers.RefKey("gateway-ns", "my-gateway"), providers.RefKey("gateway-ns", gatewayExtensionName))
+
+			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "my-gateway",
@@ -1744,11 +1824,9 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		})
 
 		It("should not return requests for unrelated gateways", func() {
-			createGatewayExtension("myserver.mcp.local", true)
-			createConfigMap(validConfigData())
-			createBinding()
+			createAnnotatedBinding(ProviderName, providers.RefKey("gateway-ns", "my-gateway"), providers.RefKey("gateway-ns", gatewayExtensionName))
 
-			r := newReconciler()
+			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "other-gateway",
@@ -1759,39 +1837,10 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			Expect(requests).To(BeEmpty())
 		})
 
-		It("should enqueue binding when ConfigMap read fails (avoid dropped reconcile)", func() {
-			// The ConfigMap is intentionally not created, so the uncached read
-			// returns NotFound. The binding must still be enqueued so the
-			// idempotent Reconcile runs rather than the Gateway event being
-			// silently dropped for this binding.
-			createBinding()
+		It("should skip bindings with no gateway-ref annotation yet", func() {
+			createAnnotatedBinding(ProviderName, "", providers.RefKey("gateway-ns", gatewayExtensionName))
 
-			r := newReconciler()
-			gw := &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-gateway",
-					Namespace: "gateway-ns",
-				},
-			}
-			requests := r.findBindingsForGateway(ctx, gw)
-			Expect(requests).To(HaveLen(1))
-			Expect(requests[0].Name).To(Equal(bindingName))
-		})
-
-		It("should skip bindings with empty configRef", func() {
-			binding := &mcpv1alpha1.MCPGatewayBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      bindingName,
-					Namespace: testNamespace,
-				},
-				Spec: mcpv1alpha1.MCPGatewayBindingSpec{
-					MCPServerRef: mcpServerName,
-					Provider:     ProviderName,
-				},
-			}
-			Expect(k8sClient.Create(ctx, binding)).To(Succeed())
-
-			r := newReconciler()
+			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "my-gateway",
@@ -1803,21 +1852,9 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		})
 
 		It("should skip bindings with non-kuadrant provider", func() {
-			createConfigMap(validConfigData())
-			binding := &mcpv1alpha1.MCPGatewayBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      bindingName,
-					Namespace: testNamespace,
-				},
-				Spec: mcpv1alpha1.MCPGatewayBindingSpec{
-					MCPServerRef: mcpServerName,
-					Provider:     "httproute",
-					ConfigRef:    configMapName,
-				},
-			}
-			Expect(k8sClient.Create(ctx, binding)).To(Succeed())
+			createAnnotatedBinding("httproute", providers.RefKey("gateway-ns", "my-gateway"), providers.RefKey("gateway-ns", gatewayExtensionName))
 
-			r := newReconciler()
+			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "my-gateway",
@@ -1830,73 +1867,41 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 	})
 
 	Describe("findBindingsForGatewayExtension", func() {
-		It("should enqueue bindings when extension matches ConfigMap reference", func() {
-			createConfigMap(validConfigData())
-			createBinding()
+		It("should enqueue bindings annotated with the extension without reading a ConfigMap", func() {
+			createAnnotatedBinding(ProviderName, providers.RefKey("gateway-ns", "my-gateway"), providers.RefKey("gateway-ns", gatewayExtensionName))
 
-			ensureGatewayNamespace(ctx)
 			ext := &kuadrantapi.MCPGatewayExtension{
 				ObjectMeta: metav1.ObjectMeta{Name: gatewayExtensionName, Namespace: "gateway-ns"},
-				Spec: kuadrantapi.MCPGatewayExtensionSpec{
-					PublicHost: "public.example.com",
-					TargetRef: kuadrantapi.TargetReference{
-						Kind:        "Gateway",
-						Name:        "my-gateway",
-						SectionName: "mcp",
-					},
-				},
 			}
 
-			r := newReconciler()
+			r := mapperReconciler()
 			requests := r.findBindingsForGatewayExtension(ctx, ext)
 			Expect(requests).To(HaveLen(1))
 			Expect(requests[0].Name).To(Equal(bindingName))
 		})
 
 		It("should not enqueue bindings for an extension with a different name", func() {
-			createConfigMap(validConfigData())
-			createBinding()
+			createAnnotatedBinding(ProviderName, providers.RefKey("gateway-ns", "my-gateway"), providers.RefKey("gateway-ns", gatewayExtensionName))
 
 			ext := &kuadrantapi.MCPGatewayExtension{
 				ObjectMeta: metav1.ObjectMeta{Name: "different-extension", Namespace: "gateway-ns"},
-				Spec: kuadrantapi.MCPGatewayExtensionSpec{
-					PublicHost: "public.example.com",
-					TargetRef: kuadrantapi.TargetReference{
-						Kind:        "Gateway",
-						Name:        "my-gateway",
-						SectionName: "mcp",
-					},
-				},
 			}
 
-			r := newReconciler()
+			r := mapperReconciler()
 			requests := r.findBindingsForGatewayExtension(ctx, ext)
 			Expect(requests).To(BeEmpty())
 		})
 
-		It("should enqueue binding when ConfigMap read fails (avoid dropped reconcile)", func() {
-			// The ConfigMap is intentionally not created, so the uncached read
-			// returns NotFound. The binding must still be enqueued so the
-			// idempotent Reconcile runs rather than the Extension event being
-			// silently dropped for this binding.
-			createBinding()
+		It("should skip bindings with non-kuadrant provider", func() {
+			createAnnotatedBinding("httproute", providers.RefKey("gateway-ns", "my-gateway"), providers.RefKey("gateway-ns", gatewayExtensionName))
 
 			ext := &kuadrantapi.MCPGatewayExtension{
 				ObjectMeta: metav1.ObjectMeta{Name: gatewayExtensionName, Namespace: "gateway-ns"},
-				Spec: kuadrantapi.MCPGatewayExtensionSpec{
-					PublicHost: "public.example.com",
-					TargetRef: kuadrantapi.TargetReference{
-						Kind:        "Gateway",
-						Name:        "my-gateway",
-						SectionName: "mcp",
-					},
-				},
 			}
 
-			r := newReconciler()
+			r := mapperReconciler()
 			requests := r.findBindingsForGatewayExtension(ctx, ext)
-			Expect(requests).To(HaveLen(1))
-			Expect(requests[0].Name).To(Equal(bindingName))
+			Expect(requests).To(BeEmpty())
 		})
 	})
 

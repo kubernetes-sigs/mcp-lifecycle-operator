@@ -177,7 +177,7 @@ type Reconciler struct {
 	AllowedGatewayNamespaces []string
 }
 
-// +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings,verbs=get;list;watch
+// +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings/finalizers,verbs=update
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch
@@ -226,6 +226,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	gwName, gwNamespace, done, refErr := r.resolveGatewayRef(ctx, binding, configMap.Data)
 	if done {
 		return ctrl.Result{}, refErr
+	}
+
+	// Record which Gateway this binding resolves to so findBindingsForGateway can
+	// select it from the (cached) binding cache on Gateway events without reading
+	// the uncached ConfigMap of every eligible binding.
+	if err := providers.EnsureBindingAnnotations(ctx, r.Client, binding, map[string]string{
+		providers.AnnotationGatewayRef: providers.RefKey(gwNamespace, gwName),
+	}); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	path := mcpServer.Spec.Config.Path
@@ -289,32 +298,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		httpRoute.Spec.Hostnames = []gatewayv1.Hostname{gatewayv1.Hostname(routeHostname)}
 	}
 
-	if err := controllerutil.SetControllerReference(binding, httpRoute, r.Scheme); err != nil {
-		return ctrl.Result{}, fmt.Errorf("setting controller reference on HTTPRoute: %w", err)
-	}
-
-	existing := &gatewayv1.HTTPRoute{}
-	err := r.Get(ctx, client.ObjectKey{Name: httpRoute.Name, Namespace: httpRoute.Namespace}, existing)
-	if apierrors.IsNotFound(err) {
-		logger.Info("Creating HTTPRoute", "name", httpRoute.Name)
-		if createErr := r.Create(ctx, httpRoute); createErr != nil {
-			return ctrl.Result{}, createErr
-		}
-	} else if err != nil {
+	if err := r.applyHTTPRoute(ctx, binding, httpRoute); err != nil {
 		return ctrl.Result{}, err
-	} else {
-		ownersBefore := existing.OwnerReferences
-		if err := controllerutil.SetControllerReference(binding, existing, r.Scheme); err != nil {
-			return ctrl.Result{}, fmt.Errorf("setting controller reference on existing HTTPRoute: %w", err)
-		}
-		ownersChanged := !equality.Semantic.DeepEqual(ownersBefore, existing.OwnerReferences)
-		if ownersChanged || !equality.Semantic.DeepEqual(existing.Spec, httpRoute.Spec) {
-			logger.Info("Updating HTTPRoute", "name", httpRoute.Name)
-			existing.Spec = httpRoute.Spec
-			if updateErr := r.Update(ctx, existing); updateErr != nil {
-				return ctrl.Result{}, updateErr
-			}
-		}
 	}
 
 	route := &gatewayv1.HTTPRoute{}
@@ -396,6 +381,43 @@ func (r *Reconciler) resolveGatewayRef(
 	return gwName, gwNamespace, false, nil
 }
 
+// applyHTTPRoute creates the desired HTTPRoute or updates the existing one when
+// its owner references or spec have drifted.
+func (r *Reconciler) applyHTTPRoute(ctx context.Context, binding *mcpv1alpha1.MCPGatewayBinding, httpRoute *gatewayv1.HTTPRoute) error {
+	logger := log.FromContext(ctx)
+
+	if err := controllerutil.SetControllerReference(binding, httpRoute, r.Scheme); err != nil {
+		return fmt.Errorf("setting controller reference on HTTPRoute: %w", err)
+	}
+
+	existing := &gatewayv1.HTTPRoute{}
+	err := r.Get(ctx, client.ObjectKey{Name: httpRoute.Name, Namespace: httpRoute.Namespace}, existing)
+	if apierrors.IsNotFound(err) {
+		logger.Info("Creating HTTPRoute", "name", httpRoute.Name)
+		if createErr := r.Create(ctx, httpRoute); createErr != nil {
+			return createErr
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	ownersBefore := existing.OwnerReferences
+	if err := controllerutil.SetControllerReference(binding, existing, r.Scheme); err != nil {
+		return fmt.Errorf("setting controller reference on existing HTTPRoute: %w", err)
+	}
+	ownersChanged := !equality.Semantic.DeepEqual(ownersBefore, existing.OwnerReferences)
+	if ownersChanged || !equality.Semantic.DeepEqual(existing.Spec, httpRoute.Spec) {
+		logger.Info("Updating HTTPRoute", "name", httpRoute.Name)
+		existing.Spec = httpRoute.Spec
+		if updateErr := r.Update(ctx, existing); updateErr != nil {
+			return updateErr
+		}
+	}
+	return nil
+}
+
 func (r *Reconciler) setNotRegistered(
 	ctx context.Context,
 	binding *mcpv1alpha1.MCPGatewayBinding,
@@ -475,32 +497,23 @@ func (r *Reconciler) findBindingsForConfigMap(ctx context.Context, obj client.Ob
 	return requests
 }
 
+// findBindingsForGateway selects the bindings that reference the changed Gateway
+// using the gateway-ref annotation stamped during Reconcile. Matching against the
+// cached binding list avoids reading each eligible binding's (uncached) ConfigMap
+// on every Gateway event.
 func (r *Reconciler) findBindingsForGateway(ctx context.Context, obj client.Object) []ctrl.Request {
 	bindingList := &mcpv1alpha1.MCPGatewayBindingList{}
 	if err := r.List(ctx, bindingList); err != nil {
 		return nil
 	}
+	want := providers.RefKey(obj.GetNamespace(), obj.GetName())
 	var requests []ctrl.Request
 	for i := range bindingList.Items {
 		b := &bindingList.Items[i]
-		if b.Spec.Provider != ProviderName || b.Spec.ConfigRef == "" {
+		if b.Spec.Provider != ProviderName {
 			continue
 		}
-		cm := &corev1.ConfigMap{}
-		if err := r.APIReader.Get(ctx, client.ObjectKey{Name: b.Spec.ConfigRef, Namespace: b.Namespace}, cm); err != nil {
-			// The read is uncached, so a transient failure must not silently drop
-			// this binding - that would be a missed reconcile until an unrelated
-			// event re-triggers it. Enqueue it anyway and let the idempotent
-			// Reconcile surface and requeue the error.
-			log.FromContext(ctx).V(1).Info("enqueuing binding despite uncached ConfigMap read error",
-				"binding", client.ObjectKeyFromObject(b), "configRef", b.Spec.ConfigRef, "error", err)
-			requests = append(requests, ctrl.Request{
-				NamespacedName: client.ObjectKeyFromObject(b),
-			})
-			continue
-		}
-		if cm.Data[configKeyGatewayName] == obj.GetName() &&
-			cm.Data[configKeyGatewayNamespace] == obj.GetNamespace() {
+		if b.Annotations[providers.AnnotationGatewayRef] == want {
 			requests = append(requests, ctrl.Request{
 				NamespacedName: client.ObjectKeyFromObject(b),
 			})

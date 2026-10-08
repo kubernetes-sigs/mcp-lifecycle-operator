@@ -19,6 +19,7 @@ package providers
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/netip"
 	"strings"
 
@@ -245,4 +246,50 @@ func UpdateBindingStatus(
 	binding.Status.URL = url
 
 	return sw.Update(ctx, binding)
+}
+
+// Annotation keys used to record, on each MCPGatewayBinding, the identity of the
+// Gateway (and, for the kuadrant provider, the MCPGatewayExtension) that the
+// binding's ConfigMap currently resolves to. Watch mappers select the affected
+// bindings by matching these annotations, so a Gateway or MCPGatewayExtension
+// event no longer has to read every eligible binding's ConfigMap to rediscover
+// the relationship. The ConfigMap contents themselves remain uncached.
+const (
+	AnnotationGatewayRef   = "mcp.x-k8s.io/gateway-ref"
+	AnnotationExtensionRef = "mcp.x-k8s.io/extension-ref"
+)
+
+// RefKey formats a namespace/name pair into the canonical value stored in the
+// gateway/extension reverse-index annotations.
+func RefKey(namespace, name string) string {
+	return namespace + "/" + name
+}
+
+// EnsureBindingAnnotations patches binding so that each key in desired holds the
+// given value, recording which Gateway/MCPGatewayExtension the binding currently
+// references. It is a no-op (no write, no API call) when the annotations already
+// match, which keeps reconciliation idempotent and avoids a stamp/observe loop.
+func EnsureBindingAnnotations(
+	ctx context.Context,
+	c client.Client,
+	binding *mcpv1alpha1.MCPGatewayBinding,
+	desired map[string]string,
+) error {
+	changed := false
+	for k, v := range desired {
+		if binding.Annotations[k] != v {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return nil
+	}
+
+	patch := client.MergeFrom(binding.DeepCopy())
+	if binding.Annotations == nil {
+		binding.Annotations = make(map[string]string, len(desired))
+	}
+	maps.Copy(binding.Annotations, desired)
+	return c.Patch(ctx, binding, patch)
 }

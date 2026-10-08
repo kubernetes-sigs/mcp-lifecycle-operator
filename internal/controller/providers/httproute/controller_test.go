@@ -27,10 +27,13 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -38,6 +41,7 @@ import (
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers"
 )
 
 const (
@@ -106,6 +110,117 @@ func TestResolveAllowedGatewayNamespaces(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestApplyHTTPRoute(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := gatewayv1.Install(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := mcpv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+
+	newBinding := func() *mcpv1alpha1.MCPGatewayBinding {
+		return &mcpv1alpha1.MCPGatewayBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: testNamespace, UID: "binding-uid"},
+		}
+	}
+	newRoute := func() *gatewayv1.HTTPRoute {
+		return &gatewayv1.HTTPRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: testNamespace},
+			Spec: gatewayv1.HTTPRouteSpec{
+				Hostnames: []gatewayv1.Hostname{"mcp.example.com"},
+			},
+		}
+	}
+
+	t.Run("creates HTTPRoute when absent", func(t *testing.T) {
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+		r := &Reconciler{Client: c, Scheme: scheme}
+		if err := r.applyHTTPRoute(context.Background(), newBinding(), newRoute()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := &gatewayv1.HTTPRoute{}
+		if err := c.Get(context.Background(), types.NamespacedName{Name: "route", Namespace: testNamespace}, got); err != nil {
+			t.Fatalf("expected HTTPRoute to be created: %v", err)
+		}
+		if len(got.OwnerReferences) != 1 {
+			t.Errorf("expected owner reference set, got %d", len(got.OwnerReferences))
+		}
+	})
+
+	t.Run("updates HTTPRoute when spec drifts", func(t *testing.T) {
+		existing := newRoute()
+		existing.Spec.Hostnames = []gatewayv1.Hostname{"stale.example.com"}
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+		r := &Reconciler{Client: c, Scheme: scheme}
+		if err := r.applyHTTPRoute(context.Background(), newBinding(), newRoute()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := &gatewayv1.HTTPRoute{}
+		if err := c.Get(context.Background(), types.NamespacedName{Name: "route", Namespace: testNamespace}, got); err != nil {
+			t.Fatalf("get after update: %v", err)
+		}
+		if len(got.Spec.Hostnames) != 1 || got.Spec.Hostnames[0] != "mcp.example.com" {
+			t.Errorf("spec not updated: %v", got.Spec.Hostnames)
+		}
+	})
+
+	t.Run("returns error on transient Get failure", func(t *testing.T) {
+		c := fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, obj client.Object, _ ...client.GetOption) error {
+				if _, ok := obj.(*gatewayv1.HTTPRoute); ok {
+					return apierrors.NewInternalError(context.DeadlineExceeded)
+				}
+				return nil
+			},
+		}).Build()
+		r := &Reconciler{Client: c, Scheme: scheme}
+		if err := r.applyHTTPRoute(context.Background(), newBinding(), newRoute()); err == nil {
+			t.Fatal("expected error on transient Get failure, got nil")
+		}
+	})
+
+	t.Run("returns error when Create fails", func(t *testing.T) {
+		c := fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
+			Create: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.CreateOption) error {
+				return apierrors.NewInternalError(context.DeadlineExceeded)
+			},
+		}).Build()
+		r := &Reconciler{Client: c, Scheme: scheme}
+		if err := r.applyHTTPRoute(context.Background(), newBinding(), newRoute()); err == nil {
+			t.Fatal("expected error when Create fails, got nil")
+		}
+	})
+
+	t.Run("returns error when Update fails", func(t *testing.T) {
+		existing := newRoute()
+		existing.Spec.Hostnames = []gatewayv1.Hostname{"stale.example.com"}
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).WithInterceptorFuncs(interceptor.Funcs{
+			Update: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.UpdateOption) error {
+				return apierrors.NewInternalError(context.DeadlineExceeded)
+			},
+		}).Build()
+		r := &Reconciler{Client: c, Scheme: scheme}
+		if err := r.applyHTTPRoute(context.Background(), newBinding(), newRoute()); err == nil {
+			t.Fatal("expected error when Update fails, got nil")
+		}
+	})
+}
+
+// failReader is a client.Reader whose Get fails the test. The Gateway watch
+// mapper must select bindings from the cached binding list via the stamped
+// gateway-ref annotation and must never fall back to an uncached ConfigMap read,
+// so wiring it as the Reconciler's APIReader proves no ConfigMap read happens.
+type failReader struct {
+	client.Reader
+}
+
+func (failReader) Get(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error {
+	defer GinkgoRecover()
+	Fail("mapper unexpectedly performed an uncached APIReader.Get (ConfigMap read)")
+	return nil
 }
 
 func newTestMCPServer(name string) *mcpv1beta1.MCPServer {
@@ -274,6 +389,34 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
 		Expect(registered.Reason).To(Equal(mcpcontroller.ReasonPublicAddressPending))
+	})
+
+	It("should stamp the gateway-ref annotation so Gateway events need no ConfigMap read", func() {
+		createMCPServer()
+		createConfigMap(map[string]string{
+			configKeyGatewayName:      testGatewayName,
+			configKeyGatewayNamespace: testGatewayNS,
+		})
+		createBinding(ProviderName)
+
+		r := newReconciler()
+		_, err := r.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		Expect(binding.Annotations).To(HaveKeyWithValue(
+			providers.AnnotationGatewayRef, providers.RefKey(testGatewayNS, testGatewayName)))
+
+		By("matching that binding from a Gateway event without any ConfigMap read")
+		mapper := &Reconciler{Client: k8sClient, APIReader: failReader{}, Scheme: k8sClient.Scheme()}
+		requests := mapper.findBindingsForGateway(ctx, &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: testGatewayName, Namespace: testGatewayNS},
+		})
+		Expect(requests).To(HaveLen(1))
+		Expect(requests[0].Name).To(Equal(bindingName))
 	})
 
 	It("should return early when binding not found", func() {
@@ -838,14 +981,40 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 	})
 
 	Describe("findBindingsForGateway", func() {
-		It("should return requests for bindings whose ConfigMap references the Gateway", func() {
-			createConfigMap(map[string]string{
-				configKeyGatewayName:      testGatewayName,
-				configKeyGatewayNamespace: testGatewayNS,
-			})
-			createBinding(ProviderName)
+		// createAnnotatedBinding creates a binding carrying the gateway-ref
+		// annotation that Reconcile stamps, without creating any ConfigMap.
+		createAnnotatedBinding := func(provider, gatewayRef string) {
+			binding := &mcpv1alpha1.MCPGatewayBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      bindingName,
+					Namespace: testNamespace,
+					Annotations: map[string]string{
+						providers.AnnotationGatewayRef: gatewayRef,
+					},
+				},
+				Spec: mcpv1alpha1.MCPGatewayBindingSpec{
+					MCPServerRef: mcpServerName,
+					Provider:     provider,
+					ConfigRef:    configMapName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, binding)).To(Succeed())
+		}
 
-			r := newReconciler()
+		// mapperReconciler wires a failing APIReader to prove the mapper never
+		// reads a ConfigMap; it selects bindings purely from the cached list.
+		mapperReconciler := func() *Reconciler {
+			return &Reconciler{
+				Client:    k8sClient,
+				APIReader: failReader{},
+				Scheme:    k8sClient.Scheme(),
+			}
+		}
+
+		It("should return requests for bindings annotated with the Gateway without reading a ConfigMap", func() {
+			createAnnotatedBinding(ProviderName, providers.RefKey(testGatewayNS, testGatewayName))
+
+			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testGatewayName,
@@ -858,13 +1027,9 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		})
 
 		It("should not return bindings for a different Gateway name", func() {
-			createConfigMap(map[string]string{
-				configKeyGatewayName:      testGatewayName,
-				configKeyGatewayNamespace: testGatewayNS,
-			})
-			createBinding(ProviderName)
+			createAnnotatedBinding(ProviderName, providers.RefKey(testGatewayNS, testGatewayName))
 
-			r := newReconciler()
+			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "other-gateway",
@@ -876,13 +1041,9 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		})
 
 		It("should not return bindings for a different Gateway namespace", func() {
-			createConfigMap(map[string]string{
-				configKeyGatewayName:      testGatewayName,
-				configKeyGatewayNamespace: testGatewayNS,
-			})
-			createBinding(ProviderName)
+			createAnnotatedBinding(ProviderName, providers.RefKey(testGatewayNS, testGatewayName))
 
-			r := newReconciler()
+			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testGatewayName,
@@ -894,13 +1055,9 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		})
 
 		It("should not return bindings with non-httproute provider", func() {
-			createConfigMap(map[string]string{
-				configKeyGatewayName:      testGatewayName,
-				configKeyGatewayNamespace: testGatewayNS,
-			})
-			createBinding("custom-vendor")
+			createAnnotatedBinding("custom-vendor", providers.RefKey(testGatewayNS, testGatewayName))
 
-			r := newReconciler()
+			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testGatewayName,
@@ -911,11 +1068,14 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			Expect(requests).To(BeEmpty())
 		})
 
-		It("should enqueue binding when referenced ConfigMap read fails (avoid dropped reconcile)", func() {
-			// The ConfigMap is intentionally not created, so the uncached read
-			// returns NotFound. The binding must still be enqueued so the
-			// idempotent Reconcile runs rather than the Gateway event being
-			// silently dropped for this binding.
+		It("should not enqueue a binding whose ConfigMap references the Gateway but which has no annotation yet", func() {
+			// The mapper no longer reads ConfigMaps: a binding not yet stamped by
+			// Reconcile must not match, even though its ConfigMap points at the
+			// Gateway. The binding's own create/update event still reconciles it.
+			createConfigMap(map[string]string{
+				configKeyGatewayName:      testGatewayName,
+				configKeyGatewayNamespace: testGatewayNS,
+			})
 			createBinding(ProviderName)
 
 			r := newReconciler()
@@ -926,8 +1086,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 				},
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
-			Expect(requests).To(HaveLen(1))
-			Expect(requests[0].Name).To(Equal(bindingName))
+			Expect(requests).To(BeEmpty())
 		})
 	})
 
@@ -976,8 +1135,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		})
 	})
 
-	Describe("findBindingsForGateway (empty configRef)", func() {
-		It("should skip bindings with empty configRef", func() {
+	Describe("findBindingsForGateway (unstamped binding)", func() {
+		It("should skip bindings with no gateway-ref annotation", func() {
 			binding := &mcpv1alpha1.MCPGatewayBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      bindingName,
