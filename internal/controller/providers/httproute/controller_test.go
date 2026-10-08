@@ -324,6 +324,40 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(binding.Status.URL).To(Equal("http://mcp.example.com/mcp"))
 	})
 
+	DescribeTable("should reject an invalid route-hostname without creating an HTTPRoute",
+		func(badHostname string) {
+			createMCPServer()
+			createConfigMap(map[string]string{
+				configKeyGatewayName:      testGatewayName,
+				configKeyGatewayNamespace: testGatewayNS,
+				configKeyRouteHostname:    badHostname,
+			})
+			createBinding(ProviderName)
+
+			r := newReconciler()
+			_, err := r.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			route := &gatewayv1.HTTPRoute{}
+			getErr := k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)
+			Expect(apierrors.IsNotFound(getErr)).To(BeTrue(), "no HTTPRoute should be created for an invalid hostname")
+
+			binding := &mcpv1alpha1.MCPGatewayBinding{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+			registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+			Expect(registered).NotTo(BeNil())
+			Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+			Expect(registered.Message).To(ContainSubstring(configKeyRouteHostname))
+		},
+		Entry("with port", "mcp.example.com:8080"),
+		Entry("with scheme", "https://mcp.example.com"),
+		Entry("with path", "mcp.example.com/mcp"),
+		Entry("uppercase", "MCP.example.com"),
+		Entry("IP address", "10.0.0.1"),
+	)
+
 	It("should set PublicAddressPending when no public-hostname and no Gateway status address", func() {
 		createMCPServer()
 		createConfigMap(map[string]string{

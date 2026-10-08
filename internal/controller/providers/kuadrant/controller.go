@@ -228,6 +228,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if resolveErr != nil {
 			return ctrl.Result{}, r.setNotRegistered(ctx, binding, resolveErr.Error())
 		}
+	} else if err := providers.ValidateHostname(routeHostname); err != nil {
+		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
+			fmt.Sprintf("invalid %q in ConfigMap %q: %v", configKeyRouteHostname, binding.Spec.ConfigRef, err))
 	}
 
 	if err := r.reconcileHTTPRoute(ctx, binding, mcpServer, gwName, gwNamespace, routeHostname, sectionName, cfg.path); err != nil {

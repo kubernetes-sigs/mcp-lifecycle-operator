@@ -19,6 +19,7 @@ package providers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -423,6 +424,46 @@ func TestFormatHost(t *testing.T) {
 			got := FormatHost(tt.host)
 			if got != tt.want {
 				t.Errorf("FormatHost(%q) = %q, want %q", tt.host, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateHostname(t *testing.T) {
+	tests := []struct {
+		name    string
+		host    string
+		wantErr bool
+	}{
+		{name: "valid plain host", host: "mcp.example.com", wantErr: false},
+		{name: "valid single-label is a DNS subdomain", host: "mcp", wantErr: false},
+		{name: "valid wildcard host", host: "*.example.com", wantErr: false},
+		{name: "empty", host: "", wantErr: true},
+		{name: "whitespace only", host: "   ", wantErr: true},
+		{name: "leading space", host: " mcp.example.com", wantErr: true},
+		{name: "IPv4 address", host: "10.0.0.1", wantErr: true},
+		{name: "IPv6 address", host: "2001:db8::1", wantErr: true},
+		{name: "with port", host: "mcp.example.com:8080", wantErr: true},
+		{name: "with scheme", host: "https://mcp.example.com", wantErr: true},
+		{name: "with path", host: "mcp.example.com/mcp", wantErr: true},
+		{name: "uppercase", host: "MCP.example.com", wantErr: true},
+		{name: "invalid char underscore", host: "mcp_server.example.com", wantErr: true},
+		{name: "mid-label wildcard", host: "mcp.*.example.com", wantErr: true},
+		{name: "bare wildcard prefix", host: "*.", wantErr: true},
+		{name: "label at 63 chars ok", host: strings.Repeat("a", 63) + ".example.com", wantErr: false},
+		{name: "label over 63 chars", host: strings.Repeat("a", 64) + ".example.com", wantErr: true},
+		{name: "wildcard label over 63 chars", host: "*." + strings.Repeat("a", 64) + ".example.com", wantErr: true},
+		{name: "hostname over 253 chars", host: strings.Repeat("a.", 127) + "example.com", wantErr: true},
+		{name: "wildcard pushing over 253 chars", host: "*." + strings.Repeat("a.", 130) + "com", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateHostname(tt.host)
+			if tt.wantErr && err == nil {
+				t.Errorf("ValidateHostname(%q) = nil, want error", tt.host)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("ValidateHostname(%q) = %v, want nil", tt.host, err)
 			}
 		})
 	}

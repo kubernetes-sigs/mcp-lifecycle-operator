@@ -20,16 +20,57 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 )
+
+// Gateway API hostname length limits (RFC 1123). A hostname may be at most 253
+// characters and each DNS label at most 63 characters. IsDNS1123Subdomain only
+// enforces the overall 253-character bound, so the per-label limit (and the
+// wildcard-prefix contribution to the overall length) are checked explicitly.
+const (
+	maxHostnameLength = 253
+	maxLabelLength    = 63
+)
+
+// ValidateHostname checks that value is a valid Gateway API hostname before it
+// is set on an HTTPRoute. A valid hostname is an RFC 1123 DNS subdomain,
+// optionally prefixed with a single wildcard label ("*."), for example
+// "mcp.example.com" or "*.example.com". Empty values, IP addresses, values
+// longer than 253 characters, values with a DNS label longer than 63
+// characters, and values containing ports, paths, schemes, spaces, uppercase or
+// other invalid characters are rejected. The returned error explains why value
+// is invalid.
+func ValidateHostname(value string) error {
+	if value == "" {
+		return fmt.Errorf("hostname must not be empty")
+	}
+	if _, err := netip.ParseAddr(value); err == nil {
+		return fmt.Errorf("hostname %q must be a DNS name, not an IP address", value)
+	}
+	if len(value) > maxHostnameLength {
+		return fmt.Errorf("hostname %q exceeds the maximum length of %d characters", value, maxHostnameLength)
+	}
+	toCheck := strings.TrimPrefix(value, "*.")
+	if errs := validation.IsDNS1123Subdomain(toCheck); len(errs) > 0 {
+		return fmt.Errorf("hostname %q is not a valid DNS name: %s", value, strings.Join(errs, "; "))
+	}
+	for label := range strings.SplitSeq(toCheck, ".") {
+		if len(label) > maxLabelLength {
+			return fmt.Errorf("hostname %q has a DNS label longer than %d characters", value, maxLabelLength)
+		}
+	}
+	return nil
+}
 
 // GatewayAddress returns a public address from the Gateway's status.
 // It prefers the first Hostname-type address, falling back to the first

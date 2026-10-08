@@ -1080,6 +1080,37 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(string(route.Spec.Hostnames[0])).To(Equal("myserver.mcp.local"))
 	})
 
+	DescribeTable("should reject an invalid route-hostname without creating an HTTPRoute",
+		func(badHostname string) {
+			createMCPServer()
+			createGatewayExtension("public.example.com", true)
+			data := validConfigData()
+			data[configKeyRouteHostname] = badHostname
+			createConfigMap(data)
+			createBinding()
+
+			_, err := doReconcile()
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying no HTTPRoute was created for the invalid hostname")
+			route := &gatewayv1.HTTPRoute{}
+			getErr := k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)
+			Expect(apierrors.IsNotFound(getErr)).To(BeTrue())
+
+			binding := &mcpv1alpha1.MCPGatewayBinding{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+			registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+			Expect(registered).NotTo(BeNil())
+			Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+			Expect(registered.Message).To(ContainSubstring(configKeyRouteHostname))
+		},
+		Entry("with port", "mcp.example.com:8080"),
+		Entry("with scheme", "https://mcp.example.com"),
+		Entry("with path", "mcp.example.com/mcp"),
+		Entry("uppercase", "MCP.example.com"),
+		Entry("IP address", "10.0.0.1"),
+	)
+
 	It("should set Registered=False when configRef is empty", func() {
 		createMCPServer()
 
