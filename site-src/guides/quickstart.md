@@ -251,4 +251,4 @@ make uninstall
 - Explore more examples:
   - [kubernetes-mcp-server examples](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples/kubernetes-mcp-server) - Basic, ConfigMap, and RBAC examples
   - [All examples](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples)
-- Check the [API Reference](../reference/) for all configuration options
+- Check the [API Reference](../reference/index.md) for all configuration options

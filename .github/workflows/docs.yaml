@@ -1,0 +1,223 @@
+name: Docs
+
+on:
+  pull_request:
+    paths: &docs-paths
+      - "site-src/**"
+      - "mkdocs.yml"
+      - "Makefile"
+      - "hack/mkdocs/**"
+      - "crd-ref-docs.yaml"
+      - "api/**"
+      - ".github/workflows/docs.yaml"
+  push:
+    branches:
+      - main
+    paths: *docs-paths
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Mike version name (git tag, e.g. v0.3.0)"
+        required: true
+        type: string
+      source_ref:
+        description: "Optional git ref for docs content (default: version tag if it has mike tooling, else this workflow revision)"
+        required: false
+        type: string
+        default: ""
+      update_latest:
+        description: "Update the latest alias to this version"
+        type: boolean
+        default: true
+      set_default:
+        description: "Set latest as the default site version"
+        type: boolean
+        default: true
+
+# Serialize gh-pages deploys; keep PR lint runs independent.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('docs-lint-pr-{0}', github.event.pull_request.number) || 'docs-deploy-gh-pages' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint docs
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: hack/mkdocs/image/requirements.txt
+
+      - name: Install docs dependencies
+        run: pip install -r hack/mkdocs/image/requirements.txt
+
+      - name: Build docs
+        run: |
+          make api-ref-docs
+          mkdocs build --strict
+
+  deploy-main:
+    name: Deploy main preview
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: hack/mkdocs/image/requirements.txt
+
+      - name: Install docs dependencies
+        run: pip install -r hack/mkdocs/image/requirements.txt
+
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Deploy main preview
+        run: ./hack/mkdocs/deploy.sh main --title "main (preview)"
+
+  deploy-release:
+    name: Deploy release docs
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+    steps:
+      # Stay on the workflow revision so mike tooling exists, then load docs
+      # sources from the release tag (see prepare-version-sources.sh).
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Prepare docs sources from release tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        # Always load site-src/api from the release tag; keep mike tooling from
+        # the workflow revision (required for tags that predate this workflow).
+        run: ./hack/mkdocs/prepare-version-sources.sh "${TAG}" "${TAG}"
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: hack/mkdocs/image/requirements.txt
+
+      - name: Install docs dependencies
+        run: pip install -r hack/mkdocs/image/requirements.txt
+
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Deploy release docs
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          ARGS=("${TAG}")
+          # Prereleases get a versioned docs page but must not become latest
+          # (keeps docs default aligned with GitHub's latest stable release).
+          if [[ "${IS_PRERELEASE}" != "true" ]]; then
+            ARGS+=(latest --set-default)
+          fi
+          ./hack/mkdocs/deploy.sh "${ARGS[@]}"
+
+  deploy-manual:
+    name: Deploy docs (manual)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+    steps:
+      # Do not check out inputs.version here: tags that predate mike lack
+      # deploy.sh. Stay on the workflow revision and load content separately.
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Prepare docs sources
+        env:
+          VERSION: ${{ inputs.version }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: ./hack/mkdocs/prepare-version-sources.sh "${VERSION}" "${SOURCE_REF}"
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: hack/mkdocs/image/requirements.txt
+
+      - name: Install docs dependencies
+        run: pip install -r hack/mkdocs/image/requirements.txt
+
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Deploy docs
+        env:
+          VERSION: ${{ inputs.version }}
+          UPDATE_LATEST: ${{ inputs.update_latest }}
+          SET_DEFAULT: ${{ inputs.set_default }}
+        run: |
+          ARGS=("${VERSION}")
+          if [[ "${UPDATE_LATEST}" == "true" ]]; then
+            ARGS+=(latest)
+          fi
+          if [[ "${SET_DEFAULT}" == "true" ]]; then
+            ARGS+=(--set-default)
+          fi
+          ./hack/mkdocs/deploy.sh "${ARGS[@]}"

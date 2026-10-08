@@ -56,6 +56,8 @@ assignees: aliok, ArangoGutierrez, matzew, mikebrow, mrunalp, soltysh
   ```
 - [ ] Create [GitHub release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/new)
   with the changelog above; attach `dist/install.yaml` as a release asset
+- [ ] Verify the [Docs workflow](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/actions/workflows/docs.yaml)
+  succeeded and https://mcp-lifecycle-operator.sigs.k8s.io/ shows the new version as **latest**
 - [ ] Send announcement email to `dev@kubernetes.io` with subject:
   `[ANNOUNCE] mcp-lifecycle-operator v0.MINOR.0 is released`
 - [ ] Close this issue
