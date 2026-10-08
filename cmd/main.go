@@ -54,7 +54,9 @@ import (
 	// The httproute provider is imported by name (not blank) so its opt-in
 	// gateway-namespace allowlist can be configured from startup flags.
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/httproute"
-	_ "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant"
+	// The kuadrant provider is imported by name (not blank) so its opt-in
+	// extension-namespace allowlist can be configured from startup flags.
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -94,6 +96,7 @@ func main() {
 	var disallowPrivilegedSecurityContext bool
 	var networkPolicyDefaultPosture string
 	var httprouteAllowedGatewayNamespaces string
+	var kuadrantAllowedExtensionNamespaces string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -149,6 +152,12 @@ func main() {
 			"The gateway namespace and name are supplied by a tenant-controlled ConfigMap and used verbatim as "+
 			"the HTTPRoute ParentRef, so restricting it prevents a tenant from attaching the route to another "+
 			"tenant's Gateway. Falls back to HTTPROUTE_ALLOWED_GATEWAY_NAMESPACES env var if not set. "+
+			"Empty means no restriction (any namespace named in a binding's ConfigMap is trusted).")
+	flag.StringVar(&kuadrantAllowedExtensionNamespaces, "kuadrant-allowed-extension-namespaces", "",
+		"Comma-separated allowlist of namespaces the kuadrant gateway provider may read MCPGatewayExtension "+
+			"routing config from. The extension namespace is supplied by a tenant-controlled ConfigMap, so "+
+			"restricting it prevents routing config from being read out of an attacker-planted namespace. "+
+			"Falls back to KUADRANT_ALLOWED_EXTENSION_NAMESPACES env var if not set. "+
 			"Empty means no restriction (any namespace named in a binding's ConfigMap is trusted).")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
@@ -327,6 +336,19 @@ func main() {
 		setupLog.Error(err, "invalid --httproute-allowed-gateway-namespaces value")
 		os.Exit(1)
 	}
+	// Detect whether the allowlist flag was explicitly provided on the command
+	// line so an explicit --kuadrant-allowed-extension-namespaces="" can disable
+	// the control while the env var is still exported (flag wins over env).
+	kuadrantFlagSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "kuadrant-allowed-extension-namespaces" {
+			kuadrantFlagSet = true
+		}
+	})
+	if err := configureKuadrantProvider(kuadrantAllowedExtensionNamespaces, kuadrantFlagSet); err != nil {
+		setupLog.Error(err, "invalid --kuadrant-allowed-extension-namespaces value")
+		os.Exit(1)
+	}
 	if err := providers.SetupAll(mgr); err != nil {
 		setupLog.Error(err, "unable to set up gateway providers")
 		os.Exit(1)
@@ -431,6 +453,38 @@ func configureHTTPRouteProvider(allowedGatewayNamespaces string, flagSet bool) e
 	} else {
 		setupLog.Info("HTTPRoute provider gateway-namespace is unrestricted; set " +
 			"--httproute-allowed-gateway-namespaces to limit which namespaces an HTTPRoute may attach to")
+	}
+	return nil
+}
+
+// configureKuadrantProvider resolves the trusted extension-namespace allowlist
+// from the flag (with env fallback) and applies it to the kuadrant provider
+// before the providers are set up. flagSet reports whether the flag was explicitly
+// provided so an explicit value (even "") wins over the env var. Invalid entries
+// are dropped with a warning so a typo (or an uppercase value that can never match
+// a lowercase namespace) is visible at startup. It fails closed: a non-empty
+// configuration that yields no valid entries returns an error (the caller treats
+// it as fatal) instead of silently reverting to the unrestricted default. When the
+// allowlist is empty the control is off and extension-namespace is unrestricted; a
+// single startup advisory is logged so operators know the opt-in guardrail is
+// available.
+func configureKuadrantProvider(allowedExtensionNamespaces string, flagSet bool) error {
+	allowed, invalid, err := kuadrant.ResolveAllowedExtensionNamespaces(allowedExtensionNamespaces, flagSet)
+	if err != nil {
+		return err
+	}
+	for _, ns := range invalid {
+		setupLog.Info("Ignoring invalid entry in kuadrant extension-namespace allowlist; "+
+			"entries must be valid RFC 1123 namespace names", "entry", ns)
+	}
+	kuadrant.SetAllowedExtensionNamespaces(allowed)
+	if len(allowed) > 0 {
+		setupLog.Info("Kuadrant provider extension-namespace allowlist configured",
+			"allowedExtensionNamespaces", allowed)
+	} else {
+		setupLog.Info("Kuadrant provider extension-namespace is unrestricted; set " +
+			"--kuadrant-allowed-extension-namespaces to limit which namespaces MCPGatewayExtension " +
+			"routing config may be read from")
 	}
 	return nil
 }

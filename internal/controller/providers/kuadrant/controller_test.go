@@ -20,6 +20,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
+	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -42,6 +44,93 @@ import (
 )
 
 const testNamespace = "default"
+
+func TestParseAllowedExtensionNamespaces(t *testing.T) {
+	cases := []struct {
+		name     string
+		flag     string
+		flagSet  bool
+		env      string
+		expected []string
+	}{
+		{"flag unset, no env, is disabled", "", false, "", nil},
+		{"flag unset falls back to env", "", false, "x, y", []string{"x", "y"}},
+		{"flag set non-empty wins over env", "flagns", true, "envns", []string{"flagns"}},
+		{"flag explicitly set empty disables and overrides env", "", true, "envns", nil},
+		{"flag parsed, trimmed, blanks dropped", " a , b ,, c ", true, "", []string{"a", "b", "c"}},
+		{"flag unset, env parsed and trimmed", "", false, " a , b ,, c ", []string{"a", "b", "c"}},
+		{"only blanks yields nil", " , , ", true, "", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envAllowedExtensionNamespaces, tc.env)
+			got := ParseAllowedExtensionNamespaces(tc.flag, tc.flagSet)
+			if !slices.Equal(got, tc.expected) {
+				t.Errorf("ParseAllowedExtensionNamespaces(%q, %v) with env %q = %v, want %v",
+					tc.flag, tc.flagSet, tc.env, got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestPartitionExtensionNamespaces(t *testing.T) {
+	cases := []struct {
+		name        string
+		entries     []string
+		wantValid   []string
+		wantInvalid []string
+	}{
+		{"nil yields nothing", nil, nil, nil},
+		{"all valid", []string{"gateway-ns", "team-a"}, []string{"gateway-ns", "team-a"}, nil},
+		{"all invalid (fail-closed trigger)", []string{"Invalid_NS", "UPPER"}, nil, []string{"Invalid_NS", "UPPER"}},
+		{"mixed valid and invalid", []string{"good", "Bad_NS", "also-good"}, []string{"good", "also-good"}, []string{"Bad_NS"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			valid, invalid := PartitionExtensionNamespaces(tc.entries)
+			if !slices.Equal(valid, tc.wantValid) {
+				t.Errorf("PartitionExtensionNamespaces(%v) valid = %v, want %v", tc.entries, valid, tc.wantValid)
+			}
+			if !slices.Equal(invalid, tc.wantInvalid) {
+				t.Errorf("PartitionExtensionNamespaces(%v) invalid = %v, want %v", tc.entries, invalid, tc.wantInvalid)
+			}
+		})
+	}
+}
+
+func TestResolveAllowedExtensionNamespaces(t *testing.T) {
+	cases := []struct {
+		name        string
+		flag        string
+		flagSet     bool
+		env         string
+		wantAllowed []string
+		wantInvalid []string
+		wantErr     bool
+	}{
+		{"empty is disabled, no error", "", false, "", nil, nil, false},
+		{"all valid entries pass through", "a,b", true, "", []string{"a", "b"}, nil, false},
+		{"mixed keeps valid and reports invalid", "good,Bad_NS", true, "", []string{"good"}, []string{"Bad_NS"}, false},
+		{"non-empty but all invalid fails closed", "Bad_NS,ALSO_BAD", true, "", nil, []string{"Bad_NS", "ALSO_BAD"}, true},
+		{"env fallback all invalid fails closed", "", false, "Bad_NS", nil, []string{"Bad_NS"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envAllowedExtensionNamespaces, tc.env)
+			allowed, invalid, err := ResolveAllowedExtensionNamespaces(tc.flag, tc.flagSet)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("ResolveAllowedExtensionNamespaces(%q, %v) err = %v, wantErr %v",
+					tc.flag, tc.flagSet, err, tc.wantErr)
+			}
+			if !slices.Equal(allowed, tc.wantAllowed) {
+				t.Errorf("allowed = %v, want %v", allowed, tc.wantAllowed)
+			}
+			if !slices.Equal(invalid, tc.wantInvalid) {
+				t.Errorf("invalid = %v, want %v", invalid, tc.wantInvalid)
+			}
+		})
+	}
+}
 
 func hostnamePtr(h string) *gatewayv1.Hostname {
 	hostname := gatewayv1.Hostname(h)
@@ -1979,5 +2068,100 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		Expect(route.Spec.ParentRefs[0].SectionName).NotTo(BeNil())
 		Expect(string(*route.Spec.ParentRefs[0].SectionName)).To(Equal("custom-section"))
+	})
+
+	Describe("extension-namespace trust gate", func() {
+		reconcileWithAllowlist := func(allowlist ...string) (reconcile.Result, error) {
+			r := &Reconciler{
+				Client:                     k8sClient,
+				APIReader:                  k8sClient,
+				Scheme:                     k8sClient.Scheme(),
+				AllowedExtensionNamespaces: allowlist,
+			}
+			return r.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			})
+		}
+
+		expectRejected := func(substrings ...string) {
+			By("not creating an HTTPRoute for the rejected binding")
+			route := &gatewayv1.HTTPRoute{}
+			getErr := k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)
+			Expect(apierrors.IsNotFound(getErr)).To(BeTrue())
+
+			binding := &mcpv1alpha1.MCPGatewayBinding{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+			registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+			Expect(registered).NotTo(BeNil())
+			Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+			Expect(registered.Reason).To(Equal(mcpcontroller.ReasonGatewayNotRegistered))
+			for _, s := range substrings {
+				Expect(registered.Message).To(ContainSubstring(s))
+			}
+		}
+
+		It("allows any valid extension-namespace when the allowlist is unset", func() {
+			createMCPServer()
+			createGatewayExtension("myserver.mcp.local", true)
+			createConfigMap(validConfigData())
+			createBinding()
+
+			_, err := reconcileWithAllowlist()
+			Expect(err).NotTo(HaveOccurred())
+
+			route := &gatewayv1.HTTPRoute{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
+		})
+
+		It("allows an in-allowlist extension-namespace", func() {
+			createMCPServer()
+			createGatewayExtension("myserver.mcp.local", true)
+			createConfigMap(validConfigData())
+			createBinding()
+
+			_, err := reconcileWithAllowlist("other-trusted", "gateway-ns")
+			Expect(err).NotTo(HaveOccurred())
+
+			route := &gatewayv1.HTTPRoute{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
+		})
+
+		It("rejects an out-of-allowlist extension-namespace without reading the extension", func() {
+			createMCPServer()
+			createGatewayExtension("myserver.mcp.local", true)
+			createConfigMap(validConfigData())
+			createBinding()
+
+			_, err := reconcileWithAllowlist("trusted-ns")
+			Expect(err).NotTo(HaveOccurred())
+
+			expectRejected("gateway-ns", "allowlist")
+		})
+
+		It("rejects a syntactically invalid extension-namespace even when the allowlist is unset", func() {
+			createMCPServer()
+			data := validConfigData()
+			data[configKeyExtensionNamespace] = "Invalid_NS"
+			createConfigMap(data)
+			createBinding()
+
+			_, err := reconcileWithAllowlist()
+			Expect(err).NotTo(HaveOccurred())
+
+			expectRejected(configKeyExtensionNamespace, "Invalid_NS")
+		})
+
+		It("rejects a syntactically invalid extension-name even when the allowlist is unset", func() {
+			createMCPServer()
+			data := validConfigData()
+			data[configKeyExtensionName] = "Invalid_Name"
+			createConfigMap(data)
+			createBinding()
+
+			_, err := reconcileWithAllowlist()
+			Expect(err).NotTo(HaveOccurred())
+
+			expectRejected(configKeyExtensionName, "Invalid_Name")
+		})
 	})
 })
