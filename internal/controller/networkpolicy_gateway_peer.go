@@ -147,7 +147,9 @@ func (r *MCPServerReconciler) resolveGatewayNamespace(
 
 	cm := &corev1.ConfigMap{}
 	key := client.ObjectKey{Name: mcpServer.Spec.Gateway.ConfigRef, Namespace: mcpServer.Namespace}
-	if err := r.Get(ctx, key, cm); err != nil {
+	// APIReader bypasses the cache to avoid starting a full structured informer
+	// for ConfigMaps, which would negate the metadata-only watch.
+	if err := r.APIReader.Get(ctx, key, cm); err != nil {
 		if apierrors.IsNotFound(err) {
 			return "", nil
 		}

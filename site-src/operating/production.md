@@ -114,9 +114,17 @@ securityContext:
 
 Additional hardening for production:
 
-- **RBAC** - the operator installs with the ClusterRole it needs to manage MCP servers cluster-wide. If you run it scoped to specific namespaces, tighten the role bindings accordingly and review the granted verbs against your least-privilege baseline.
+- **RBAC** - the operator installs with the ClusterRole it needs to manage MCP servers cluster-wide. If you run it scoped to specific namespaces, tighten the role bindings accordingly and review the granted verbs against your least-privilege baseline. The ClusterRole also grants cluster-wide `get;list;watch` on `secrets` and `configmaps` - see [Cluster-wide Secret and ConfigMap access](#cluster-wide-secret-and-configmap-access).
 - **Namespace isolation** - apply a NetworkPolicy to the operator's own namespace so only your monitoring stack can reach the metrics port.
 - **Image provenance** - pin the operator image by digest and verify signatures where your supply-chain policy requires it.
+
+### Cluster-wide Secret and ConfigMap access
+
+The operator's ClusterRole grants cluster-wide `get;list;watch` on `secrets` and `configmaps`. This cannot be narrowed: MCPServers may live in any namespace, so the role cannot be namespace-scoped, and the operator watches Secret and ConfigMap metadata for drift, which requires `list;watch` (Kubernetes RBAC cannot scope `list`/`watch` by label or field). Treat the operator namespace as privileged.
+
+- **Blast radius** - a compromised operator token can `get`/`list` Secrets and ConfigMaps cluster-wide.
+- **Caching** - Secret and ConfigMap *contents* are never held in the operator cache: both are read uncached via the API reader, and only their metadata is watched to trigger reconciles on drift. Pods are the only object type given a dedicated content cache, and it is label-scoped to managed Pods and stripped to the fields diagnostics need (see `internal/controller/cache.go`).
+- **Compensating controls** - restrict and network-isolate the operator namespace, keep the shipped restricted `securityContext` (above), and audit access to the operator ServiceAccount.
 
 ## Availability & operations
 

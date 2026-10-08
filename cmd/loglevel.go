@@ -28,6 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	crzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -109,7 +110,10 @@ func detectOperatorNamespace() string {
 }
 
 type logLevelReconciler struct {
-	client.Client
+	// apiReader is an uncached reader used to read the ConfigMap content, so the
+	// controller watches the ConfigMap metadata-only and does not cache every
+	// ConfigMap's data.
+	apiReader   client.Reader
 	atomicLevel uzap.AtomicLevel
 	key         string
 }
@@ -118,7 +122,7 @@ func (r *logLevelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	log := ctrl.Log.WithName("loglevel")
 
 	cm := &corev1.ConfigMap{}
-	if err := r.Get(ctx, req.NamespacedName, cm); err != nil {
+	if err := r.apiReader.Get(ctx, req.NamespacedName, cm); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -163,14 +167,14 @@ func setupLogLevelFromConfigMap(mgr ctrl.Manager, atomicLevel uzap.AtomicLevel, 
 		"namespace", namespace, "name", name, "key", key)
 
 	reconciler := &logLevelReconciler{
-		Client:      mgr.GetClient(),
+		apiReader:   mgr.GetAPIReader(),
 		atomicLevel: atomicLevel,
 		key:         key,
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("logging-config").
-		For(&corev1.ConfigMap{}).
+		For(&corev1.ConfigMap{}, builder.OnlyMetadata).
 		WithEventFilter(predicate.NewPredicateFuncs(func(obj client.Object) bool {
 			return obj.GetNamespace() == namespace && obj.GetName() == name
 		})).

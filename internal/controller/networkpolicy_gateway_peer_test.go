@@ -201,7 +201,7 @@ func TestGatewayIngressPeers(t *testing.T) {
 				WithScheme(scheme.Scheme).
 				WithObjects(tc.objects...).
 				Build()
-			r := &MCPServerReconciler{Client: fakeClient, NetworkPolicyDefaultPosture: tc.posture}
+			r := &MCPServerReconciler{Client: fakeClient, APIReader: fakeClient, NetworkPolicyDefaultPosture: tc.posture}
 
 			got, err := r.gatewayIngressPeers(context.Background(), tc.server)
 			if err != nil {
@@ -237,8 +237,10 @@ func (c getErrorClient) Get(
 // gateway-allowing policy.
 func TestGatewayIngressPeersPropagatesGetError(t *testing.T) {
 	base := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
+	errClient := getErrorClient{Client: base, err: errors.New("boom")}
 	r := &MCPServerReconciler{
-		Client:                      getErrorClient{Client: base, err: errors.New("boom")},
+		Client:                      errClient,
+		APIReader:                   errClient,
 		NetworkPolicyDefaultPosture: PostureRestricted,
 	}
 

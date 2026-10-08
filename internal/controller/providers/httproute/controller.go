@@ -56,8 +56,9 @@ func init() {
 // Setup creates the httproute provider controller and registers it with the manager.
 func Setup(mgr ctrl.Manager) error {
 	return (&Reconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:    mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
+		Scheme:    mgr.GetScheme(),
 	}).SetupWithManager(mgr)
 }
 
@@ -79,7 +80,11 @@ const (
 // to the MCPServer's Service.
 type Reconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	// APIReader is an uncached reader used for ConfigMap content reads, so the
+	// controller does not start a full ConfigMap informer that would cache every
+	// ConfigMap's data. ConfigMaps are watched metadata-only.
+	APIReader client.Reader
+	Scheme    *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings,verbs=get;list;watch
@@ -120,7 +125,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
 			"spec.configRef is required for httproute provider")
 	}
-	if err := r.Get(ctx, client.ObjectKey{Name: binding.Spec.ConfigRef, Namespace: binding.Namespace}, configMap); err != nil {
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: binding.Spec.ConfigRef, Namespace: binding.Namespace}, configMap); err != nil {
 		if !apierrors.IsNotFound(err) {
 			return ctrl.Result{}, err
 		}
@@ -303,7 +308,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.MCPGatewayBinding{}, builder.WithPredicates(providers.MatchesProvider(ProviderName))).
 		Owns(&gatewayv1.HTTPRoute{}).
-		Watches(
+		WatchesMetadata(
 			&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.findBindingsForConfigMap),
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
@@ -351,7 +356,16 @@ func (r *Reconciler) findBindingsForGateway(ctx context.Context, obj client.Obje
 			continue
 		}
 		cm := &corev1.ConfigMap{}
-		if err := r.Get(ctx, client.ObjectKey{Name: b.Spec.ConfigRef, Namespace: b.Namespace}, cm); err != nil {
+		if err := r.APIReader.Get(ctx, client.ObjectKey{Name: b.Spec.ConfigRef, Namespace: b.Namespace}, cm); err != nil {
+			// The read is uncached, so a transient failure must not silently drop
+			// this binding - that would be a missed reconcile until an unrelated
+			// event re-triggers it. Enqueue it anyway and let the idempotent
+			// Reconcile surface and requeue the error.
+			log.FromContext(ctx).V(1).Info("enqueuing binding despite uncached ConfigMap read error",
+				"binding", client.ObjectKeyFromObject(b), "configRef", b.Spec.ConfigRef, "error", err)
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(b),
+			})
 			continue
 		}
 		if cm.Data[configKeyGatewayName] == obj.GetName() &&

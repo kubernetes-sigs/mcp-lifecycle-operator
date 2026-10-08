@@ -216,7 +216,7 @@ func reconcileLogLevel(t *testing.T, initialLevel zapcore.Level, configLevel str
 	}
 
 	reconciler := &logLevelReconciler{
-		Client:      fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build(),
+		apiReader:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build(),
 		atomicLevel: atomicLevel,
 		key:         "log-level",
 	}
@@ -282,7 +282,7 @@ func TestLogLevelReconciler_Idempotent(t *testing.T) {
 	}
 
 	reconciler := &logLevelReconciler{
-		Client:      fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build(),
+		apiReader:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build(),
 		atomicLevel: atomicLevel,
 		key:         "log-level",
 	}
@@ -307,7 +307,7 @@ func TestLogLevelReconciler_NotFound(t *testing.T) {
 	}
 
 	reconciler := &logLevelReconciler{
-		Client:      fake.NewClientBuilder().WithScheme(scheme).Build(),
+		apiReader:   fake.NewClientBuilder().WithScheme(scheme).Build(),
 		atomicLevel: uzap.NewAtomicLevelAt(uzap.InfoLevel),
 		key:         "log-level",
 	}
@@ -331,7 +331,7 @@ func TestLogLevelReconciler_GetError(t *testing.T) {
 
 	getErr := errors.New("simulated get error")
 	reconciler := &logLevelReconciler{
-		Client: fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
+		apiReader: fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
 			Get: func(context.Context, client.WithWatch, client.ObjectKey, client.Object, ...client.GetOption) error {
 				return getErr
 			},
@@ -367,7 +367,7 @@ func TestLogLevelReconciler_MissingKey(t *testing.T) {
 	}
 
 	reconciler := &logLevelReconciler{
-		Client:      fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build(),
+		apiReader:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build(),
 		atomicLevel: atomicLevel,
 		key:         "log-level",
 	}

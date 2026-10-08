@@ -143,8 +143,9 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 	newReconciler := func() *Reconciler {
 		return &Reconciler{
-			Client: k8sClient,
-			Scheme: k8sClient.Scheme(),
+			Client:    k8sClient,
+			APIReader: k8sClient,
+			Scheme:    k8sClient.Scheme(),
 		}
 	}
 
@@ -1313,6 +1314,23 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			Expect(requests[0].Name).To(Equal(bindingName))
 		})
 
+		It("should map from PartialObjectMetadata (what the metadata-only watch delivers)", func() {
+			createBinding()
+
+			r := newReconciler()
+			// WatchesMetadata delivers a *metav1.PartialObjectMetadata, not a full
+			// ConfigMap. The handler must map using only name/namespace.
+			partial := &metav1.PartialObjectMetadata{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      configMapName,
+					Namespace: testNamespace,
+				},
+			}
+			requests := r.findBindingsForConfigMap(ctx, partial)
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0].Name).To(Equal(bindingName))
+		})
+
 		It("should not return bindings for unrelated ConfigMaps", func() {
 			createBinding()
 
@@ -1664,7 +1682,11 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			Expect(requests).To(BeEmpty())
 		})
 
-		It("should not return requests when ConfigMap is missing", func() {
+		It("should enqueue binding when ConfigMap read fails (avoid dropped reconcile)", func() {
+			// The ConfigMap is intentionally not created, so the uncached read
+			// returns NotFound. The binding must still be enqueued so the
+			// idempotent Reconcile runs rather than the Gateway event being
+			// silently dropped for this binding.
 			createBinding()
 
 			r := newReconciler()
@@ -1675,7 +1697,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 				},
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
-			Expect(requests).To(BeEmpty())
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0].Name).To(Equal(bindingName))
 		})
 
 		It("should skip bindings with empty configRef", func() {
@@ -1772,6 +1795,31 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			r := newReconciler()
 			requests := r.findBindingsForGatewayExtension(ctx, ext)
 			Expect(requests).To(BeEmpty())
+		})
+
+		It("should enqueue binding when ConfigMap read fails (avoid dropped reconcile)", func() {
+			// The ConfigMap is intentionally not created, so the uncached read
+			// returns NotFound. The binding must still be enqueued so the
+			// idempotent Reconcile runs rather than the Extension event being
+			// silently dropped for this binding.
+			createBinding()
+
+			ext := &kuadrantapi.MCPGatewayExtension{
+				ObjectMeta: metav1.ObjectMeta{Name: gatewayExtensionName, Namespace: "gateway-ns"},
+				Spec: kuadrantapi.MCPGatewayExtensionSpec{
+					PublicHost: "public.example.com",
+					TargetRef: kuadrantapi.TargetReference{
+						Kind:        "Gateway",
+						Name:        "my-gateway",
+						SectionName: "mcp",
+					},
+				},
+			}
+
+			r := newReconciler()
+			requests := r.findBindingsForGatewayExtension(ctx, ext)
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0].Name).To(Equal(bindingName))
 		})
 	})
 

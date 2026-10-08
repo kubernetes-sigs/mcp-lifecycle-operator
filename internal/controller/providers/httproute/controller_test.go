@@ -106,8 +106,9 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 	newReconciler := func() *Reconciler {
 		return &Reconciler{
-			Client: k8sClient,
-			Scheme: k8sClient.Scheme(),
+			Client:    k8sClient,
+			APIReader: k8sClient,
+			Scheme:    k8sClient.Scheme(),
 		}
 	}
 
@@ -726,6 +727,23 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			Expect(requests[0].Name).To(Equal(bindingName))
 		})
 
+		It("should map from PartialObjectMetadata (what the metadata-only watch delivers)", func() {
+			createBinding(ProviderName)
+
+			r := newReconciler()
+			// WatchesMetadata delivers a *metav1.PartialObjectMetadata, not a full
+			// ConfigMap. The handler must map using only name/namespace.
+			partial := &metav1.PartialObjectMetadata{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      configMapName,
+					Namespace: testNamespace,
+				},
+			}
+			requests := r.findBindingsForConfigMap(ctx, partial)
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0].Name).To(Equal(bindingName))
+		})
+
 		It("should not return bindings for unrelated ConfigMaps", func() {
 			createBinding(ProviderName)
 
@@ -829,7 +847,11 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			Expect(requests).To(BeEmpty())
 		})
 
-		It("should skip binding when referenced ConfigMap does not exist", func() {
+		It("should enqueue binding when referenced ConfigMap read fails (avoid dropped reconcile)", func() {
+			// The ConfigMap is intentionally not created, so the uncached read
+			// returns NotFound. The binding must still be enqueued so the
+			// idempotent Reconcile runs rather than the Gateway event being
+			// silently dropped for this binding.
 			createBinding(ProviderName)
 
 			r := newReconciler()
@@ -840,7 +862,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 				},
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
-			Expect(requests).To(BeEmpty())
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0].Name).To(Equal(bindingName))
 		})
 	})
 
