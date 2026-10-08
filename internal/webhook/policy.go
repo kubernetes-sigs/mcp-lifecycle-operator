@@ -24,33 +24,67 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
+
+// privilegedCapabilities enumerates Linux capabilities that grant broad host or
+// kernel access and must never be added to operand containers managed by the
+// operator's ServiceAccount. The set covers capabilities commonly recognized as
+// enabling container escape or host compromise (for example loading kernel
+// modules, raw device I/O, ptracing other processes, or bypassing file
+// permission checks); it is intentionally broader than the headline "privileged"
+// flag so the guardrail cannot be sidestepped by requesting an equivalent
+// capability directly. Capability names follow the Kubernetes convention of
+// uppercase identifiers without the "CAP_" prefix.
+var privilegedCapabilities = map[corev1.Capability]struct{}{
+	"ALL":             {},
+	"SYS_ADMIN":       {},
+	"SYS_MODULE":      {},
+	"SYS_RAWIO":       {},
+	"SYS_PTRACE":      {},
+	"SYS_BOOT":        {},
+	"SYS_TIME":        {},
+	"NET_ADMIN":       {},
+	"NET_RAW":         {},
+	"DAC_READ_SEARCH": {},
+	"DAC_OVERRIDE":    {},
+	"SETUID":          {},
+	"SETGID":          {},
+	"SETFCAP":         {},
+	"LINUX_IMMUTABLE": {},
+	"BPF":             {},
+	"PERFMON":         {},
+	"SYSLOG":          {},
+}
 
 // AdmissionPolicy holds the operator-level policy configuration for webhook
 // admission decisions. It is parsed once at startup and injected into the
 // webhook handler.
 type AdmissionPolicy struct {
-	ImageAllowlist     []string
-	RequireImageDigest bool
-	MaxStorageMounts   *int
-	RequiredLabels     []string
+	ImageAllowlist                    []string
+	RequireImageDigest                bool
+	MaxStorageMounts                  *int
+	RequiredLabels                    []string
+	DisallowPrivilegedSecurityContext bool
 }
 
 // PolicyFlags holds the CLI flag values for admission policy. A value of -1
 // for MaxStorageMounts indicates the flag was not set.
 type PolicyFlags struct {
-	ImageAllowlist     string
-	RequireImageDigest bool
-	MaxStorageMounts   int
-	RequiredLabels     string
+	ImageAllowlist                    string
+	RequireImageDigest                bool
+	MaxStorageMounts                  int
+	RequiredLabels                    string
+	DisallowPrivilegedSecurityContext bool
 }
 
 // ParseAdmissionPolicy reads admission policy from CLI flags and environment
 // variable fallbacks. Flag values take precedence over env vars.
 func ParseAdmissionPolicy(log logr.Logger, flags PolicyFlags) *AdmissionPolicy {
 	policy := &AdmissionPolicy{
-		RequireImageDigest: flags.RequireImageDigest,
+		RequireImageDigest:                flags.RequireImageDigest,
+		DisallowPrivilegedSecurityContext: flags.DisallowPrivilegedSecurityContext,
 	}
 
 	allowlist := flags.ImageAllowlist
@@ -95,13 +129,20 @@ func ParseAdmissionPolicy(log logr.Logger, flags PolicyFlags) *AdmissionPolicy {
 		}
 	}
 
+	if !policy.DisallowPrivilegedSecurityContext {
+		if envVal := os.Getenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT"); envVal != "" {
+			policy.DisallowPrivilegedSecurityContext = strings.EqualFold(envVal, "true")
+		}
+	}
+
 	return policy
 }
 
 // HasActiveRules returns true if the policy has any active enforcement rules configured.
 func (p *AdmissionPolicy) HasActiveRules() bool {
 	return len(p.ImageAllowlist) > 0 || p.RequireImageDigest ||
-		p.MaxStorageMounts != nil || len(p.RequiredLabels) > 0
+		p.MaxStorageMounts != nil || len(p.RequiredLabels) > 0 ||
+		p.DisallowPrivilegedSecurityContext
 }
 
 // ValidateImageAllowlist checks that imageRef starts with one of the allowed
@@ -173,6 +214,77 @@ func (p *AdmissionPolicy) ValidateRuntimePolicy(storageMountCount int, labels ma
 				field.NewPath("metadata", "labels").Key(requiredLabel),
 				fmt.Sprintf("label %q is required by admission policy", requiredLabel),
 			))
+		}
+	}
+
+	return allErrs
+}
+
+// ValidateSecurityContext rejects pod- and container-level security contexts
+// that request privileged or root-equivalent settings. The operator applies
+// these contexts to operand pods it creates with its own ServiceAccount, so a
+// tenant-supplied dangerous securityContext would be a privilege-escalation
+// vector. Returns no errors when the guardrail is disabled or the contexts are
+// nil/benign. The field paths point at the MCPServer spec locations the API
+// server converts other served versions into.
+func (p *AdmissionPolicy) ValidateSecurityContext(podSC *corev1.PodSecurityContext, containerSC *corev1.SecurityContext) field.ErrorList {
+	var allErrs field.ErrorList
+	if !p.DisallowPrivilegedSecurityContext {
+		return allErrs
+	}
+
+	podPath := field.NewPath("spec", "runtime", "security", "podSecurityContext")
+	containerPath := field.NewPath("spec", "runtime", "security", "securityContext")
+
+	if podSC != nil {
+		if podSC.RunAsNonRoot != nil && !*podSC.RunAsNonRoot {
+			allErrs = append(allErrs, field.Forbidden(
+				podPath.Child("runAsNonRoot"),
+				"runAsNonRoot must not be set to false",
+			))
+		}
+		if podSC.RunAsUser != nil && *podSC.RunAsUser == 0 {
+			allErrs = append(allErrs, field.Forbidden(
+				podPath.Child("runAsUser"),
+				"running as UID 0 (root) is not allowed",
+			))
+		}
+	}
+
+	if containerSC != nil {
+		if containerSC.Privileged != nil && *containerSC.Privileged {
+			allErrs = append(allErrs, field.Forbidden(
+				containerPath.Child("privileged"),
+				"privileged containers are not allowed",
+			))
+		}
+		if containerSC.AllowPrivilegeEscalation != nil && *containerSC.AllowPrivilegeEscalation {
+			allErrs = append(allErrs, field.Forbidden(
+				containerPath.Child("allowPrivilegeEscalation"),
+				"allowPrivilegeEscalation must not be set to true",
+			))
+		}
+		if containerSC.RunAsNonRoot != nil && !*containerSC.RunAsNonRoot {
+			allErrs = append(allErrs, field.Forbidden(
+				containerPath.Child("runAsNonRoot"),
+				"runAsNonRoot must not be set to false",
+			))
+		}
+		if containerSC.RunAsUser != nil && *containerSC.RunAsUser == 0 {
+			allErrs = append(allErrs, field.Forbidden(
+				containerPath.Child("runAsUser"),
+				"running as UID 0 (root) is not allowed",
+			))
+		}
+		if containerSC.Capabilities != nil {
+			for _, capAdd := range containerSC.Capabilities.Add {
+				if _, forbidden := privilegedCapabilities[capAdd]; forbidden {
+					allErrs = append(allErrs, field.Forbidden(
+						containerPath.Child("capabilities", "add"),
+						fmt.Sprintf("adding capability %q is not allowed", capAdd),
+					))
+				}
+			}
 		}
 	}
 

@@ -85,6 +85,7 @@ func main() {
 	var requireImageDigest bool
 	var maxStorageMounts int
 	var requiredLabels string
+	var disallowPrivilegedSecurityContext bool
 	var networkPolicyDefaultPosture string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -125,6 +126,10 @@ func main() {
 	flag.StringVar(&requiredLabels, "required-labels", "",
 		"Comma-separated list of labels that must be present on MCPServer resources. "+
 			"Falls back to REQUIRED_LABELS env var if not set. Empty means no requirement.")
+	flag.BoolVar(&disallowPrivilegedSecurityContext, "disallow-privileged-security-context", false,
+		"If set, the validation webhook rejects MCPServer pod/container security contexts that request "+
+			"privileged, allowPrivilegeEscalation, runAsNonRoot=false, runAsUser=0, or privileged capabilities. "+
+			"Falls back to DISALLOW_PRIVILEGED_SECURITY_CONTEXT env var if not set.")
 	flag.StringVar(&networkPolicyDefaultPosture, "network-policy-default-posture", "open",
 		"Default NetworkPolicy posture applied to a managed workload when a network dimension is left "+
 			"unconfigured. \"open\" keeps the historical default; \"restricted\" denies unconfigured ingress by "+
@@ -289,7 +294,7 @@ func main() {
 		os.Exit(1)
 	}
 	if enableWebhook {
-		admissionPolicy := parseAdmissionFlags(imageAllowlist, requireImageDigest, maxStorageMounts, requiredLabels)
+		admissionPolicy := parseAdmissionFlags(imageAllowlist, requireImageDigest, maxStorageMounts, requiredLabels, disallowPrivilegedSecurityContext)
 		if err := mcpv1alpha1.SetupWebhookWithManager(mgr, admissionPolicy); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "MCPServer")
 			os.Exit(1)
@@ -327,19 +332,21 @@ func main() {
 	}
 }
 
-func parseAdmissionFlags(imageAllowlist string, requireImageDigest bool, maxStorageMounts int, requiredLabels string) *webhookpolicy.AdmissionPolicy {
+func parseAdmissionFlags(imageAllowlist string, requireImageDigest bool, maxStorageMounts int, requiredLabels string, disallowPrivilegedSecurityContext bool) *webhookpolicy.AdmissionPolicy {
 	policy := webhookpolicy.ParseAdmissionPolicy(setupLog, webhookpolicy.PolicyFlags{
-		ImageAllowlist:     imageAllowlist,
-		RequireImageDigest: requireImageDigest,
-		MaxStorageMounts:   maxStorageMounts,
-		RequiredLabels:     requiredLabels,
+		ImageAllowlist:                    imageAllowlist,
+		RequireImageDigest:                requireImageDigest,
+		MaxStorageMounts:                  maxStorageMounts,
+		RequiredLabels:                    requiredLabels,
+		DisallowPrivilegedSecurityContext: disallowPrivilegedSecurityContext,
 	})
 	if policy.HasActiveRules() {
 		setupLog.Info("Admission webhook policy configured",
 			"imageAllowlist", policy.ImageAllowlist,
 			"requireImageDigest", policy.RequireImageDigest,
 			"maxStorageMounts", policy.MaxStorageMounts,
-			"requiredLabels", policy.RequiredLabels)
+			"requiredLabels", policy.RequiredLabels,
+			"disallowPrivilegedSecurityContext", policy.DisallowPrivilegedSecurityContext)
 	}
 	return policy
 }

@@ -97,6 +97,13 @@ func (v *MCPServerCustomValidator) validate(ctx context.Context, mcpServer *MCPS
 		allErrs = append(allErrs, runtimeErrs...)
 	}
 
+	if secErrs := v.Policy.ValidateSecurityContext(
+		mcpServer.Spec.Runtime.Security.PodSecurityContext,
+		mcpServer.Spec.Runtime.Security.SecurityContext,
+	); len(secErrs) > 0 {
+		allErrs = append(allErrs, secErrs...)
+	}
+
 	allowed := len(allErrs) == 0
 	reason := ""
 	if !allowed {

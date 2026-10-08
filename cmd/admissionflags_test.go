@@ -25,9 +25,10 @@ func TestParseAdmissionFlags(t *testing.T) {
 	t.Setenv("REQUIRE_IMAGE_DIGEST", "")
 	t.Setenv("MAX_STORAGE_MOUNTS", "")
 	t.Setenv("REQUIRED_LABELS", "")
+	t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", "")
 
 	t.Run("no flags produces empty policy", func(t *testing.T) {
-		p := parseAdmissionFlags("", false, -1, "")
+		p := parseAdmissionFlags("", false, -1, "", false)
 		if len(p.ImageAllowlist) != 0 {
 			t.Errorf("expected empty allowlist, got %v", p.ImageAllowlist)
 		}
@@ -40,10 +41,13 @@ func TestParseAdmissionFlags(t *testing.T) {
 		if len(p.RequiredLabels) != 0 {
 			t.Errorf("expected empty required labels, got %v", p.RequiredLabels)
 		}
+		if p.DisallowPrivilegedSecurityContext {
+			t.Error("expected DisallowPrivilegedSecurityContext=false")
+		}
 	})
 
 	t.Run("all flags set", func(t *testing.T) {
-		p := parseAdmissionFlags("ghcr.io/trusted/", true, 5, "team,env")
+		p := parseAdmissionFlags("ghcr.io/trusted/", true, 5, "team,env", true)
 		if len(p.ImageAllowlist) != 1 || p.ImageAllowlist[0] != "ghcr.io/trusted/" {
 			t.Errorf("unexpected allowlist: %v", p.ImageAllowlist)
 		}
@@ -56,6 +60,9 @@ func TestParseAdmissionFlags(t *testing.T) {
 		if len(p.RequiredLabels) != 2 {
 			t.Errorf("expected 2 required labels, got %v", p.RequiredLabels)
 		}
+		if !p.DisallowPrivilegedSecurityContext {
+			t.Error("expected DisallowPrivilegedSecurityContext=true")
+		}
 	})
 
 	t.Run("env var fallback", func(t *testing.T) {
@@ -63,7 +70,8 @@ func TestParseAdmissionFlags(t *testing.T) {
 		t.Setenv("REQUIRE_IMAGE_DIGEST", "true")
 		t.Setenv("MAX_STORAGE_MOUNTS", "3")
 		t.Setenv("REQUIRED_LABELS", "app")
-		p := parseAdmissionFlags("", false, -1, "")
+		t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", "true")
+		p := parseAdmissionFlags("", false, -1, "", false)
 		if len(p.ImageAllowlist) != 1 || p.ImageAllowlist[0] != "quay.io/" {
 			t.Errorf("expected env fallback allowlist, got %v", p.ImageAllowlist)
 		}
@@ -75,6 +83,9 @@ func TestParseAdmissionFlags(t *testing.T) {
 		}
 		if len(p.RequiredLabels) != 1 || p.RequiredLabels[0] != "app" {
 			t.Errorf("expected required labels from env, got %v", p.RequiredLabels)
+		}
+		if !p.DisallowPrivilegedSecurityContext {
+			t.Error("expected DisallowPrivilegedSecurityContext=true from env")
 		}
 	})
 }

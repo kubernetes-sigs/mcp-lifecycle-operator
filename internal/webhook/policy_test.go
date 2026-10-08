@@ -22,6 +22,8 @@ import (
 	"github.com/go-logr/logr/testr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestParseAdmissionPolicy(t *testing.T) {
@@ -134,6 +136,22 @@ func TestParseAdmissionPolicy(t *testing.T) {
 		require.Len(t, p.RequiredLabels, 1)
 		assert.Equal(t, "flag-label", p.RequiredLabels[0])
 	})
+
+	t.Run("disallow privileged security context from flag", func(t *testing.T) {
+		p := ParseAdmissionPolicy(log, PolicyFlags{DisallowPrivilegedSecurityContext: true, MaxStorageMounts: -1})
+		assert.True(t, p.DisallowPrivilegedSecurityContext)
+	})
+
+	t.Run("disallow privileged security context from env", func(t *testing.T) {
+		t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", "true")
+		p := ParseAdmissionPolicy(log, PolicyFlags{MaxStorageMounts: -1})
+		assert.True(t, p.DisallowPrivilegedSecurityContext)
+	})
+
+	t.Run("disallow privileged security context defaults off", func(t *testing.T) {
+		p := ParseAdmissionPolicy(log, PolicyFlags{MaxStorageMounts: -1})
+		assert.False(t, p.DisallowPrivilegedSecurityContext)
+	})
 }
 
 func TestHasActiveRules(t *testing.T) {
@@ -160,6 +178,11 @@ func TestHasActiveRules(t *testing.T) {
 
 	t.Run("with required labels", func(t *testing.T) {
 		p := &AdmissionPolicy{RequiredLabels: []string{"team"}}
+		assert.True(t, p.HasActiveRules())
+	})
+
+	t.Run("with disallow privileged security context", func(t *testing.T) {
+		p := &AdmissionPolicy{DisallowPrivilegedSecurityContext: true}
 		assert.True(t, p.HasActiveRules())
 	})
 }
@@ -313,4 +336,155 @@ func TestValidateRuntimePolicy(t *testing.T) {
 		errs := p.ValidateRuntimePolicy(5, map[string]string{})
 		assert.Len(t, errs, 3) // 1 storage + 2 labels
 	})
+}
+
+func TestValidateSecurityContext(t *testing.T) {
+	t.Run("guardrail disabled allows everything", func(t *testing.T) {
+		p := &AdmissionPolicy{DisallowPrivilegedSecurityContext: false}
+		errs := p.ValidateSecurityContext(nil, &corev1.SecurityContext{
+			Privileged: ptr.To(true), //nolint:modernize // modernize suggests new(expr); ptr.To keeps the boolean literal explicit
+		})
+		assert.Empty(t, errs)
+	})
+
+	tests := []struct {
+		name        string
+		podSC       *corev1.PodSecurityContext
+		containerSC *corev1.SecurityContext
+		wantErrs    int
+	}{
+		{
+			name:        "nil contexts allowed",
+			podSC:       nil,
+			containerSC: nil,
+			wantErrs:    0,
+		},
+		{
+			name: "benign restricted context allowed",
+			podSC: &corev1.PodSecurityContext{
+				RunAsNonRoot: ptr.To(true), //nolint:modernize // modernize suggests new(expr); ptr.To keeps the boolean literal explicit
+				RunAsUser:    ptr.To[int64](1000),
+			},
+			containerSC: &corev1.SecurityContext{
+				Privileged:               ptr.To(false), //nolint:modernize // modernize suggests new(expr); ptr.To keeps the boolean literal explicit
+				AllowPrivilegeEscalation: ptr.To(false), //nolint:modernize // modernize suggests new(expr); ptr.To keeps the boolean literal explicit
+				RunAsNonRoot:             ptr.To(true),  //nolint:modernize // modernize suggests new(expr); ptr.To keeps the boolean literal explicit
+				RunAsUser:                ptr.To[int64](1000),
+				Capabilities: &corev1.Capabilities{
+					Drop: []corev1.Capability{"ALL"},
+					Add:  []corev1.Capability{"NET_BIND_SERVICE"},
+				},
+			},
+			wantErrs: 0,
+		},
+		{
+			name: "privileged rejected",
+			containerSC: &corev1.SecurityContext{
+				Privileged: ptr.To(true), //nolint:modernize // modernize suggests new(expr); ptr.To keeps the boolean literal explicit
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "allowPrivilegeEscalation true rejected",
+			containerSC: &corev1.SecurityContext{
+				AllowPrivilegeEscalation: ptr.To(true), //nolint:modernize // modernize suggests new(expr); ptr.To keeps the boolean literal explicit
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "container runAsUser 0 rejected",
+			containerSC: &corev1.SecurityContext{
+				RunAsUser: ptr.To[int64](0),
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "pod runAsUser 0 rejected",
+			podSC: &corev1.PodSecurityContext{
+				RunAsUser: ptr.To[int64](0),
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "container runAsNonRoot false rejected",
+			containerSC: &corev1.SecurityContext{
+				RunAsNonRoot: ptr.To(false), //nolint:modernize // modernize suggests new(expr); ptr.To keeps the boolean literal explicit
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "pod runAsNonRoot false rejected",
+			podSC: &corev1.PodSecurityContext{
+				RunAsNonRoot: ptr.To(false), //nolint:modernize // modernize suggests new(expr); ptr.To keeps the boolean literal explicit
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "capability add SYS_ADMIN rejected",
+			containerSC: &corev1.SecurityContext{
+				Capabilities: &corev1.Capabilities{
+					Add: []corev1.Capability{"SYS_ADMIN"},
+				},
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "capability add ALL rejected",
+			containerSC: &corev1.SecurityContext{
+				Capabilities: &corev1.Capabilities{
+					Add: []corev1.Capability{"ALL"},
+				},
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "capability add SYS_MODULE rejected",
+			containerSC: &corev1.SecurityContext{
+				Capabilities: &corev1.Capabilities{
+					Add: []corev1.Capability{"SYS_MODULE"},
+				},
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "capability add DAC_READ_SEARCH rejected",
+			containerSC: &corev1.SecurityContext{
+				Capabilities: &corev1.Capabilities{
+					Add: []corev1.Capability{"DAC_READ_SEARCH"},
+				},
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "capability add SETUID rejected",
+			containerSC: &corev1.SecurityContext{
+				Capabilities: &corev1.Capabilities{
+					Add: []corev1.Capability{"SETUID"},
+				},
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "multiple violations each reported",
+			podSC: &corev1.PodSecurityContext{
+				RunAsUser: ptr.To[int64](0),
+			},
+			containerSC: &corev1.SecurityContext{
+				Privileged:               ptr.To(true), //nolint:modernize // modernize suggests new(expr); ptr.To keeps the boolean literal explicit
+				AllowPrivilegeEscalation: ptr.To(true), //nolint:modernize // modernize suggests new(expr); ptr.To keeps the boolean literal explicit
+				Capabilities: &corev1.Capabilities{
+					Add: []corev1.Capability{"NET_ADMIN", "SYS_PTRACE"},
+				},
+			},
+			wantErrs: 5, // pod runAsUser + privileged + apE + 2 caps
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &AdmissionPolicy{DisallowPrivilegedSecurityContext: true}
+			errs := p.ValidateSecurityContext(tc.podSC, tc.containerSC)
+			assert.Len(t, errs, tc.wantErrs)
+		})
+	}
 }
