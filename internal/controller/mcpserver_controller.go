@@ -230,6 +230,20 @@ type MCPServerReconciler struct {
 	// stays deny-by-default) rather than admitting the whole namespace.
 	// User-supplied Spec.Network values are unaffected.
 	OperatorPodLabels map[string]string
+
+	// WebhookEnabled reflects whether the validating admission webhook was
+	// activated at startup (--enable-webhook). When false, the image allowlist,
+	// digest pinning, storage-mount and securityContext admission policies are
+	// NOT enforced, so the controller surfaces a PolicyEnforced=False condition
+	// to make the unenforced state visible per MCPServer.
+	WebhookEnabled bool
+
+	// AdmissionPolicyActive reflects whether the admission webhook has at least
+	// one enforcement rule configured (AdmissionPolicy.HasActiveRules). A webhook
+	// that is enabled but has no rules admits every spec unvalidated, so this is
+	// tracked separately from WebhookEnabled: PolicyEnforced is only True when the
+	// webhook is enabled AND rules are actually active.
+	AdmissionPolicyActive bool
 }
 
 type handshakeRetryState struct {
@@ -518,6 +532,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// reconciled above) as an informational, administrator-visible condition,
 	// appended to the same apply so it does not prune the other conditions.
 	status.WithConditions(conditionToAC(networkPolicyCondition))
+
+	// Surface whether the validating admission webhook is enforcing the configured
+	// admission policies. Informational and administrator-visible; never gates
+	// readiness. Appended to the same apply so it survives server-side apply.
+	status.WithConditions(conditionToAC(
+		r.policyEnforcedCondition(mcpServer.Generation, mcpServer.Status.Conditions)))
 
 	status = withAddressWhenVerified(status, verifiedCondition, mcpURL)
 
@@ -938,7 +958,9 @@ func (r *MCPServerReconciler) applyStatus(
 // appendPersistentConditions re-adds the status conditions that must survive
 // every apply. applyStatus uses Server-Side Apply under a single field manager,
 // so any condition that manager previously owned but omits from a later apply is
-// pruned. GatewayRegistered is always carried forward from existing status.
+// pruned. GatewayRegistered is always carried forward from existing status, and
+// PolicyEnforced (webhook enforcement visibility) is recomputed from the startup
+// flag and re-added on every path.
 //
 // The NetworkPolicy posture is handled the same way by default: it is computed
 // fresh only after the NetworkPolicy has actually been reconciled, so on a
@@ -953,6 +975,8 @@ func (r *MCPServerReconciler) appendPersistentConditions(
 	conditions []*v1ac.ConditionApplyConfiguration,
 	freshPosture *metav1.Condition,
 ) []*v1ac.ConditionApplyConfiguration {
+	conditions = append(conditions, conditionToAC(
+		r.policyEnforcedCondition(mcpServer.Generation, mcpServer.Status.Conditions)))
 	if gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered); gwCond != nil {
 		conditions = append(conditions, conditionToAC(*gwCond))
 	}

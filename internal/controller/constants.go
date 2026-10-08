@@ -76,6 +76,30 @@ const (
 	ReasonNetworkPolicyUnrestricted = "Unrestricted"
 )
 
+// Admission policy enforcement condition type and reasons. This is an
+// informational, administrator-visible signal reporting whether the validating
+// admission webhook - which enforces the image allowlist, digest pinning,
+// storage-mount and securityContext policies - is active. The webhook is opt-in
+// (--enable-webhook defaults to false), so without this signal a cluster
+// operator has no way to tell that MCPServer specs are admitted unvalidated.
+// It never gates readiness (Available is computed independently).
+const (
+	ConditionTypePolicyEnforced = "PolicyEnforced"
+
+	// ReasonWebhookEnabled (status True): the validating admission webhook is
+	// active, so the configured admission policies are enforced on every apply.
+	ReasonWebhookEnabled = "WebhookEnabled"
+	// ReasonWebhookDisabled (status False): the validating admission webhook is
+	// disabled, so admission policies are NOT enforced and MCPServer specs are
+	// admitted without validation.
+	ReasonWebhookDisabled = "WebhookDisabled"
+	// ReasonNoPolicyConfigured (status False): the validating admission webhook is
+	// enabled but no admission rules are configured, so specs are still admitted
+	// without validation. The webhook being present does not by itself enforce
+	// anything.
+	ReasonNoPolicyConfigured = "NoPolicyConfigured"
+)
+
 // MetricReasonReconcileError is the `reason` label on deployment/service failure counters
 // when the corresponding reconcile step returns an error.
 const MetricReasonReconcileError = "ReconcileError"

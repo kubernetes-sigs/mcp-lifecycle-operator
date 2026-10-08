@@ -259,6 +259,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Parse the admission policy up front (when the webhook is enabled) so the
+	// reconciler can report whether admission policies are actually enforced.
+	var admissionPolicy *webhookpolicy.AdmissionPolicy
+	if enableWebhook {
+		admissionPolicy = parseAdmissionFlags(imageAllowlist, requireImageDigest, maxStorageMounts, requiredLabels, disallowPrivilegedSecurityContext)
+	}
+
 	reconciler := &controller.MCPServerReconciler{
 		Client:                      mgr.GetClient(),
 		Scheme:                      mgr.GetScheme(),
@@ -278,6 +285,8 @@ func main() {
 			"control-plane":          "controller-manager",
 			"app.kubernetes.io/name": "mcp-lifecycle-operator",
 		},
+		WebhookEnabled:        enableWebhook,
+		AdmissionPolicyActive: enableWebhook && admissionPolicy.HasActiveRules(),
 	}
 	if defaultPosture == controller.PostureRestricted && reconciler.OperatorNamespace == "" {
 		setupLog.Info("Restricted NetworkPolicy posture is set but the operator namespace could not be " +
@@ -298,11 +307,27 @@ func main() {
 		os.Exit(1)
 	}
 	if enableWebhook {
-		admissionPolicy := parseAdmissionFlags(imageAllowlist, requireImageDigest, maxStorageMounts, requiredLabels, disallowPrivilegedSecurityContext)
 		if err := mcpv1alpha1.SetupWebhookWithManager(mgr, admissionPolicy); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "MCPServer")
 			os.Exit(1)
 		}
+		if !admissionPolicy.HasActiveRules() {
+			// The webhook is registered but no admission rules are configured, so it
+			// admits every spec unvalidated. Warn once at startup so this is not a
+			// silent gap; also surfaced per MCPServer via PolicyEnforced=False.
+			setupLog.Info("WARNING: validating admission webhook is enabled but no admission rules are " +
+				"configured; MCPServer specs are admitted without validation. Configure an image allowlist, " +
+				"digest pinning, storage-mount or securityContext policy to enforce admission.")
+		}
+	} else {
+		// The validating admission webhook is opt-in. With it disabled the image
+		// allowlist, digest pinning, storage-mount and securityContext admission
+		// policies are NOT enforced and MCPServer specs are admitted unvalidated.
+		// Warn once at startup so this is not a silent gap; the same state is also
+		// surfaced per MCPServer via the PolicyEnforced=False status condition.
+		setupLog.Info("WARNING: validating admission webhook is disabled (--enable-webhook=false); " +
+			"image allowlist, digest pinning, storage-mount and securityContext admission policies are " +
+			"NOT enforced. Enable the webhook in production to validate MCPServer specs.")
 	}
 	if err := (&mcpv1beta1.MCPServer{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "MCPServer")

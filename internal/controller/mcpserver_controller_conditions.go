@@ -406,6 +406,50 @@ func newNotVerifiedCondition(generation int64, existingConditions []metav1.Condi
 	return c
 }
 
+// policyEnforcedCondition reports whether admission policies are actually being
+// enforced, so an administrator can tell from the MCPServer status whether the
+// image allowlist, digest pinning, storage-mount and securityContext admission
+// policies are validated. Enforcement requires both that the opt-in webhook is
+// enabled (--enable-webhook, default false) AND that at least one admission rule
+// is configured: an enabled webhook with no rules admits every spec unvalidated,
+// so it is reported as not enforced rather than mislabelled as enforced. It is a
+// function of the startup configuration only (identical for every MCPServer and
+// every reconcile), never gates readiness, and preserves its LastTransitionTime
+// across applies.
+func (r *MCPServerReconciler) policyEnforcedCondition(
+	generation int64,
+	existingConditions []metav1.Condition,
+) metav1.Condition {
+	var (
+		status  metav1.ConditionStatus
+		reason  string
+		message string
+	)
+	switch {
+	case !r.WebhookEnabled:
+		status = metav1.ConditionFalse
+		reason = ReasonWebhookDisabled
+		message = "Validating admission webhook is disabled; image allowlist, digest " +
+			"pinning, storage-mount and securityContext admission policies are NOT " +
+			"enforced. Enable it (--enable-webhook) in production to validate MCPServer specs."
+	case !r.AdmissionPolicyActive:
+		status = metav1.ConditionFalse
+		reason = ReasonNoPolicyConfigured
+		message = "Validating admission webhook is enabled but no admission rules are " +
+			"configured; MCPServer specs are still admitted without validation. Configure " +
+			"an image allowlist, digest pinning, storage-mount or securityContext policy."
+	default:
+		status = metav1.ConditionTrue
+		reason = ReasonWebhookEnabled
+		message = "Validating admission webhook is enabled; configured admission " +
+			"policies are enforced on MCPServer specs."
+	}
+
+	c := newCondition(ConditionTypePolicyEnforced, status, reason, message, generation)
+	preserveLastTransitionTime(&c, existingConditions)
+	return c
+}
+
 func conditionToAC(condition metav1.Condition) *v1ac.ConditionApplyConfiguration {
 	return v1ac.Condition().
 		WithType(condition.Type).
