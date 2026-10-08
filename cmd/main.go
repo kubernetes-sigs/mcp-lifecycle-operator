@@ -155,6 +155,12 @@ func main() {
 		os.Exit(1)
 	}
 	setupLog.Info("NetworkPolicy default posture configured", "posture", defaultPosture)
+	// logr exposes no Warn level, so this open-posture security advisory is
+	// logged at Info with a "WARNING:" prefix so it stands out in the log,
+	// making the historical open default visible at startup instead of silent.
+	if advisory := openPostureStartupAdvisory(defaultPosture); advisory != "" {
+		setupLog.Info(advisory)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -334,6 +340,24 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+// openPostureStartupAdvisory returns the startup advisory to log when the
+// operator runs with the open (default) NetworkPolicy posture. Under that
+// posture an MCPServer that leaves spec.network.ingressFrom unset is reachable
+// from any pod in any namespace, which permits lateral movement on a
+// multi-tenant cluster. It returns the empty string for any non-open posture so
+// the caller logs nothing. logr has no Warn level, so the message carries a
+// "WARNING:" prefix and the caller logs it via Info.
+func openPostureStartupAdvisory(posture controller.NetworkPolicyDefaultPosture) string {
+	if posture != controller.PostureOpen {
+		return ""
+	}
+	return "WARNING: NetworkPolicy default posture is \"open\": managed MCP servers that leave " +
+		"spec.network.ingressFrom unset are reachable from any pod in any namespace, which permits " +
+		"lateral movement on a multi-tenant cluster. Set spec.network.ingressFrom per server, or start " +
+		"the operator with --network-policy-default-posture=restricted, to limit ingress. Each server " +
+		"reports its effective posture in the NetworkPolicyRestricted status condition."
 }
 
 func parseAdmissionFlags(imageAllowlist string, requireImageDigest bool, maxStorageMounts int, requiredLabels string, disallowPrivilegedSecurityContext bool) *webhookpolicy.AdmissionPolicy {
