@@ -286,6 +286,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		return map[string]string{
 			configKeyExtensionName:      gatewayExtensionName,
 			configKeyExtensionNamespace: "gateway-ns",
+			configKeySectionName:        "mcps",
 			configKeyRouteHostname:      "myserver.mcp.local",
 			configKeyPrefix:             "myserver_",
 		}
@@ -621,21 +622,6 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(reg.Spec.Prefix).To(Equal(expectedPrefix))
 	})
 
-	It("should default sectionName from extension", func() {
-		createMCPServer()
-		createGatewayExtension("myserver.mcp.local", true)
-		createConfigMap(validConfigData())
-		createBinding()
-
-		_, err := doReconcile()
-		Expect(err).NotTo(HaveOccurred())
-
-		route := &gatewayv1.HTTPRoute{}
-		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
-		Expect(route.Spec.ParentRefs[0].SectionName).NotTo(BeNil())
-		Expect(string(*route.Spec.ParentRefs[0].SectionName)).To(Equal("mcps"))
-	})
-
 	It("should use custom sectionName when provided", func() {
 		createMCPServer()
 		createGatewayExtension("myserver.mcp.local", true)
@@ -816,7 +802,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
-		Expect(registered.Message).To(ContainSubstring("not a wildcard"))
+		Expect(registered.Message).To(ContainSubstring("no wildcard listeners"))
 	})
 
 	It("should set Registered=False when hostname omitted and listener section not found", func() {
@@ -848,6 +834,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createConfigMap(map[string]string{
 			configKeyExtensionName:      gatewayExtensionName,
 			configKeyExtensionNamespace: "gateway-ns",
+			configKeySectionName:        "mcps",
 			configKeyPrefix:             "myserver_",
 		})
 		createBinding()
@@ -947,6 +934,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createConfigMap(map[string]string{
 			configKeyExtensionName:      gatewayExtensionName,
 			configKeyExtensionNamespace: "gateway-ns",
+			configKeySectionName:        "mcps",
 			configKeyRouteHostname:      "route.mcp.local",
 			configKeyPrefix:             "myserver_",
 		})
@@ -2029,23 +2017,50 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(string(route.Spec.ParentRefs[0].Name)).To(Equal("my-gateway"))
 	})
 
-	It("should default sectionName from extension targetRef.SectionName", func() {
+	It("should not use extension targetRef.sectionName for per-server HTTPRoute listener", func() {
 		createMCPServer()
 
+		By("creating a Gateway where the wildcard listener has a different name than the extension's sectionName")
+		gw := &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "test",
+				Listeners: []gatewayv1.Listener{
+					{
+						Name:     "public",
+						Port:     80,
+						Protocol: gatewayv1.HTTPProtocolType,
+					},
+					{
+						Name:     "internal-wildcard",
+						Port:     8080,
+						Protocol: gatewayv1.HTTPProtocolType,
+						Hostname: hostnamePtr("*.mcp.local"),
+					},
+				},
+			},
+		}
 		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gw) }()
+
+		By("creating extension with sectionName pointing to public listener")
 		ext := &kuadrantapi.MCPGatewayExtension{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      gatewayExtensionName,
 				Namespace: "gateway-ns",
 			},
 			Spec: kuadrantapi.MCPGatewayExtensionSpec{
-				PublicHost: "myserver.mcp.local",
+				PublicHost: "mcp.example.com",
 				TargetRef: kuadrantapi.TargetReference{
 					Group:       "gateway.networking.k8s.io",
 					Kind:        "Gateway",
 					Name:        "my-gateway",
 					Namespace:   "gateway-ns",
-					SectionName: "custom-section",
+					SectionName: "public",
 				},
 			},
 		}
@@ -2053,10 +2068,10 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		Expect(k8sClient.Create(ctx, ext)).To(Succeed())
 		setExtensionReady(ctx, gatewayExtensionName)
 
+		By("creating ConfigMap WITHOUT section-name — should auto-discover wildcard, not use extension's")
 		createConfigMap(map[string]string{
 			configKeyExtensionName:      gatewayExtensionName,
 			configKeyExtensionNamespace: "gateway-ns",
-			configKeyRouteHostname:      "myserver.mcp.local",
 			configKeyPrefix:             "myserver_",
 		})
 		createBinding()
@@ -2067,7 +2082,464 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		route := &gatewayv1.HTTPRoute{}
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
 		Expect(route.Spec.ParentRefs[0].SectionName).NotTo(BeNil())
-		Expect(string(*route.Spec.ParentRefs[0].SectionName)).To(Equal("custom-section"))
+		By("verifying it used the auto-discovered wildcard listener, not the extension's sectionName")
+		Expect(string(*route.Spec.ParentRefs[0].SectionName)).To(Equal("internal-wildcard"))
+	})
+
+	It("should auto-discover single wildcard listener when section-name is omitted", func() {
+		createMCPServer()
+
+		By("creating a Gateway with a catch-all and a wildcard listener")
+		gw := &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "test",
+				Listeners: []gatewayv1.Listener{
+					{
+						Name:     "mcp",
+						Port:     80,
+						Protocol: gatewayv1.HTTPProtocolType,
+					},
+					{
+						Name:     "mcps",
+						Port:     8080,
+						Protocol: gatewayv1.HTTPProtocolType,
+						Hostname: hostnamePtr("*.mcp.local"),
+					},
+				},
+			},
+		}
+		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gw) }()
+
+		By("creating extension targeting catch-all listener (NOT the wildcard)")
+		ext := &kuadrantapi.MCPGatewayExtension{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      gatewayExtensionName,
+				Namespace: "gateway-ns",
+			},
+			Spec: kuadrantapi.MCPGatewayExtensionSpec{
+				PublicHost: "mcp.example.com",
+				TargetRef: kuadrantapi.TargetReference{
+					Group:       "gateway.networking.k8s.io",
+					Kind:        "Gateway",
+					Name:        "my-gateway",
+					Namespace:   "gateway-ns",
+					SectionName: "mcp",
+				},
+			},
+		}
+		ext.SetGroupVersionKind(kuadrantapi.SchemeGroupVersion.WithKind("MCPGatewayExtension"))
+		Expect(k8sClient.Create(ctx, ext)).To(Succeed())
+		setExtensionReady(ctx, gatewayExtensionName)
+
+		By("creating ConfigMap WITHOUT section-name")
+		createConfigMap(map[string]string{
+			configKeyExtensionName:      gatewayExtensionName,
+			configKeyExtensionNamespace: "gateway-ns",
+			configKeyPrefix:             "myserver_",
+		})
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		route := &gatewayv1.HTTPRoute{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
+		Expect(route.Spec.ParentRefs[0].SectionName).NotTo(BeNil())
+		Expect(string(*route.Spec.ParentRefs[0].SectionName)).To(Equal("mcps"))
+		Expect(route.Spec.Hostnames).To(HaveLen(1))
+		Expect(string(route.Spec.Hostnames[0])).To(Equal(mcpServerName + "." + testNamespace + ".mcp.local"))
+	})
+
+	It("should error when multiple wildcard listeners found and section-name is omitted", func() {
+		createMCPServer()
+
+		gw := &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "test",
+				Listeners: []gatewayv1.Listener{
+					{
+						Name:     "servers-a",
+						Port:     8080,
+						Protocol: gatewayv1.HTTPProtocolType,
+						Hostname: hostnamePtr("*.a.mcp.local"),
+					},
+					{
+						Name:     "servers-b",
+						Port:     8081,
+						Protocol: gatewayv1.HTTPProtocolType,
+						Hostname: hostnamePtr("*.b.mcp.local"),
+					},
+				},
+			},
+		}
+		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gw) }()
+
+		ext := &kuadrantapi.MCPGatewayExtension{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      gatewayExtensionName,
+				Namespace: "gateway-ns",
+			},
+			Spec: kuadrantapi.MCPGatewayExtensionSpec{
+				PublicHost: "mcp.example.com",
+				TargetRef: kuadrantapi.TargetReference{
+					Group:       "gateway.networking.k8s.io",
+					Kind:        "Gateway",
+					Name:        "my-gateway",
+					Namespace:   "gateway-ns",
+					SectionName: "mcp",
+				},
+			},
+		}
+		ext.SetGroupVersionKind(kuadrantapi.SchemeGroupVersion.WithKind("MCPGatewayExtension"))
+		Expect(k8sClient.Create(ctx, ext)).To(Succeed())
+		setExtensionReady(ctx, gatewayExtensionName)
+
+		createConfigMap(map[string]string{
+			configKeyExtensionName:      gatewayExtensionName,
+			configKeyExtensionNamespace: "gateway-ns",
+			configKeyPrefix:             "myserver_",
+		})
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+		Expect(registered.Message).To(ContainSubstring("multiple wildcard listeners"))
+		Expect(registered.Message).To(ContainSubstring(configKeySectionName))
+	})
+
+	It("should use direct hostname when section-name points to an HTTP listener with non-wildcard hostname", func() {
+		createMCPServer()
+
+		gw := &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "test",
+				Listeners: []gatewayv1.Listener{
+					{
+						Name:     "direct",
+						Port:     80,
+						Protocol: gatewayv1.HTTPProtocolType,
+						Hostname: hostnamePtr("mcp.example.com"),
+					},
+				},
+			},
+		}
+		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gw) }()
+
+		createGatewayExtension("mcp.example.com", true)
+
+		createConfigMap(map[string]string{
+			configKeyExtensionName:      gatewayExtensionName,
+			configKeyExtensionNamespace: "gateway-ns",
+			configKeySectionName:        "direct",
+			configKeyPrefix:             "myserver_",
+		})
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		route := &gatewayv1.HTTPRoute{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
+		Expect(route.Spec.Hostnames).To(HaveLen(1))
+		Expect(string(route.Spec.Hostnames[0])).To(Equal("mcp.example.com"))
+		Expect(route.Spec.ParentRefs[0].SectionName).NotTo(BeNil())
+		Expect(string(*route.Spec.ParentRefs[0].SectionName)).To(Equal("direct"))
+	})
+
+	It("should error when section-name points to an HTTPS listener with non-wildcard hostname", func() {
+		createMCPServer()
+
+		gw := &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "test",
+				Listeners: []gatewayv1.Listener{
+					{
+						Name:     "secure-direct",
+						Port:     443,
+						Protocol: gatewayv1.HTTPSProtocolType,
+						Hostname: hostnamePtr("mcp.example.com"),
+					},
+				},
+			},
+		}
+		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gw) }()
+
+		createGatewayExtension("mcp.example.com", true)
+
+		createConfigMap(map[string]string{
+			configKeyExtensionName:      gatewayExtensionName,
+			configKeyExtensionNamespace: "gateway-ns",
+			configKeySectionName:        "secure-direct",
+			configKeyPrefix:             "myserver_",
+		})
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+		Expect(registered.Message).To(ContainSubstring("HTTPS"))
+		Expect(registered.Message).To(ContainSubstring("wildcard"))
+	})
+
+	It("should set status warning when using direct hostname listener", func() {
+		createMCPServer()
+
+		gw := &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "test",
+				Listeners: []gatewayv1.Listener{
+					{
+						Name:     "direct",
+						Port:     80,
+						Protocol: gatewayv1.HTTPProtocolType,
+						Hostname: hostnamePtr("mcp.example.com"),
+					},
+				},
+			},
+		}
+		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gw) }()
+
+		createGatewayExtension("mcp.example.com", true)
+
+		createConfigMap(map[string]string{
+			configKeyExtensionName:      gatewayExtensionName,
+			configKeyExtensionNamespace: "gateway-ns",
+			configKeySectionName:        "direct",
+			configKeyPrefix:             "myserver_",
+		})
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		route := &gatewayv1.HTTPRoute{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
+		setHTTPRouteAccepted(ctx, route)
+		setRegistrationReady(ctx, bindingName, testNamespace)
+
+		_, err = doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionTrue))
+		Expect(registered.Message).To(ContainSubstring("direct hostname"))
+	})
+
+	It("should error when no wildcard listeners found and section-name is omitted", func() {
+		createMCPServer()
+
+		gw := &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "test",
+				Listeners: []gatewayv1.Listener{
+					{
+						Name:     "mcp",
+						Port:     80,
+						Protocol: gatewayv1.HTTPProtocolType,
+					},
+				},
+			},
+		}
+		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gw) }()
+
+		ext := &kuadrantapi.MCPGatewayExtension{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      gatewayExtensionName,
+				Namespace: "gateway-ns",
+			},
+			Spec: kuadrantapi.MCPGatewayExtensionSpec{
+				PublicHost: "mcp.example.com",
+				TargetRef: kuadrantapi.TargetReference{
+					Group:       "gateway.networking.k8s.io",
+					Kind:        "Gateway",
+					Name:        "my-gateway",
+					Namespace:   "gateway-ns",
+					SectionName: "mcp",
+				},
+			},
+		}
+		ext.SetGroupVersionKind(kuadrantapi.SchemeGroupVersion.WithKind("MCPGatewayExtension"))
+		Expect(k8sClient.Create(ctx, ext)).To(Succeed())
+		setExtensionReady(ctx, gatewayExtensionName)
+
+		createConfigMap(map[string]string{
+			configKeyExtensionName:      gatewayExtensionName,
+			configKeyExtensionNamespace: "gateway-ns",
+			configKeyPrefix:             "myserver_",
+		})
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+		Expect(registered.Message).To(ContainSubstring("no wildcard listeners"))
+		Expect(registered.Message).To(ContainSubstring(configKeySectionName))
+	})
+
+	It("should error when Gateway not found and section-name is omitted", func() {
+		createMCPServer()
+
+		By("creating extension referencing a non-existent gateway")
+		ext := &kuadrantapi.MCPGatewayExtension{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      gatewayExtensionName,
+				Namespace: "gateway-ns",
+			},
+			Spec: kuadrantapi.MCPGatewayExtensionSpec{
+				PublicHost: "mcp.example.com",
+				TargetRef: kuadrantapi.TargetReference{
+					Group:       "gateway.networking.k8s.io",
+					Kind:        "Gateway",
+					Name:        "nonexistent-gateway",
+					Namespace:   "gateway-ns",
+					SectionName: "mcp",
+				},
+			},
+		}
+		ext.SetGroupVersionKind(kuadrantapi.SchemeGroupVersion.WithKind("MCPGatewayExtension"))
+		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, ext)).To(Succeed())
+		setExtensionReady(ctx, gatewayExtensionName)
+
+		createConfigMap(map[string]string{
+			configKeyExtensionName:      gatewayExtensionName,
+			configKeyExtensionNamespace: "gateway-ns",
+			configKeyPrefix:             "myserver_",
+		})
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+		Expect(registered.Message).To(ContainSubstring("not found"))
+	})
+
+	It("should error when Gateway not found and section-name is set", func() {
+		createMCPServer()
+		createGatewayExtension("mcp.example.com", true)
+
+		createConfigMap(map[string]string{
+			configKeyExtensionName:      gatewayExtensionName,
+			configKeyExtensionNamespace: "gateway-ns",
+			configKeySectionName:        "mcps",
+			configKeyPrefix:             "myserver_",
+		})
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+		Expect(registered.Message).To(ContainSubstring("not found"))
+	})
+
+	It("should error when section-name points to a listener with no hostname", func() {
+		createMCPServer()
+
+		gw := &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "test",
+				Listeners: []gatewayv1.Listener{
+					{
+						Name:     "no-host",
+						Port:     80,
+						Protocol: gatewayv1.HTTPProtocolType,
+					},
+				},
+			},
+		}
+		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gw) }()
+
+		createGatewayExtension("mcp.example.com", true)
+
+		createConfigMap(map[string]string{
+			configKeyExtensionName:      gatewayExtensionName,
+			configKeyExtensionNamespace: "gateway-ns",
+			configKeySectionName:        "no-host",
+			configKeyPrefix:             "myserver_",
+		})
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+		Expect(registered.Message).To(ContainSubstring("no hostname"))
+		Expect(registered.Message).To(ContainSubstring(configKeyRouteHostname))
 	})
 
 	Describe("extension-namespace trust gate", func() {

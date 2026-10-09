@@ -185,8 +185,8 @@ to use:
 data:
   extension-name: mcp-gateway-extension
   extension-namespace: mcp-system
-  section-name: mcps      # override: per-server routes use the wildcard listener
-  # prefix: example_   # optional — auto-generated from MCPServer name + namespace when omitted
+  # section-name: mcps    # optional — auto-discovered from Gateway wildcard listener when omitted
+  # prefix: example_      # optional — auto-generated from MCPServer name + namespace when omitted
 ```
 
 The **mcp-lifecycle-operator** creates three resources:
@@ -213,8 +213,11 @@ spec:
 
 The hostname is auto-constructed from the wildcard listener:
 `<server-name>.<namespace>.mcp.local`. The route attaches to the `mcps` listener
-whose `*.mcp.local` pattern matches. The `sectionName` comes from the ConfigMap's
-`section-name` field, which overrides the extension's `targetRef.sectionName`.
+whose `*.mcp.local` pattern matches. The `sectionName` is resolved as follows:
+if the ConfigMap sets `section-name`, that value is used; otherwise the operator
+auto-discovers the Gateway's wildcard listener (exactly one must exist). The
+extension's `targetRef.sectionName` is never used for per-server routes — it
+controls the broker route only.
 
 #### c) MCPServerRegistration (in the MCPServer's namespace)
 
@@ -316,8 +319,13 @@ MCPGatewayExtension
 ConfigMap
   section-name: mcps             <- which listener per-server routes use
                                     (lifecycle operator creates these)
+                                    auto-discovered from Gateway wildcard
+                                    listener when omitted
 ```
 
 The extension's `sectionName` and the ConfigMap's `section-name` serve different
-purposes. The ConfigMap override decouples the listener used for public broker
-traffic from the listener used for internal per-server routing.
+purposes. The extension's `sectionName` controls the broker route (public
+traffic). The ConfigMap's `section-name` controls per-server routes (internal
+routing). When `section-name` is omitted, the operator auto-discovers the
+Gateway's wildcard listener — if exactly one exists, it is selected; otherwise
+an error guides the user to set `section-name` explicitly.
