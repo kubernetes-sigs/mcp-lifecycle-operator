@@ -21,6 +21,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -60,12 +63,98 @@ func init() {
 	})
 }
 
+// allowedExtensionNamespaces is the operator-level allowlist of namespaces the
+// provider is permitted to read MCPGatewayExtension routing config from. It is
+// configured once at startup via SetAllowedExtensionNamespaces and consumed by
+// Setup when the reconciler is constructed. Empty means unrestricted (the
+// historical default behavior).
+var allowedExtensionNamespaces []string
+
+// SetAllowedExtensionNamespaces configures the trusted extension-namespace
+// allowlist applied to kuadrant reconcilers created by Setup. It must be called
+// before providers.SetupAll. An empty or nil slice disables the control.
+func SetAllowedExtensionNamespaces(namespaces []string) {
+	allowedExtensionNamespaces = namespaces
+}
+
+const envAllowedExtensionNamespaces = "KUADRANT_ALLOWED_EXTENSION_NAMESPACES"
+
+// ParseAllowedExtensionNamespaces reads the trusted extension-namespace
+// allowlist. When flagSet is true the flag was provided on the command line and
+// its value wins (even an explicit empty value, which disables the control);
+// only when flagSet is false does it fall back to the
+// KUADRANT_ALLOWED_EXTENSION_NAMESPACES env var. The value is a comma-separated
+// list of namespace names; blank entries are ignored. A nil result means the
+// control is disabled (unrestricted).
+func ParseAllowedExtensionNamespaces(flagValue string, flagSet bool) []string {
+	raw := flagValue
+	if !flagSet {
+		raw = os.Getenv(envAllowedExtensionNamespaces)
+	}
+	var out []string
+	for ns := range strings.SplitSeq(raw, ",") {
+		if trimmed := strings.TrimSpace(ns); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+// ValidExtensionNamespace reports whether ns is a syntactically valid extension
+// namespace name (an RFC 1123 label). This is the single source of truth for
+// the namespace-name rule, applied both to allowlist entries at startup and to
+// the tenant-supplied extension-namespace at reconcile time.
+func ValidExtensionNamespace(ns string) bool {
+	return len(validation.IsDNS1123Label(ns)) == 0
+}
+
+// ValidExtensionName reports whether name is a syntactically valid extension
+// resource name (an RFC 1123 subdomain).
+func ValidExtensionName(name string) bool {
+	return len(validation.IsDNS1123Subdomain(name)) == 0
+}
+
+// PartitionExtensionNamespaces splits allowlist entries into valid and invalid
+// namespace names using ValidExtensionNamespace. It is pure so the startup
+// fail-closed decision (non-empty allowlist that yields no valid entries) can
+// be unit-tested without a process exit.
+func PartitionExtensionNamespaces(entries []string) (valid, invalid []string) {
+	for _, ns := range entries {
+		if ValidExtensionNamespace(ns) {
+			valid = append(valid, ns)
+		} else {
+			invalid = append(invalid, ns)
+		}
+	}
+	return valid, invalid
+}
+
+// ResolveAllowedExtensionNamespaces parses the allowlist (flag with env fallback,
+// see ParseAllowedExtensionNamespaces) and validates each entry as an RFC 1123
+// namespace label. It returns the valid entries and the dropped invalid entries
+// (for logging). It fails closed: if the configuration is non-empty but yields no
+// valid entries, it returns an error instead of silently collapsing to the
+// unrestricted default, so a typo (or an uppercase value that can never match a
+// lowercase namespace) is a fatal startup error rather than a silent fail-open. An
+// empty/unset configuration returns nil with no error (control disabled).
+func ResolveAllowedExtensionNamespaces(flagValue string, flagSet bool) (allowed, invalid []string, err error) {
+	parsed := ParseAllowedExtensionNamespaces(flagValue, flagSet)
+	allowed, invalid = PartitionExtensionNamespaces(parsed)
+	if len(parsed) > 0 && len(allowed) == 0 {
+		return nil, invalid, fmt.Errorf(
+			"kuadrant extension-namespace allowlist was configured (%v) but contains no valid RFC 1123 namespace names",
+			parsed)
+	}
+	return allowed, invalid, nil
+}
+
 // Setup creates the kuadrant provider controller and registers it with the manager.
 func Setup(mgr ctrl.Manager) error {
 	return (&Reconciler{
-		Client:    mgr.GetClient(),
-		APIReader: mgr.GetAPIReader(),
-		Scheme:    mgr.GetScheme(),
+		Client:                     mgr.GetClient(),
+		APIReader:                  mgr.GetAPIReader(),
+		Scheme:                     mgr.GetScheme(),
+		AllowedExtensionNamespaces: allowedExtensionNamespaces,
 	}).SetupWithManager(mgr)
 }
 
@@ -93,6 +182,13 @@ type Reconciler struct {
 	// ConfigMap's data. ConfigMaps are watched metadata-only.
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
+
+	// AllowedExtensionNamespaces is an opt-in allowlist of namespaces from which
+	// the provider may read an MCPGatewayExtension. The extension namespace is
+	// supplied by a tenant-controlled ConfigMap, so when this list is non-empty
+	// any namespace outside it is rejected to prevent routing config from being
+	// read out of an attacker-planted namespace. Empty means no restriction.
+	AllowedExtensionNamespaces []string
 }
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings,verbs=get;list;watch
@@ -141,6 +237,28 @@ func (r *Reconciler) parseConfig(ctx context.Context, binding *mcpv1alpha1.MCPGa
 	if !ok || extNamespace == "" {
 		return nil, r.setNotRegistered(ctx, binding,
 			fmt.Sprintf("ConfigMap %q missing required key %q", binding.Spec.ConfigRef, configKeyExtensionNamespace))
+	}
+
+	// Always-on, cheap format validation: both values are read from a
+	// tenant-controlled ConfigMap and used to build an object key, so reject
+	// syntactically invalid names before touching the API server. Resource names
+	// are RFC 1123 subdomains; namespace names are RFC 1123 labels.
+	if !ValidExtensionName(extName) {
+		return nil, r.setNotRegistered(ctx, binding,
+			fmt.Sprintf("%q value %q is not a valid RFC 1123 name", configKeyExtensionName, extName))
+	}
+	if !ValidExtensionNamespace(extNamespace) {
+		return nil, r.setNotRegistered(ctx, binding,
+			fmt.Sprintf("%q value %q is not a valid RFC 1123 namespace name", configKeyExtensionNamespace, extNamespace))
+	}
+
+	// Opt-in trust gate: when an allowlist is configured, refuse to read routing
+	// config from any namespace outside it. A tenant that controls the ConfigMap
+	// could otherwise point extension-namespace at a namespace they planted an
+	// MCPGatewayExtension in, hijacking the server's routing.
+	if len(r.AllowedExtensionNamespaces) > 0 && !slices.Contains(r.AllowedExtensionNamespaces, extNamespace) {
+		return nil, r.setNotRegistered(ctx, binding,
+			fmt.Sprintf("%q %q is not in the operator's trusted extension-namespace allowlist", configKeyExtensionNamespace, extNamespace))
 	}
 
 	prefix := configMap.Data[configKeyPrefix]
