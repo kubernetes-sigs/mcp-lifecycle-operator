@@ -2,7 +2,7 @@
 # https://github.com/kubernetes-sigs/kubebuilder/blob/v4.11.1/pkg/plugins/golang/v4/scaffolds/internal/templates/dockerfile.go
 
 # Build the manager binary
-FROM --platform=${BUILDPLATFORM} golang:1.27.1 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.2 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -25,7 +25,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager ./cmd
 
 # Build the manager binary with debug symbols
-FROM golang:1.27.1 AS debug-builder
+FROM golang:1.27.2 AS debug-builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -39,7 +39,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -gcflags="all=-N -l" -o manager ./cmd
 
 # Debug image with Delve
-FROM golang:1.27.1 AS debug
+FROM golang:1.27.2 AS debug
 RUN go install github.com/go-delve/delve/cmd/dlv@v1.26.3
 WORKDIR /
 COPY --from=debug-builder /workspace/manager .
@@ -60,7 +60,7 @@ ENTRYPOINT ["/manager"]
 # `go build -cover` instruments the main module's packages; at runtime the binary
 # writes coverage data to $GOCOVERDIR. This image is for E2E runs only and is
 # never shipped.
-FROM --platform=${BUILDPLATFORM} golang:1.27.1 AS coverage-builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.2 AS coverage-builder
 ARG TARGETOS
 ARG TARGETARCH
 
