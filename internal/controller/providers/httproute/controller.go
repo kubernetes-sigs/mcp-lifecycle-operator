@@ -19,6 +19,9 @@ package httproute
 import (
 	"context"
 	"fmt"
+	"os"
+	"slices"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -27,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -53,12 +57,91 @@ func init() {
 	})
 }
 
+// allowedGatewayNamespaces is the operator-level allowlist of namespaces the
+// provider is permitted to target with an HTTPRoute ParentRef. It is configured
+// once at startup via SetAllowedGatewayNamespaces and consumed by Setup when the
+// reconciler is constructed. Empty means unrestricted (the historical default
+// behavior).
+var allowedGatewayNamespaces []string
+
+// SetAllowedGatewayNamespaces configures the trusted gateway-namespace allowlist
+// applied to httproute reconcilers created by Setup. It must be called before
+// providers.SetupAll. An empty or nil slice disables the control.
+func SetAllowedGatewayNamespaces(namespaces []string) {
+	allowedGatewayNamespaces = namespaces
+}
+
+const envAllowedGatewayNamespaces = "HTTPROUTE_ALLOWED_GATEWAY_NAMESPACES"
+
+// ValidGatewayNamespace reports whether ns is a syntactically valid namespace
+// name (RFC 1123 label). It is the single source of truth for namespace-name
+// validity, shared by the startup allowlist filtering and the reconciler's
+// ParentRef gating so both apply identical rules.
+func ValidGatewayNamespace(ns string) bool {
+	return len(validation.IsDNS1123Label(ns)) == 0
+}
+
+// ValidGatewayName reports whether name is a syntactically valid resource name
+// (RFC 1123 subdomain), used for the gateway name supplied in the binding's
+// ConfigMap.
+func ValidGatewayName(name string) bool {
+	return len(validation.IsDNS1123Subdomain(name)) == 0
+}
+
+// ParseAllowedGatewayNamespaces reads the trusted gateway-namespace allowlist
+// from flagValue. flagSet reports whether the --httproute-allowed-gateway-namespaces
+// flag was explicitly provided (via flag.Visit): when it was, flagValue wins even
+// if empty, so an operator can override an inherited env var with an explicit ""
+// to disable the control. Only when the flag was not provided does it fall back
+// to the HTTPROUTE_ALLOWED_GATEWAY_NAMESPACES env var. The value is a
+// comma-separated list of namespace names; blank entries are ignored. A nil
+// result means the control is disabled (unrestricted).
+func ParseAllowedGatewayNamespaces(flagValue string, flagSet bool) []string {
+	raw := flagValue
+	if !flagSet {
+		raw = os.Getenv(envAllowedGatewayNamespaces)
+	}
+	var out []string
+	for ns := range strings.SplitSeq(raw, ",") {
+		if trimmed := strings.TrimSpace(ns); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+// ResolveAllowedGatewayNamespaces parses the allowlist (flag with env fallback,
+// see ParseAllowedGatewayNamespaces) and validates each entry as an RFC 1123
+// namespace label. It returns the valid entries and the dropped invalid entries
+// (for logging). It fails closed: if the configuration is non-empty but yields no
+// valid entries, it returns an error instead of silently collapsing to the
+// unrestricted default, so a typo (or an uppercase value that can never match a
+// lowercase namespace) is a fatal startup error rather than a silent fail-open. An
+// empty/unset configuration returns nil with no error (control disabled).
+func ResolveAllowedGatewayNamespaces(flagValue string, flagSet bool) (allowed, invalid []string, err error) {
+	parsed := ParseAllowedGatewayNamespaces(flagValue, flagSet)
+	for _, ns := range parsed {
+		if ValidGatewayNamespace(ns) {
+			allowed = append(allowed, ns)
+		} else {
+			invalid = append(invalid, ns)
+		}
+	}
+	if len(parsed) > 0 && len(allowed) == 0 {
+		return nil, invalid, fmt.Errorf(
+			"httproute gateway-namespace allowlist was configured (%v) but contains no valid RFC 1123 namespace names",
+			parsed)
+	}
+	return allowed, invalid, nil
+}
+
 // Setup creates the httproute provider controller and registers it with the manager.
 func Setup(mgr ctrl.Manager) error {
 	return (&Reconciler{
-		Client:    mgr.GetClient(),
-		APIReader: mgr.GetAPIReader(),
-		Scheme:    mgr.GetScheme(),
+		Client:                   mgr.GetClient(),
+		APIReader:                mgr.GetAPIReader(),
+		Scheme:                   mgr.GetScheme(),
+		AllowedGatewayNamespaces: allowedGatewayNamespaces,
 	}).SetupWithManager(mgr)
 }
 
@@ -85,6 +168,13 @@ type Reconciler struct {
 	// ConfigMap's data. ConfigMaps are watched metadata-only.
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
+
+	// AllowedGatewayNamespaces is an opt-in allowlist of namespaces the provider
+	// may target with an HTTPRoute ParentRef. The gateway namespace (and name) is
+	// supplied by a tenant-controlled ConfigMap, so when this list is non-empty
+	// any namespace outside it is rejected to prevent a tenant from attaching the
+	// route to another tenant's Gateway. Empty means no restriction.
+	AllowedGatewayNamespaces []string
 }
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings,verbs=get;list;watch
@@ -133,15 +223,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			fmt.Sprintf("ConfigMap %q not found", binding.Spec.ConfigRef))
 	}
 
-	gwName, ok := configMap.Data[configKeyGatewayName]
-	if !ok || gwName == "" {
-		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
-			fmt.Sprintf("ConfigMap %q missing required key %q", binding.Spec.ConfigRef, configKeyGatewayName))
-	}
-	gwNamespace, ok := configMap.Data[configKeyGatewayNamespace]
-	if !ok || gwNamespace == "" {
-		return ctrl.Result{}, r.setNotRegistered(ctx, binding,
-			fmt.Sprintf("ConfigMap %q missing required key %q", binding.Spec.ConfigRef, configKeyGatewayNamespace))
+	gwName, gwNamespace, done, refErr := r.resolveGatewayRef(ctx, binding, configMap.Data)
+	if done {
+		return ctrl.Result{}, refErr
 	}
 
 	path := mcpServer.Spec.Config.Path
@@ -263,6 +347,53 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	return ctrl.Result{}, providers.UpdateBindingStatus(ctx, r.Status(), binding, metav1.ConditionTrue,
 		mcpcontroller.ReasonGatewayRegistered, "HTTPRoute accepted by gateway", statusURL)
+}
+
+// resolveGatewayRef extracts and validates the gateway ParentRef coordinates
+// (gateway-name and gateway-namespace) from the binding's ConfigMap data. These
+// values are tenant-controlled and used verbatim as the HTTPRoute ParentRef, so
+// they are format-validated (RFC 1123) and, when an allowlist is configured,
+// gated against it. When the returned done flag is true the binding has already
+// been handled via setNotRegistered and Reconcile should return err immediately.
+func (r *Reconciler) resolveGatewayRef(
+	ctx context.Context,
+	binding *mcpv1alpha1.MCPGatewayBinding,
+	data map[string]string,
+) (gwName, gwNamespace string, done bool, err error) {
+	gwName, ok := data[configKeyGatewayName]
+	if !ok || gwName == "" {
+		return "", "", true, r.setNotRegistered(ctx, binding,
+			fmt.Sprintf("ConfigMap %q missing required key %q", binding.Spec.ConfigRef, configKeyGatewayName))
+	}
+	gwNamespace, ok = data[configKeyGatewayNamespace]
+	if !ok || gwNamespace == "" {
+		return "", "", true, r.setNotRegistered(ctx, binding,
+			fmt.Sprintf("ConfigMap %q missing required key %q", binding.Spec.ConfigRef, configKeyGatewayNamespace))
+	}
+
+	// Always-on, cheap format validation: both values are read from a
+	// tenant-controlled ConfigMap and used verbatim as the HTTPRoute ParentRef, so
+	// reject syntactically invalid names before building the route. Resource names
+	// are RFC 1123 subdomains; namespace names are RFC 1123 labels.
+	if !ValidGatewayName(gwName) {
+		return "", "", true, r.setNotRegistered(ctx, binding,
+			fmt.Sprintf("%q value %q is not a valid name (must be an RFC 1123 subdomain)", configKeyGatewayName, gwName))
+	}
+	if !ValidGatewayNamespace(gwNamespace) {
+		return "", "", true, r.setNotRegistered(ctx, binding,
+			fmt.Sprintf("%q value %q is not a valid namespace name (must be an RFC 1123 label)", configKeyGatewayNamespace, gwNamespace))
+	}
+
+	// Opt-in trust gate: when an allowlist is configured, refuse to attach the
+	// HTTPRoute to a Gateway in any namespace outside it. A tenant that controls
+	// the ConfigMap could otherwise point gateway-namespace/gateway-name at
+	// another tenant's Gateway, hijacking the server's routing.
+	if len(r.AllowedGatewayNamespaces) > 0 && !slices.Contains(r.AllowedGatewayNamespaces, gwNamespace) {
+		return "", "", true, r.setNotRegistered(ctx, binding,
+			fmt.Sprintf("%q %q is not in the operator's trusted gateway-namespace allowlist", configKeyGatewayNamespace, gwNamespace))
+	}
+
+	return gwName, gwNamespace, false, nil
 }
 
 func (r *Reconciler) setNotRegistered(

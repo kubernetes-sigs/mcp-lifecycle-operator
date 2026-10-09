@@ -51,7 +51,9 @@ import (
 
 	// Gateway integration providers register themselves via init().
 	// Add new providers here as blank imports.
-	_ "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/httproute"
+	// The httproute provider is imported by name (not blank) so its opt-in
+	// gateway-namespace allowlist can be configured from startup flags.
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/httproute"
 	_ "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant"
 	// +kubebuilder:scaffold:imports
 )
@@ -91,6 +93,7 @@ func main() {
 	var requiredLabels string
 	var disallowPrivilegedSecurityContext bool
 	var networkPolicyDefaultPosture string
+	var httprouteAllowedGatewayNamespaces string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -141,6 +144,12 @@ func main() {
 			"pods and each required gateway source; otherwise an enforcing CNI blocks the operator handshake and "+
 			"gateway traffic, so the server never becomes Verified and status.address/ServerReady are not "+
 			"published. Unconfigured egress is left unmanaged. Explicit Spec.Network values are always honored.")
+	flag.StringVar(&httprouteAllowedGatewayNamespaces, "httproute-allowed-gateway-namespaces", "",
+		"Comma-separated allowlist of namespaces the httproute gateway provider may attach an HTTPRoute to. "+
+			"The gateway namespace and name are supplied by a tenant-controlled ConfigMap and used verbatim as "+
+			"the HTTPRoute ParentRef, so restricting it prevents a tenant from attaching the route to another "+
+			"tenant's Gateway. Falls back to HTTPROUTE_ALLOWED_GATEWAY_NAMESPACES env var if not set. "+
+			"Empty means no restriction (any namespace named in a binding's ConfigMap is trusted).")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -308,6 +317,16 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "MCPServer")
 		os.Exit(1)
 	}
+	httprouteFlagSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "httproute-allowed-gateway-namespaces" {
+			httprouteFlagSet = true
+		}
+	})
+	if err := configureHTTPRouteProvider(httprouteAllowedGatewayNamespaces, httprouteFlagSet); err != nil {
+		setupLog.Error(err, "invalid --httproute-allowed-gateway-namespaces value")
+		os.Exit(1)
+	}
 	if err := providers.SetupAll(mgr); err != nil {
 		setupLog.Error(err, "unable to set up gateway providers")
 		os.Exit(1)
@@ -383,6 +402,37 @@ func openPostureStartupAdvisory(posture controller.NetworkPolicyDefaultPosture) 
 		"lateral movement on a multi-tenant cluster. Set spec.network.ingressFrom per server, or start " +
 		"the operator with --network-policy-default-posture=restricted, to limit ingress. Each server " +
 		"reports its effective posture in the NetworkPolicyRestricted status condition."
+}
+
+// configureHTTPRouteProvider resolves the trusted gateway-namespace allowlist
+// from the flag (with env fallback) and applies it to the httproute provider
+// before the providers are set up. flagSet reports whether the flag was explicitly
+// provided so an explicit value (even "") wins over the env var. Invalid entries
+// are dropped with a warning so a typo (or an uppercase value that can never match
+// a lowercase namespace) is visible at startup. It fails closed: a non-empty
+// configuration that yields no valid entries returns an error (the caller treats
+// it as fatal) instead of silently reverting to the unrestricted default. When the
+// allowlist is empty the control is off and gateway-namespace is unrestricted; a
+// single startup advisory is logged so operators know the opt-in guardrail is
+// available.
+func configureHTTPRouteProvider(allowedGatewayNamespaces string, flagSet bool) error {
+	allowed, invalid, err := httproute.ResolveAllowedGatewayNamespaces(allowedGatewayNamespaces, flagSet)
+	if err != nil {
+		return err
+	}
+	for _, ns := range invalid {
+		setupLog.Info("Ignoring invalid entry in httproute gateway-namespace allowlist; "+
+			"entries must be valid RFC 1123 namespace names", "entry", ns)
+	}
+	httproute.SetAllowedGatewayNamespaces(allowed)
+	if len(allowed) > 0 {
+		setupLog.Info("HTTPRoute provider gateway-namespace allowlist configured",
+			"allowedGatewayNamespaces", allowed)
+	} else {
+		setupLog.Info("HTTPRoute provider gateway-namespace is unrestricted; set " +
+			"--httproute-allowed-gateway-namespaces to limit which namespaces an HTTPRoute may attach to")
+	}
+	return nil
 }
 
 func parseAdmissionFlags(imageAllowlist string, requireImageDigest bool, maxStorageMounts int, requiredLabels string, disallowPrivilegedSecurityContext bool) *webhookpolicy.AdmissionPolicy {
