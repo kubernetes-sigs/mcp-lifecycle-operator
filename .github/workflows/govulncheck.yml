@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   govulncheck:
-    name: Run on Ubuntu
+    name: Govulncheck
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   test:
-    name: Run on Ubuntu
+    name: Tests
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
