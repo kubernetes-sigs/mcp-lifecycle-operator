@@ -136,10 +136,13 @@ func main() {
 	flag.StringVar(&requiredLabels, "required-labels", "",
 		"Comma-separated list of labels that must be present on MCPServer resources. "+
 			"Falls back to REQUIRED_LABELS env var if not set. Empty means no requirement.")
-	flag.BoolVar(&disallowPrivilegedSecurityContext, "disallow-privileged-security-context", false,
-		"If set, the validation webhook rejects MCPServer pod/container security contexts that request "+
-			"privileged, allowPrivilegeEscalation, runAsNonRoot=false, runAsUser=0, or privileged capabilities. "+
-			"Falls back to DISALLOW_PRIVILEGED_SECURITY_CONTEXT env var if not set.")
+	flag.BoolVar(&disallowPrivilegedSecurityContext, "disallow-privileged-security-context", true,
+		"If set (the default), the validation webhook rejects MCPServer pod/container security contexts that "+
+			"request privileged, allowPrivilegeEscalation, runAsNonRoot=false, runAsUser=0, or privileged "+
+			"capabilities. This guardrail is on by default (secure-by-default) and only applies when the webhook "+
+			"is enabled (--enable-webhook). Opt out for the rare legitimate privileged MCP server with "+
+			"--disallow-privileged-security-context=false. Falls back to the DISALLOW_PRIVILEGED_SECURITY_CONTEXT "+
+			"env var (true/false) only when this flag is not explicitly provided.")
 	flag.StringVar(&networkPolicyDefaultPosture, "network-policy-default-posture", "open",
 		"Default NetworkPolicy posture applied to a managed workload when a network dimension is left "+
 			"unconfigured. \"open\" keeps the historical default; \"restricted\" denies unconfigured ingress by "+
@@ -287,7 +290,17 @@ func main() {
 	// reconciler can report whether admission policies are actually enforced.
 	var admissionPolicy *webhookpolicy.AdmissionPolicy
 	if enableWebhook {
-		admissionPolicy = parseAdmissionFlags(imageAllowlist, requireImageDigest, maxStorageMounts, requiredLabels, disallowPrivilegedSecurityContext)
+		// Detect whether the guardrail flag was explicitly provided so an explicit
+		// --disallow-privileged-security-context=false can opt out while the env
+		// var is still exported (flag wins over env). The guardrail defaults ON.
+		disallowPrivilegedFlagSet := false
+		flag.Visit(func(f *flag.Flag) {
+			if f.Name == "disallow-privileged-security-context" {
+				disallowPrivilegedFlagSet = true
+			}
+		})
+		admissionPolicy = parseAdmissionFlags(imageAllowlist, requireImageDigest, maxStorageMounts, requiredLabels,
+			disallowPrivilegedSecurityContext, disallowPrivilegedFlagSet)
 	}
 
 	reconciler := &controller.MCPServerReconciler{
@@ -489,13 +502,14 @@ func configureKuadrantProvider(allowedExtensionNamespaces string, flagSet bool) 
 	return nil
 }
 
-func parseAdmissionFlags(imageAllowlist string, requireImageDigest bool, maxStorageMounts int, requiredLabels string, disallowPrivilegedSecurityContext bool) *webhookpolicy.AdmissionPolicy {
+func parseAdmissionFlags(imageAllowlist string, requireImageDigest bool, maxStorageMounts int, requiredLabels string, disallowPrivilegedSecurityContext, disallowPrivilegedSecurityContextSet bool) *webhookpolicy.AdmissionPolicy {
 	policy := webhookpolicy.ParseAdmissionPolicy(setupLog, webhookpolicy.PolicyFlags{
-		ImageAllowlist:                    imageAllowlist,
-		RequireImageDigest:                requireImageDigest,
-		MaxStorageMounts:                  maxStorageMounts,
-		RequiredLabels:                    requiredLabels,
-		DisallowPrivilegedSecurityContext: disallowPrivilegedSecurityContext,
+		ImageAllowlist:                       imageAllowlist,
+		RequireImageDigest:                   requireImageDigest,
+		MaxStorageMounts:                     maxStorageMounts,
+		RequiredLabels:                       requiredLabels,
+		DisallowPrivilegedSecurityContext:    disallowPrivilegedSecurityContext,
+		DisallowPrivilegedSecurityContextSet: disallowPrivilegedSecurityContextSet,
 	})
 	if policy.HasActiveRules() {
 		setupLog.Info("Admission webhook policy configured",

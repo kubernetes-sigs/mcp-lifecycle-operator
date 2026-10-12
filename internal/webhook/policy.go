@@ -77,6 +77,14 @@ type PolicyFlags struct {
 	MaxStorageMounts                  int
 	RequiredLabels                    string
 	DisallowPrivilegedSecurityContext bool
+	// DisallowPrivilegedSecurityContextSet reports whether the
+	// --disallow-privileged-security-context flag was explicitly provided on the
+	// command line (via flag.Visit). It governs flag-vs-env precedence: because
+	// the guardrail now defaults ON, the DISALLOW_PRIVILEGED_SECURITY_CONTEXT env
+	// var must be able to turn it OFF, and an explicitly-set flag must win over
+	// the env var. This mirrors the precedence used for the gateway-namespace
+	// allowlists.
+	DisallowPrivilegedSecurityContextSet bool
 }
 
 // ParseAdmissionPolicy reads admission policy from CLI flags and environment
@@ -129,9 +137,26 @@ func ParseAdmissionPolicy(log logr.Logger, flags PolicyFlags) *AdmissionPolicy {
 		}
 	}
 
-	if !policy.DisallowPrivilegedSecurityContext {
-		if envVal := os.Getenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT"); envVal != "" {
-			policy.DisallowPrivilegedSecurityContext = strings.EqualFold(envVal, "true")
+	// The privileged-securityContext guardrail defaults ON (see the
+	// --disallow-privileged-security-context binding in cmd/main.go). The flag
+	// wins when explicitly provided; only when it is not provided does the
+	// DISALLOW_PRIVILEGED_SECURITY_CONTEXT env var apply. Because the default is
+	// now on, the env var must be able to turn the guardrail OFF (accepting
+	// true/false), not just on. It fails safe: an unrecognized value is ignored
+	// with a warning and the secure default is kept, so a typo cannot silently
+	// downgrade a security control. Only an explicit "false" opts out.
+	if !flags.DisallowPrivilegedSecurityContextSet {
+		if envVal := strings.TrimSpace(os.Getenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT")); envVal != "" {
+			switch {
+			case strings.EqualFold(envVal, "true"):
+				policy.DisallowPrivilegedSecurityContext = true
+			case strings.EqualFold(envVal, "false"):
+				policy.DisallowPrivilegedSecurityContext = false
+			default:
+				log.Info("Ignoring invalid DISALLOW_PRIVILEGED_SECURITY_CONTEXT value; "+
+					"keeping the privileged-securityContext guardrail enabled (expected true or false)",
+					"value", envVal)
+			}
 		}
 	}
 

@@ -27,8 +27,12 @@ func TestParseAdmissionFlags(t *testing.T) {
 	t.Setenv("REQUIRED_LABELS", "")
 	t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", "")
 
-	t.Run("no flags produces empty policy", func(t *testing.T) {
-		p := parseAdmissionFlags("", false, -1, "", false)
+	// The privileged-securityContext guardrail defaults ON (secure-by-default).
+	// When the flag is not provided, cmd/main.go passes the bound default (true)
+	// with flagSet=false; these tests pass that value explicitly to mirror the
+	// real wiring.
+	t.Run("no flags keeps guardrail on by default", func(t *testing.T) {
+		p := parseAdmissionFlags("", false, -1, "", true, false)
 		if len(p.ImageAllowlist) != 0 {
 			t.Errorf("expected empty allowlist, got %v", p.ImageAllowlist)
 		}
@@ -41,13 +45,16 @@ func TestParseAdmissionFlags(t *testing.T) {
 		if len(p.RequiredLabels) != 0 {
 			t.Errorf("expected empty required labels, got %v", p.RequiredLabels)
 		}
-		if p.DisallowPrivilegedSecurityContext {
-			t.Error("expected DisallowPrivilegedSecurityContext=false")
+		if !p.DisallowPrivilegedSecurityContext {
+			t.Error("expected DisallowPrivilegedSecurityContext=true (secure-by-default)")
+		}
+		if !p.HasActiveRules() {
+			t.Error("expected HasActiveRules=true because the guardrail is on by default")
 		}
 	})
 
 	t.Run("all flags set", func(t *testing.T) {
-		p := parseAdmissionFlags("ghcr.io/trusted/", true, 5, "team,env", true)
+		p := parseAdmissionFlags("ghcr.io/trusted/", true, 5, "team,env", true, true)
 		if len(p.ImageAllowlist) != 1 || p.ImageAllowlist[0] != "ghcr.io/trusted/" {
 			t.Errorf("unexpected allowlist: %v", p.ImageAllowlist)
 		}
@@ -65,13 +72,31 @@ func TestParseAdmissionFlags(t *testing.T) {
 		}
 	})
 
-	t.Run("env var fallback", func(t *testing.T) {
+	t.Run("explicit flag opt-out wins over env", func(t *testing.T) {
+		t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", "true")
+		// --disallow-privileged-security-context=false explicitly provided.
+		p := parseAdmissionFlags("", false, -1, "", false, true)
+		if p.DisallowPrivilegedSecurityContext {
+			t.Error("expected explicit --disallow-privileged-security-context=false to opt out over env=true")
+		}
+	})
+
+	t.Run("env opt-out applies when flag unset", func(t *testing.T) {
+		t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", "false")
+		// Flag not provided: bound default (true) passed with flagSet=false; env turns it off.
+		p := parseAdmissionFlags("", false, -1, "", true, false)
+		if p.DisallowPrivilegedSecurityContext {
+			t.Error("expected DISALLOW_PRIVILEGED_SECURITY_CONTEXT=false to opt out when flag unset")
+		}
+	})
+
+	t.Run("env var fallback for other policies", func(t *testing.T) {
 		t.Setenv("IMAGE_ALLOWLIST", "quay.io/")
 		t.Setenv("REQUIRE_IMAGE_DIGEST", "true")
 		t.Setenv("MAX_STORAGE_MOUNTS", "3")
 		t.Setenv("REQUIRED_LABELS", "app")
 		t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", "true")
-		p := parseAdmissionFlags("", false, -1, "", false)
+		p := parseAdmissionFlags("", false, -1, "", true, false)
 		if len(p.ImageAllowlist) != 1 || p.ImageAllowlist[0] != "quay.io/" {
 			t.Errorf("expected env fallback allowlist, got %v", p.ImageAllowlist)
 		}
@@ -85,7 +110,7 @@ func TestParseAdmissionFlags(t *testing.T) {
 			t.Errorf("expected required labels from env, got %v", p.RequiredLabels)
 		}
 		if !p.DisallowPrivilegedSecurityContext {
-			t.Error("expected DisallowPrivilegedSecurityContext=true from env")
+			t.Error("expected DisallowPrivilegedSecurityContext=true")
 		}
 	})
 }

@@ -33,6 +33,7 @@ func TestParseAdmissionPolicy(t *testing.T) {
 	t.Setenv("REQUIRE_IMAGE_DIGEST", "")
 	t.Setenv("MAX_STORAGE_MOUNTS", "")
 	t.Setenv("REQUIRED_LABELS", "")
+	t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", "")
 
 	t.Run("empty allowlist", func(t *testing.T) {
 		p := ParseAdmissionPolicy(log, PolicyFlags{MaxStorageMounts: -1})
@@ -137,20 +138,103 @@ func TestParseAdmissionPolicy(t *testing.T) {
 		assert.Equal(t, "flag-label", p.RequiredLabels[0])
 	})
 
-	t.Run("disallow privileged security context from flag", func(t *testing.T) {
-		p := ParseAdmissionPolicy(log, PolicyFlags{DisallowPrivilegedSecurityContext: true, MaxStorageMounts: -1})
-		assert.True(t, p.DisallowPrivilegedSecurityContext)
-	})
-
-	t.Run("disallow privileged security context from env", func(t *testing.T) {
+	// The privileged-securityContext guardrail defaults ON (secure-by-default);
+	// the on-by-default value is bound to the --disallow-privileged-security-context
+	// flag in cmd/main.go and arrives here via PolicyFlags.DisallowPrivilegedSecurityContext.
+	// These cases exercise the flag-vs-env precedence (flag wins when explicitly
+	// set; env applies only when the flag is not set; env may turn the guardrail
+	// on or off).
+	t.Run("disallow privileged security context explicit flag wins over env", func(t *testing.T) {
 		t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", "true")
-		p := ParseAdmissionPolicy(log, PolicyFlags{MaxStorageMounts: -1})
+		p := ParseAdmissionPolicy(log, PolicyFlags{
+			DisallowPrivilegedSecurityContext:    false,
+			DisallowPrivilegedSecurityContextSet: true,
+			MaxStorageMounts:                     -1,
+		})
+		assert.False(t, p.DisallowPrivilegedSecurityContext, "explicit --disallow-privileged-security-context=false must opt out even when env says true")
+	})
+
+	t.Run("disallow privileged security context explicit flag on", func(t *testing.T) {
+		p := ParseAdmissionPolicy(log, PolicyFlags{
+			DisallowPrivilegedSecurityContext:    true,
+			DisallowPrivilegedSecurityContextSet: true,
+			MaxStorageMounts:                     -1,
+		})
 		assert.True(t, p.DisallowPrivilegedSecurityContext)
 	})
 
-	t.Run("disallow privileged security context defaults off", func(t *testing.T) {
-		p := ParseAdmissionPolicy(log, PolicyFlags{MaxStorageMounts: -1})
-		assert.False(t, p.DisallowPrivilegedSecurityContext)
+	t.Run("disallow privileged security context env opt-out when flag unset", func(t *testing.T) {
+		t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", "false")
+		// Flag unset: the bound default (true) arrives as the flag value; env turns it off.
+		p := ParseAdmissionPolicy(log, PolicyFlags{
+			DisallowPrivilegedSecurityContext:    true,
+			DisallowPrivilegedSecurityContextSet: false,
+			MaxStorageMounts:                     -1,
+		})
+		assert.False(t, p.DisallowPrivilegedSecurityContext, "DISALLOW_PRIVILEGED_SECURITY_CONTEXT=false must opt out when the flag is not set")
+	})
+
+	t.Run("disallow privileged security context env opt-in when flag unset", func(t *testing.T) {
+		t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", "true")
+		p := ParseAdmissionPolicy(log, PolicyFlags{
+			DisallowPrivilegedSecurityContext:    false,
+			DisallowPrivilegedSecurityContextSet: false,
+			MaxStorageMounts:                     -1,
+		})
+		assert.True(t, p.DisallowPrivilegedSecurityContext)
+	})
+
+	t.Run("disallow privileged security context defaults on", func(t *testing.T) {
+		// Flag unset and env unset: the on-by-default value bound to the flag is preserved.
+		p := ParseAdmissionPolicy(log, PolicyFlags{
+			DisallowPrivilegedSecurityContext:    true,
+			DisallowPrivilegedSecurityContextSet: false,
+			MaxStorageMounts:                     -1,
+		})
+		assert.True(t, p.DisallowPrivilegedSecurityContext)
+	})
+
+	t.Run("disallow privileged security context fails safe on unrecognized env", func(t *testing.T) {
+		// A value that is neither "true" nor "false" (typo, "1", "yes", trailing
+		// space, etc.) must NOT silently disable the guardrail: a secure-by-default
+		// control fails safe, keeping the default ON rather than failing open.
+		for _, bad := range []string{"1", "yes", "on", "enabled", "tru", "truee", "garbage"} {
+			t.Run(bad, func(t *testing.T) {
+				t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", bad)
+				p := ParseAdmissionPolicy(log, PolicyFlags{
+					DisallowPrivilegedSecurityContext:    true,
+					DisallowPrivilegedSecurityContextSet: false,
+					MaxStorageMounts:                     -1,
+				})
+				assert.True(t, p.DisallowPrivilegedSecurityContext,
+					"unrecognized DISALLOW_PRIVILEGED_SECURITY_CONTEXT=%q must keep the guardrail enabled", bad)
+			})
+		}
+	})
+
+	t.Run("disallow privileged security context env accepts true/false case-insensitively", func(t *testing.T) {
+		for _, v := range []string{"false", "FALSE", " false ", "False"} {
+			t.Run("off/"+v, func(t *testing.T) {
+				t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", v)
+				p := ParseAdmissionPolicy(log, PolicyFlags{
+					DisallowPrivilegedSecurityContext:    true,
+					DisallowPrivilegedSecurityContextSet: false,
+					MaxStorageMounts:                     -1,
+				})
+				assert.False(t, p.DisallowPrivilegedSecurityContext)
+			})
+		}
+		for _, v := range []string{"true", "TRUE", " true ", "True"} {
+			t.Run("on/"+v, func(t *testing.T) {
+				t.Setenv("DISALLOW_PRIVILEGED_SECURITY_CONTEXT", v)
+				p := ParseAdmissionPolicy(log, PolicyFlags{
+					DisallowPrivilegedSecurityContext:    false,
+					DisallowPrivilegedSecurityContextSet: false,
+					MaxStorageMounts:                     -1,
+				})
+				assert.True(t, p.DisallowPrivilegedSecurityContext)
+			})
+		}
 	})
 }
 
