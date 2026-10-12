@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 )
 
 // crdWatcher watches CustomResourceDefinition objects and starts provider
@@ -75,8 +76,14 @@ func (w *crdWatcher) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 }
 
 func (w *crdWatcher) setupWithManager(mgr ctrl.Manager) error {
+	// Watch CRDs metadata-only. The watch is used purely as an event trigger;
+	// CRD availability is checked via the RESTMapper (see missingCRDs) and the
+	// CRD object content - in particular the large per-version OpenAPI v3 schema -
+	// is never read. A metadata-only watch keeps the full CRD spec out of the
+	// manager cache, mirroring the ConfigMap metadata-only watch already used in
+	// this repo.
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&apiextensionsv1.CustomResourceDefinition{}).
+		For(&apiextensionsv1.CustomResourceDefinition{}, builder.OnlyMetadata).
 		Named("provider-crd-watcher").
 		Complete(w)
 }

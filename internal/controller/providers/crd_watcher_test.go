@@ -23,9 +23,13 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 type fakeManager struct {
@@ -103,6 +107,32 @@ func TestAllCRDsPresent(t *testing.T) {
 			t.Fatalf("expected no missing CRDs, got %v", missing)
 		}
 	})
+}
+
+func TestSetupWithManager(t *testing.T) {
+	// Build a real controller-runtime manager from a dummy, unreachable
+	// rest.Config. setupWithManager only constructs the controller and a lazy
+	// metadata informer; neither dials the API server until the manager is
+	// Started, which this test never does. Metrics and health probe binds are
+	// disabled so nothing listens on a port.
+	scheme := runtime.NewScheme()
+	if err := apiextensionsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add apiextensionsv1 to scheme: %v", err)
+	}
+
+	mgr, err := ctrl.NewManager(&rest.Config{Host: "127.0.0.1:0"}, ctrl.Options{
+		Scheme:                 scheme,
+		Metrics:                metricsserver.Options{BindAddress: "0"},
+		HealthProbeBindAddress: "0",
+	})
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	w := &crdWatcher{mgr: mgr, started: map[string]bool{}}
+	if err := w.setupWithManager(mgr); err != nil {
+		t.Fatalf("setupWithManager() unexpected error: %v", err)
+	}
 }
 
 func TestCRDWatcherReconcile(t *testing.T) {
