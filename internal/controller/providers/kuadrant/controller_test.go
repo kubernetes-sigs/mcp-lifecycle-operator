@@ -916,8 +916,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 				Listeners: []gatewayv1.Listener{
 					{
 						Name:     "mcps",
-						Port:     443,
-						Protocol: gatewayv1.HTTPSProtocolType,
+						Port:     80,
+						Protocol: gatewayv1.HTTPProtocolType,
 						Hostname: hostnamePtr("public.mcp.example.com"),
 					},
 				},
@@ -956,7 +956,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
 		Expect(registered).NotTo(BeNil())
 		Expect(registered.Status).To(Equal(metav1.ConditionTrue))
-		Expect(binding.Status.URL).To(Equal("https://public.mcp.example.com/mcp"))
+		Expect(binding.Status.URL).To(Equal("http://public.mcp.example.com/mcp"))
 	})
 
 	It("should set PublicAddressPending when no publicHost and no public listener hostname", func() {
@@ -2306,6 +2306,59 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		_, err := doReconcile()
 		Expect(err).NotTo(HaveOccurred())
+
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
+		registered := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+		Expect(registered).NotTo(BeNil())
+		Expect(registered.Status).To(Equal(metav1.ConditionFalse))
+		Expect(registered.Message).To(ContainSubstring("HTTPS"))
+		Expect(registered.Message).To(ContainSubstring("wildcard"))
+	})
+
+	It("should error when section-name points to an HTTPS direct listener even when route-hostname is set explicitly", func() {
+		createMCPServer()
+
+		gw := &gatewayv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
+			},
+			Spec: gatewayv1.GatewaySpec{
+				GatewayClassName: "test",
+				Listeners: []gatewayv1.Listener{
+					{
+						Name:     "secure-direct",
+						Port:     443,
+						Protocol: gatewayv1.HTTPSProtocolType,
+						Hostname: hostnamePtr("mcp.example.com"),
+					},
+				},
+			},
+		}
+		ensureGatewayNamespace(ctx)
+		Expect(k8sClient.Create(ctx, gw)).To(Succeed())
+		defer func() { _ = k8sClient.Delete(ctx, gw) }()
+
+		createGatewayExtension("mcp.example.com", true)
+
+		By("setting route-hostname explicitly, which must not bypass the HTTPS guard")
+		createConfigMap(map[string]string{
+			configKeyExtensionName:      gatewayExtensionName,
+			configKeyExtensionNamespace: "gateway-ns",
+			configKeySectionName:        "secure-direct",
+			configKeyRouteHostname:      "route.mcp.local",
+			configKeyPrefix:             "myserver_",
+		})
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+
+		By("verifying no HTTPRoute was created")
+		route := &gatewayv1.HTTPRoute{}
+		getErr := k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)
+		Expect(apierrors.IsNotFound(getErr)).To(BeTrue())
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{}
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, binding)).To(Succeed())
