@@ -132,6 +132,7 @@ func TestMCPServerUpdatePort(t *testing.T) {
 
 			f.UpdateWithRetry(ctx, t, r, server, func(s *mcpv1beta1.MCPServer) {
 				s.Spec.Config.Port = 3002
+				s.Spec.Config.Arguments = []string{"--port", "3002", "--read-only"}
 			})
 			t.Log("updated MCPServer port to 3002")
 
@@ -141,8 +142,8 @@ func TestMCPServerUpdatePort(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.WaitForMCPServerReconciled(ctx, t, r, server)
-			t.Log("MCPServer reconciled after port update")
+			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
+			t.Log("MCPServer reconciled and ready after port update")
 
 			return ctx
 		}).
@@ -154,7 +155,7 @@ func TestMCPServerUpdatePort(t *testing.T) {
 				t.Fatalf("failed to get MCPServer: %v", err)
 			}
 
-			f.AssertAddressUnset(t, server)
+			f.AssertAddressURL(t, server, 3002)
 
 			svc := &corev1.Service{}
 			if err := r.Get(ctx, server.Name, server.Namespace, svc); err != nil {
@@ -188,7 +189,7 @@ func TestMCPServerUpdatePort(t *testing.T) {
 				t.Fatal("expected a container port 3002 in the Deployment")
 			}
 
-			t.Logf("port update verified: address unset (not Available), servicePort=%d, containerPort=3002",
+			t.Logf("port update verified: address URL on port 3002, servicePort=%d, containerPort=3002",
 				svc.Spec.Ports[0].Port)
 
 			return ctx
