@@ -231,7 +231,7 @@ For each registered binding, the controller creates:
     - Matches the MCPServer's path (default `/mcp`) using `PathPrefix`
     - Routes traffic to the MCPServer's Service and port
 
-2. An **MCPServerRegistration** (`mcp.kuadrant.io/v1alpha1`) that:
+2. An **MCPServerRegistration** (`mcp.kuadrant.io/v1`) that:
     - References the HTTPRoute via `targetRef`
     - Sets the MCP server path for the broker
     - Sets the tool/prompt prefix if configured

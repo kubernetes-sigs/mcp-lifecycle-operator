@@ -87,7 +87,7 @@ cloud platforms this Service gets an external load balancer (ELB).
 ### Step 2: Create the MCPGatewayExtension
 
 ```yaml
-apiVersion: mcp.kuadrant.io/v1alpha1
+apiVersion: mcp.kuadrant.io/v1
 kind: MCPGatewayExtension
 metadata:
   name: mcp-gateway-extension
