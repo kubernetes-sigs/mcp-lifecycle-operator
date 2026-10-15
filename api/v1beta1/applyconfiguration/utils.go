@@ -48,6 +48,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1beta1.MCPServerAddressApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("MCPServerCapabilities"):
 		return &apiv1beta1.MCPServerCapabilitiesApplyConfiguration{}
+	case v1beta1.SchemeGroupVersion.WithKind("MCPServerCard"):
+		return &apiv1beta1.MCPServerCardApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("MCPServerInfo"):
 		return &apiv1beta1.MCPServerInfoApplyConfiguration{}
 	case v1beta1.SchemeGroupVersion.WithKind("MCPServerSpec"):

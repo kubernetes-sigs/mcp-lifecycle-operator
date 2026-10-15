@@ -44,6 +44,10 @@ type MCPServerStatusApplyConfiguration struct {
 	// MCP server during the protocol handshake (initialize or server/discover).
 	// This field is populated only after a successful handshake.
 	ServerInfo *MCPServerInfoApplyConfiguration `json:"serverInfo,omitempty"`
+	// ServerCard is a structured summary of the MCP server for external
+	// discovery. Populated after a successful handshake. Nil when the
+	// handshake has not completed.
+	ServerCard *MCPServerCardApplyConfiguration `json:"serverCard,omitempty"`
 	// Replicas is the total number of desired pods targeted by the owned Deployment.
 	Replicas *int32 `json:"replicas,omitempty"`
 	// ReadyReplicas is the number of pods targeted by the owned Deployment with a Ready condition.
@@ -120,6 +124,14 @@ func (b *MCPServerStatusApplyConfiguration) WithAddress(value *MCPServerAddressA
 // If called multiple times, the ServerInfo field is set to the value of the last call.
 func (b *MCPServerStatusApplyConfiguration) WithServerInfo(value *MCPServerInfoApplyConfiguration) *MCPServerStatusApplyConfiguration {
 	b.ServerInfo = value
+	return b
+}
+
+// WithServerCard sets the ServerCard field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ServerCard field is set to the value of the last call.
+func (b *MCPServerStatusApplyConfiguration) WithServerCard(value *MCPServerCardApplyConfiguration) *MCPServerStatusApplyConfiguration {
+	b.ServerCard = value
 	return b
 }
 
