@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   test-e2e:
-    name: Run on Ubuntu
+    name: E2E Tests
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
