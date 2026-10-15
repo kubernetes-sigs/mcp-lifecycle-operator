@@ -6,6 +6,10 @@ edit_uri: edit/main/site-src/
 site_dir: site
 docs_dir: site-src
 
+# Contributor README only; the site landing page is index.md.
+exclude_docs: |
+  README.md
+
 theme:
   name: material
   icon:
@@ -56,6 +60,9 @@ extra_css:
   - stylesheets/extra.css
 
 extra:
+  version:
+    provider: mike
+    default: latest
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/kubernetes-sigs/mcp-lifecycle-operator
