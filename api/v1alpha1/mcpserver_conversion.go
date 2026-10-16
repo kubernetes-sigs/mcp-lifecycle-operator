@@ -515,11 +515,16 @@ func mergeAvailableAndVerifiedToReady(available, verified *metav1.Condition) met
 		}
 	}
 
-	// Workload is available and verification passed (or is unknown/skipped).
+	// Workload is available and verification passed.
 	if verified != nil && verified.Status == metav1.ConditionTrue {
 		src := verified
+		transitionTime := verified.LastTransitionTime
 		if available != nil {
 			src = available
+			// Readiness became True when the last prerequisite became True.
+			if available.LastTransitionTime.After(transitionTime.Time) {
+				transitionTime = available.LastTransitionTime
+			}
 		}
 		return metav1.Condition{
 			Type:               conditionTypeReady,
@@ -527,7 +532,7 @@ func mergeAvailableAndVerifiedToReady(available, verified *metav1.Condition) met
 			Reason:             conditionTypeAvailable,
 			Message:            src.Message,
 			ObservedGeneration: src.ObservedGeneration,
-			LastTransitionTime: src.LastTransitionTime,
+			LastTransitionTime: transitionTime,
 		}
 	}
 
