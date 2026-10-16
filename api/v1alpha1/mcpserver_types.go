@@ -94,7 +94,7 @@ type Source struct {
 }
 
 // StorageType defines the type of storage mount.
-// +kubebuilder:validation:Enum=ConfigMap;Secret;EmptyDir
+// +kubebuilder:validation:Enum=ConfigMap;Secret;EmptyDir;PersistentVolumeClaim
 type StorageType string
 
 const (
@@ -104,6 +104,8 @@ const (
 	StorageTypeSecret StorageType = "Secret"
 	// StorageTypeEmptyDir indicates an EmptyDir volume source.
 	StorageTypeEmptyDir StorageType = "EmptyDir"
+	// StorageTypePersistentVolumeClaim indicates a PersistentVolumeClaim volume source.
+	StorageTypePersistentVolumeClaim StorageType = "PersistentVolumeClaim"
 )
 
 // MountPermissions defines the access permissions for a volume mount.
@@ -120,14 +122,15 @@ const (
 	MountPermissionsRecursiveReadOnly MountPermissions = "RecursiveReadOnly"
 )
 
-// StorageSource defines the source of the storage to mount (ConfigMap, Secret, or EmptyDir).
+// StorageSource defines the source of the storage to mount (ConfigMap, Secret, EmptyDir, or PersistentVolumeClaim).
 // +kubebuilder:validation:XValidation:rule="self.type == 'ConfigMap' ? has(self.configMap) : !has(self.configMap)",message="configMap must be set when type is ConfigMap and must not be set otherwise"
 // +kubebuilder:validation:XValidation:rule="self.type == 'Secret' ? has(self.secret) : !has(self.secret)",message="secret must be set when type is Secret and must not be set otherwise"
 // +kubebuilder:validation:XValidation:rule="self.type == 'EmptyDir' ? has(self.emptyDir) : !has(self.emptyDir)",message="emptyDir must be set when type is EmptyDir and must not be set otherwise"
+// +kubebuilder:validation:XValidation:rule="self.type == 'PersistentVolumeClaim' ? has(self.persistentVolumeClaim) : !has(self.persistentVolumeClaim)",message="persistentVolumeClaim must be set when type is PersistentVolumeClaim and must not be set otherwise"
 type StorageSource struct {
 	// Type is a required field that specifies the type of volume source.
-	// Allowed values are: ConfigMap, Secret, EmptyDir.
-	// This determines which volume source field (configMap, secret, or emptyDir) should be configured.
+	// Allowed values are: ConfigMap, Secret, EmptyDir, PersistentVolumeClaim.
+	// This determines which volume source field (configMap, secret, emptyDir, or persistentVolumeClaim) should be configured.
 	// +kubebuilder:validation:Required
 	Type StorageType `json:"type,omitempty"`
 
@@ -145,11 +148,16 @@ type StorageSource struct {
 	// Uses native Kubernetes EmptyDirVolumeSource type for full feature parity.
 	// +optional
 	EmptyDir *corev1.EmptyDirVolumeSource `json:"emptyDir,omitempty"`
+
+	// PersistentVolumeClaim specifies a PersistentVolumeClaim volume source (when Type is PersistentVolumeClaim).
+	// Uses native Kubernetes PersistentVolumeClaimVolumeSource type for full feature parity.
+	// +optional
+	PersistentVolumeClaim *corev1.PersistentVolumeClaimVolumeSource `json:"persistentVolumeClaim,omitempty"`
 }
 
 // StorageMount defines a storage mount combining volume source and mount configuration.
 // The Path and Permissions fields apply to all storage types, while Source contains
-// the type-specific configuration (ConfigMap, Secret, or EmptyDir).
+// the type-specific configuration (ConfigMap, Secret, EmptyDir, or PersistentVolumeClaim).
 type StorageMount struct {
 	// Path is a required field that specifies where the volume should be mounted in the container.
 	// Must be an absolute path (starting with /).
@@ -210,7 +218,7 @@ type ServerConfig struct {
 	// +optional
 	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
 
-	// Storage defines storage mounts for ConfigMaps, Secrets, and EmptyDirs.
+	// Storage defines storage mounts for ConfigMaps, Secrets, EmptyDirs, and PersistentVolumeClaims.
 	// Each item uses native Kubernetes volume source types for consistency and feature parity.
 	// If specified, must contain at least 1 item. Maximum 64 items.
 	// Each storage mount must have a unique path.
