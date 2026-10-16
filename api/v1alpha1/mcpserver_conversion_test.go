@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -764,5 +765,146 @@ func TestConversionRoundTrip_ReadyConditionReasons(t *testing.T) {
 				t.Errorf("Ready.Message = %q, want %q", got.Message, tt.condition.Message)
 			}
 		})
+	}
+}
+
+func TestConversion_HubToSpoke_ReadyTransitionTime(t *testing.T) {
+	t0 := metav1.Unix(100, 0)
+	t1 := metav1.Unix(200, 0)
+	t2 := metav1.Unix(300, 0)
+
+	tests := []struct {
+		name          string
+		availableTime metav1.Time
+		verifiedTime  metav1.Time
+		wantTime      metav1.Time
+	}{
+		{
+			name:          "verification transitions last",
+			availableTime: t0,
+			verifiedTime:  t2,
+			wantTime:      t2,
+		},
+		{
+			name:          "availability transitions last",
+			availableTime: t2,
+			verifiedTime:  t0,
+			wantTime:      t2,
+		},
+		{
+			name:          "simultaneous transitions",
+			availableTime: t1,
+			verifiedTime:  t1,
+			wantTime:      t1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			available := metav1.Condition{
+				Type: "Available", Status: metav1.ConditionTrue, Reason: "Available",
+				Message: "Workload is running", ObservedGeneration: 3, LastTransitionTime: tt.availableTime,
+			}
+			verified := metav1.Condition{
+				Type: "Verified", Status: metav1.ConditionTrue, Reason: "Verified",
+				Message: "MCP handshake succeeded", ObservedGeneration: 3, LastTransitionTime: tt.verifiedTime,
+			}
+			hub := &v1beta1.MCPServer{
+				Status: v1beta1.MCPServerStatus{
+					ObservedGeneration: 3,
+					Conditions:         []metav1.Condition{available, verified},
+				},
+			}
+			spoke := &MCPServer{}
+			if err := spoke.ConvertFrom(hub); err != nil {
+				t.Fatalf("ConvertFrom failed: %v", err)
+			}
+			want := available
+			want.Type = "Ready"
+			want.LastTransitionTime = tt.wantTime
+			if diff := cmp.Diff(&want, meta.FindStatusCondition(spoke.Status.Conditions, "Ready")); diff != "" {
+				t.Errorf("Ready mismatch (-want +got):\n%s", diff)
+			}
+			if spoke.Status.ObservedGeneration != hub.Status.ObservedGeneration {
+				t.Errorf("status.observedGeneration = %d, want %d", spoke.Status.ObservedGeneration, hub.Status.ObservedGeneration)
+			}
+		})
+	}
+}
+
+func TestConversion_HubToSpoke_ReadyVerificationRecovery(t *testing.T) {
+	available := metav1.Condition{
+		Type: "Available", Status: metav1.ConditionTrue, Reason: "Available",
+		Message: "Workload is running", ObservedGeneration: 3, LastTransitionTime: metav1.Unix(100, 0),
+	}
+	steps := []struct {
+		status  metav1.ConditionStatus
+		reason  string
+		message string
+		time    metav1.Time
+	}{
+		{metav1.ConditionTrue, "Verified", "MCP handshake succeeded", metav1.Unix(100, 0)},
+		{metav1.ConditionFalse, "EndpointUnavailable", "connection refused", metav1.Unix(200, 0)},
+		{metav1.ConditionTrue, "Verified", "MCP handshake succeeded", metav1.Unix(300, 0)},
+	}
+	for _, step := range steps {
+		hub := &v1beta1.MCPServer{
+			Status: v1beta1.MCPServerStatus{
+				Conditions: []metav1.Condition{
+					available,
+					{
+						Type: "Verified", Status: step.status, Reason: step.reason,
+						Message: step.message, ObservedGeneration: 3, LastTransitionTime: step.time,
+					},
+				},
+			},
+		}
+		spoke := &MCPServer{}
+		if err := spoke.ConvertFrom(hub); err != nil {
+			t.Fatalf("ConvertFrom failed: %v", err)
+		}
+		want := available
+		want.Type = "Ready"
+		want.Status = step.status
+		want.LastTransitionTime = step.time
+		if step.status == metav1.ConditionFalse {
+			want.Reason = "MCPEndpointUnavailable"
+			want.Message = step.message
+		}
+		if diff := cmp.Diff(&want, meta.FindStatusCondition(spoke.Status.Conditions, "Ready")); diff != "" {
+			t.Errorf("Ready at %s mismatch (-want +got):\n%s", step.time, diff)
+		}
+	}
+}
+
+func TestConversion_HubToSpoke_ReadyUnverifiedCompatibility(t *testing.T) {
+	for _, reason := range []string{"Available", "ScaledToZero"} {
+		for _, missingVerified := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/missingVerified=%t", reason, missingVerified), func(t *testing.T) {
+				available := metav1.Condition{
+					Type: "Available", Status: metav1.ConditionTrue, Reason: reason,
+					Message: "workload status", ObservedGeneration: 3, LastTransitionTime: metav1.Unix(100, 0),
+				}
+				hub := &v1beta1.MCPServer{
+					Status: v1beta1.MCPServerStatus{Conditions: []metav1.Condition{available}},
+				}
+				if !missingVerified {
+					hub.Status.Conditions = append(hub.Status.Conditions, metav1.Condition{
+						Type: "Verified", Status: metav1.ConditionUnknown, Reason: "NotVerified",
+						Message: "Handshake has not been attempted", ObservedGeneration: 3,
+						LastTransitionTime: metav1.Unix(300, 0),
+					})
+				}
+				spoke := &MCPServer{}
+				if err := spoke.ConvertFrom(hub); err != nil {
+					t.Fatalf("ConvertFrom failed: %v", err)
+				}
+				want := available
+				want.Type = "Ready"
+				if diff := cmp.Diff(&want, meta.FindStatusCondition(spoke.Status.Conditions, "Ready")); diff != "" {
+					t.Errorf("Ready mismatch (-want +got):\n%s", diff)
+				}
+			})
+		}
 	}
 }
