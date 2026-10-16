@@ -27,10 +27,10 @@ import (
 //
 // ServerConfig defines how the MCP server should be configured when it runs.
 type ServerConfigApplyConfiguration struct {
-	// Port is a required field that specifies the port number on which the MCP server listens for connections.
+	// Port specifies the port number on which the MCP server listens for connections.
 	// Must be between 1 and 65535.
-	// This should match the port that the MCP server container exposes and will be used for
-	// configuring the Kubernetes Service.
+	// Required when serviceRef is not set. When serviceRef is set and port is omitted,
+	// the port is resolved from the referenced Service.
 	Port *int32 `json:"port,omitempty"`
 	// Arguments are command line arguments for the MCP server container.
 	// Use this to pass configuration flags to the server.

@@ -28,6 +28,7 @@ const (
 	SpecUpdate = "spec-update"
 	Drift      = "drift"
 	Ownership  = "ownership"
+	BYO        = "byo"
 
 	// Configuration scenarios.
 	Storage  = "storage"
