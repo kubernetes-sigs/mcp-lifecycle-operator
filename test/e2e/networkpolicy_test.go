@@ -20,14 +20,19 @@ package e2e
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"sigs.k8s.io/e2e-framework/klient/k8s"
+	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
 	"sigs.k8s.io/e2e-framework/klient/wait"
 	"sigs.k8s.io/e2e-framework/klient/wait/conditions"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
@@ -38,6 +43,153 @@ import (
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
 )
+
+const (
+	// envNetworkPolicyPosture is an OPTIONAL override: when set it forces the
+	// posture the suite asserts, regardless of what is deployed. When it is
+	// unset/empty the posture is auto-detected from the live operator (see
+	// networkPolicyPosture). Our own CI sets it to exercise both modes; other
+	// runners (e.g. downstream smoke that deploys restricted) can leave it unset
+	// and still assert the right posture with zero wiring.
+	envNetworkPolicyPosture = "E2E_NETWORK_POLICY_POSTURE"
+
+	// networkPolicyPostureFlag is the operator flag whose value is the operand's
+	// default NetworkPolicy posture. Compared with leading dashes stripped so both
+	// -flag=value and --flag=value match.
+	networkPolicyPostureFlag = "network-policy-default-posture"
+
+	// managerContainerName is the operator controller-manager container name
+	// (config/manager/manager.yaml) that carries the posture flag.
+	managerContainerName = "manager"
+
+	// posturePolicyOpen is the historical default: allow-all ingress on the
+	// server port when the server declares no source of its own.
+	posturePolicyOpen = "open"
+	// posturePolicyRestricted is the least-privilege default the product ships
+	// with downstream: deny-by-default ingress plus operator-derived peers.
+	posturePolicyRestricted = "restricted"
+)
+
+// networkPolicyPosture reports the operand NetworkPolicy default posture the
+// assertions should expect. E2E_NETWORK_POLICY_POSTURE, when set, is an explicit
+// override and wins (an unrecognized value fails the test). When it is
+// unset/empty the posture is auto-detected from the live operator, so any runner
+// self-adjusts to whatever posture the operand was actually deployed with without
+// having to set the env var.
+func networkPolicyPosture(ctx context.Context, t *testing.T, cfg *envconf.Config) string {
+	t.Helper()
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv(envNetworkPolicyPosture))); v != "" {
+		switch v {
+		case posturePolicyOpen:
+			return posturePolicyOpen
+		case posturePolicyRestricted:
+			return posturePolicyRestricted
+		default:
+			t.Fatalf("invalid %s %q: must be %q or %q", envNetworkPolicyPosture, v, posturePolicyOpen, posturePolicyRestricted)
+			return ""
+		}
+	}
+	return detectOperandPosture(ctx, t, cfg)
+}
+
+// detectOperandPosture resolves the effective NetworkPolicy default posture from
+// the live operator by scanning the controller-manager Deployment's manager
+// container args for --network-policy-default-posture. The Deployment arg is the
+// source of truth for the default posture; an absent flag resolves to "open", the
+// operator's built-in default. The operator Deployment is located via the
+// discovery framework (its namespace) and the same control-plane label selector
+// the framework already uses for the operator pod.
+func detectOperandPosture(ctx context.Context, t *testing.T, cfg *envconf.Config) string {
+	t.Helper()
+	ns := f.MustDiscoverOperatorOnce(ctx, cfg, t).Namespace
+	if ns == "" {
+		t.Fatal("could not resolve operator namespace to detect the NetworkPolicy posture")
+	}
+
+	var deployments appsv1.DeploymentList
+	if err := cfg.Client().Resources(ns).List(ctx, &deployments,
+		resources.WithLabelSelector(f.OperatorControllerSelector),
+	); err != nil {
+		t.Fatalf("listing operator deployments in %s: %v", ns, err)
+	}
+	if len(deployments.Items) == 0 {
+		t.Fatalf("no operator controller-manager deployment found in %s", ns)
+	}
+
+	deploy := &deployments.Items[0]
+	args, ok := managerContainerArgs(deploy)
+	if !ok {
+		// Fail rather than default to "open": a missing manager container means
+		// detection is broken, and silently asserting the laxer posture would let
+		// a real restricted-vs-open regression pass. If this ever fires because
+		// the container was renamed or wrapped, set E2E_NETWORK_POLICY_POSTURE to
+		// assert explicitly.
+		t.Fatalf("operator deployment %s/%s has no %q container to read the NetworkPolicy posture from",
+			ns, deploy.Name, managerContainerName)
+	}
+	posture, err := postureFromArgs(args)
+	if err != nil {
+		t.Fatalf("detecting NetworkPolicy posture from operator deployment %s/%s: %v", ns, deploy.Name, err)
+	}
+	t.Logf("auto-detected operand NetworkPolicy posture %q from deployment %s/%s", posture, ns, deploy.Name)
+	return posture
+}
+
+// managerContainerArgs returns the args of the manager container and whether that
+// container exists. The caller distinguishes "no manager container" (a detection
+// failure) from "manager container with no posture flag" (a legitimate default).
+func managerContainerArgs(deploy *appsv1.Deployment) ([]string, bool) {
+	for _, c := range deploy.Spec.Template.Spec.Containers {
+		if c.Name == managerContainerName {
+			return c.Args, true
+		}
+	}
+	return nil, false
+}
+
+// postureFromArgs scans container args for the posture flag in the --flag=value
+// form (leading dashes are ignored, so -flag=value matches too). That is the only
+// form the operator is ever deployed with: the restricted overlay appends
+// --network-policy-default-posture=restricted, and the base manager args are all
+// =value or boolean flags. A flag that is absent entirely resolves to "open" (the
+// operator's built-in default). The last occurrence wins, mirroring flag parsing.
+func postureFromArgs(args []string) (string, error) {
+	raw := ""
+	found := false
+	for _, a := range args {
+		if v, ok := strings.CutPrefix(strings.TrimLeft(a, "-"), networkPolicyPostureFlag+"="); ok {
+			raw, found = v, true
+		}
+	}
+	if !found {
+		return posturePolicyOpen, nil
+	}
+	switch v := strings.ToLower(strings.TrimSpace(raw)); v {
+	case "", posturePolicyOpen:
+		return posturePolicyOpen, nil
+	case posturePolicyRestricted:
+		return posturePolicyRestricted, nil
+	default:
+		return "", fmt.Errorf("unrecognized --%s value %q", networkPolicyPostureFlag, raw)
+	}
+}
+
+// ingressAdmitsNamespace reports whether any peer in the ingress rule selects
+// the given namespace by its immutable kubernetes.io/metadata.name label, which
+// is how the controller pins the operator self-peer. It deliberately ignores any
+// further narrowing (e.g. a pod selector) and any additional peers, so the check
+// stays a loose "a self-peer is present" assertion.
+func ingressAdmitsNamespace(rule networkingv1.NetworkPolicyIngressRule, namespace string) bool {
+	for _, peer := range rule.From {
+		if peer.NamespaceSelector == nil {
+			continue
+		}
+		if peer.NamespaceSelector.MatchLabels[corev1.LabelMetadataName] == namespace {
+			return true
+		}
+	}
+	return false
+}
 
 func TestNetworkPolicyCreated(t *testing.T) {
 	t.Parallel()
@@ -94,9 +246,31 @@ func TestNetworkPolicyCreated(t *testing.T) {
 				t.Fatalf("expected protocol TCP, got %s", *rule.Ports[0].Protocol)
 			}
 
-			// Verify ingress From is empty (all sources allowed on MCP port)
-			if len(rule.From) != 0 {
-				t.Fatalf("expected empty From (allow all sources), got %d entries", len(rule.From))
+			// Verify ingress From according to the posture the operator was
+			// deployed with. Under "open" (historical default) the default rule
+			// has no source, so any client may reach the server port. Under
+			// "restricted" the operator cannot leave a server deny-by-default
+			// (its own verification handshake would be black-holed), so it
+			// derives at least its own controller pod as an ingress peer.
+			switch networkPolicyPosture(ctx, t, cfg) {
+			case posturePolicyOpen:
+				if len(rule.From) != 0 {
+					t.Fatalf("expected empty From (allow all sources), got %d entries", len(rule.From))
+				}
+			case posturePolicyRestricted:
+				// Loose on purpose: assert only that a peer selecting the
+				// operator namespace is present, not an exact count or single
+				// entry, so a later change that adds another derived peer (e.g.
+				// an apiserver-proxy peer) does not break this.
+				operatorNs := f.MustDiscoverOperatorOnce(ctx, cfg, t).Namespace
+				if operatorNs == "" {
+					t.Fatal("restricted posture: could not resolve operator namespace to locate the self-peer")
+				}
+				if !ingressAdmitsNamespace(rule, operatorNs) {
+					t.Fatalf("restricted posture: expected an ingress peer selecting the operator namespace %q, got From=%#v",
+						operatorNs, rule.From)
+				}
+				t.Logf("restricted posture: default NetworkPolicy admits the operator self-peer (namespace %q)", operatorNs)
 			}
 
 			// Verify egress allows all traffic

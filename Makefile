@@ -174,11 +174,34 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
 	esac
 
+# E2E_NETWORK_POLICY_POSTURE selects the operand NetworkPolicy default posture for
+# e2e: "open" (historical default, allow-all ingress on the server port) or
+# "restricted" (least-privilege, deny-by-default with derived ingress peers). It
+# picks the deploy overlay (and therefore the manager's
+# --network-policy-default-posture flag). It is exported so it ALSO acts as an
+# OPTIONAL override for the Go tests. The default is intentionally EMPTY, not
+# "open": an empty exported value leaves the tests on their auto-detect path (they
+# read the posture from the live operator), so `make deploy-test-e2e
+# E2E_NETWORK_POLICY_POSTURE=restricted` followed by a plain `make test-e2e` still
+# asserts restricted. Set it explicitly only to force a specific assertion; the
+# paired *-restricted targets do that for our CI, which deploys each mode too.
+E2E_NETWORK_POLICY_POSTURE ?=
+export E2E_NETWORK_POLICY_POSTURE
+ifeq ($(E2E_NETWORK_POLICY_POSTURE),restricted)
+E2E_DEPLOY_DIR := config/e2e-restricted
+else ifeq ($(filter-out open,$(E2E_NETWORK_POLICY_POSTURE)),)
+# empty (default, deploy open + auto-detect) or an explicit "open"
+E2E_DEPLOY_DIR := config/default
+else
+$(error E2E_NETWORK_POLICY_POSTURE must be 'open' or 'restricted', got '$(E2E_NETWORK_POLICY_POSTURE)')
+endif
+
 .PHONY: deploy-test-e2e
-deploy-test-e2e: setup-test-e2e deploy-certmanager manifests generate ## Build and deploy the operator to the Kind cluster for e2e tests.
+deploy-test-e2e: setup-test-e2e deploy-certmanager manifests generate ## Build and deploy the operator to the Kind cluster for e2e tests (set E2E_NETWORK_POLICY_POSTURE=open|restricted; default open).
 	$(MAKE) docker-build IMG=example.com/mcp-lifecycle-operator:e2e
 	$(KIND) load docker-image example.com/mcp-lifecycle-operator:e2e --name $(KIND_CLUSTER)
-	$(MAKE) install deploy IMG=example.com/mcp-lifecycle-operator:e2e
+	$(MAKE) install IMG=example.com/mcp-lifecycle-operator:e2e
+	$(MAKE) deploy KUSTOMIZE_DEFAULT_DIR=$(E2E_DEPLOY_DIR) IMG=example.com/mcp-lifecycle-operator:e2e
 	$(KUBECTL) rollout status deployment/mcp-lifecycle-operator-controller-manager -n mcp-lifecycle-operator-system --timeout=120s
 
 GATEWAY_PROVIDER ?= httproute
@@ -213,6 +236,22 @@ stop-cloud-provider-kind: ## Stop cloud-provider-kind if running.
 .PHONY: test-e2e
 test-e2e: ## Run the e2e tests (requires operator already deployed, see deploy-test-e2e).
 	go test -tags=e2e ./test/e2e/ -v -count=1 -timeout 1h
+
+.PHONY: test-e2e-networkpolicy
+test-e2e-networkpolicy: ## Run only the NetworkPolicy e2e tests (honors E2E_NETWORK_POLICY_POSTURE; requires a matching deploy).
+	go test -tags=e2e ./test/e2e/ -run 'TestNetworkPolicy' -v -count=1 -timeout 1h
+
+.PHONY: deploy-test-e2e-restricted
+deploy-test-e2e-restricted: ## Deploy the operator with the restricted NetworkPolicy posture for e2e.
+	$(MAKE) deploy-test-e2e E2E_NETWORK_POLICY_POSTURE=restricted
+
+# The restricted run is scoped to the TestNetworkPolicy* tests on purpose: it
+# covers the default posture the product ships with. It deliberately does not run
+# the MCP handshake/proxy suite (TestMCPHandshake), whose restricted-posture
+# behavior is a separate, deferred design decision.
+.PHONY: test-e2e-networkpolicy-restricted
+test-e2e-networkpolicy-restricted: ## Run the NetworkPolicy e2e tests against a restricted-posture operator.
+	$(MAKE) test-e2e-networkpolicy E2E_NETWORK_POLICY_POSTURE=restricted
 
 .PHONY: deploy-test-e2e-cover
 deploy-test-e2e-cover: setup-test-e2e deploy-certmanager manifests generate ## Build and deploy the coverage-instrumented operator to Kind for E2E code coverage (see #177).

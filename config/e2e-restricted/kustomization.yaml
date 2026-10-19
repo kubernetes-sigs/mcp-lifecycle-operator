@@ -1,0 +1,30 @@
+# E2E overlay that deploys the controller with the restricted operand
+# NetworkPolicy default posture.
+#
+# It layers a single extra manager arg (--network-policy-default-posture=restricted)
+# onto the default deployment so the e2e suite can exercise the posture the
+# product ships with downstream. Everything else (namespace, namePrefix, RBAC,
+# CRDs, metrics) is inherited unchanged from config/default.
+#
+# Usage:
+#   make deploy KUSTOMIZE_DEFAULT_DIR=config/e2e-restricted
+#   # or, driven by the e2e knob:
+#   make deploy-test-e2e E2E_NETWORK_POLICY_POSTURE=restricted
+resources:
+- ../default
+
+# Append the posture flag rather than replacing the whole args list: a JSON6902
+# "add" to .../args/- leaves the default args (and any added by config/default's
+# own patches, e.g. metrics) intact, so this overlay never has to be kept in sync
+# with config/manager/manager.yaml. containers/0 is the manager (the only, and
+# first, container in config/manager/manager.yaml); JSON6902 cannot select a
+# container by name, and a name-anchored strategic merge would replace the whole
+# args list, reintroducing exactly the sync burden this append avoids.
+patches:
+- target:
+    kind: Deployment
+    labelSelector: control-plane=controller-manager
+  patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/args/-
+      value: --network-policy-default-posture=restricted
