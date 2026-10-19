@@ -92,6 +92,15 @@ func TestMCPHandshake(t *testing.T) {
 		Assess("MCP handshake and tool listing via API server proxy", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 
+			// The apiserver-proxy is a node-sourced, test-only transport that
+			// NetworkPolicy cannot match, so it is denied under the restricted
+			// posture; real access (gateway / in-cluster) and the operator's
+			// in-cluster verify handshake (asserted above) are unaffected. Posture
+			// comes from the shared networkpolicy helper (env override or detection).
+			if networkPolicyPosture(ctx, t, cfg) == posturePolicyRestricted {
+				t.Skip("apiserver-proxy transport is node-sourced and not matchable by NetworkPolicy, so it is expected to be denied under the restricted posture; real gateway and in-cluster access paths are unaffected")
+			}
+
 			f.WaitForEndpointsReady(ctx, t, cfg, server.Namespace, server.Name)
 
 			httpClient, proxyURL := f.ServiceProxyHTTPClient(t, cfg,
