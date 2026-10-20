@@ -192,7 +192,7 @@ The operator includes an integration controller for the `kuadrant` provider, whi
 
 - [Gateway API CRDs](https://gateway-api.sigs.k8s.io/guides/#installing-gateway-api) installed on the cluster
 - [Kuadrant MCP Gateway](https://docs.kuadrant.io/latest/mcp-gateway/docs/guides/how-to-install-and-configure/) installed (provides the `MCPServerRegistration` CRD)
-- A Gateway resource with an MCP listener (typically named `mcps`) managed by a gateway controller (e.g., Istio)
+- An `MCPGatewayExtension` targeting an existing Gateway, managed by a gateway controller (e.g., Istio), with a wildcard listener for per-server routes (for example, `*.mcp.local`)
 
 !!! note
     The operator checks for both the HTTPRoute and MCPServerRegistration CRDs at startup. If either is missing, the `kuadrant` controller is skipped. Install the required CRDs and restart the operator to enable it.
@@ -210,7 +210,7 @@ metadata:
 data:
   extension-name: mcp-gateway-extension
   extension-namespace: mcp-system
-  section-name: mcps
+  # section-name: mcps  # Optional when the Gateway has exactly one wildcard listener
 ```
 
 | Key                    | Required | Default | Description                                                  |
@@ -219,14 +219,16 @@ data:
 | `extension-namespace`  | Yes      |         | Namespace where the MCPGatewayExtension resource lives       |
 | `route-hostname`       | No       | auto    | Hostname for the HTTPRoute. When omitted, auto-constructed from the Gateway listener's wildcard hostname (e.g., `*.mcp.local` + MCPServer `my-server` in namespace `team-a` = `my-server.team-a.mcp.local`). Set explicitly to override. |
 | `prefix`               | No       | auto    | Tool/prompt name prefix for federation (e.g., `myserver_`). When omitted, auto-generated as a short hash of the MCPServer name and namespace (e.g., `mcp_17ee74f4_`). Set explicitly only if the auto-generated prefix conflicts with another MCPServerRegistration. |
-| `section-name`         | No       | `mcps`  | Gateway listener section name for the parent reference       |
+| `section-name`         | No       | auto    | Gateway listener for per-server routes. When omitted, selects the Gateway's single wildcard listener; set explicitly if there are zero or multiple wildcard listeners. |
+
+The extension's `targetRef.sectionName` selects the listener for the **broker route**. The ConfigMap's `section-name` independently selects the listener for **per-server routes**; it does not inherit the extension's listener. If auto-discovery finds zero or multiple wildcard listeners, reconciliation reports an error requesting an explicit `section-name`. When selecting a listener without a hostname, also set `route-hostname`.
 
 ### What It Creates
 
 For each registered binding, the controller creates:
 
 1. An **HTTPRoute** that:
-    - References the specified Gateway with the configured `sectionName` (default `mcps`)
+    - References the extension's Gateway with the explicitly configured or auto-discovered `sectionName`
     - Sets the hostname from `route-hostname` (or auto-constructed from the listener wildcard)
     - Matches the MCPServer's path (default `/mcp`) using `PathPrefix`
     - Routes traffic to the MCPServer's Service and port

@@ -74,7 +74,12 @@ EOF
 
 ### Verify the Deployment
 
-Check that the operator created the resources:
+Wait for the workload and MCP endpoint verification to succeed, then inspect the resources:
+
+```bash
+kubectl wait --for=condition=Available mcpserver/kubernetes-mcp-server --timeout=2m
+kubectl wait --for=condition=Verified mcpserver/kubernetes-mcp-server --timeout=2m
+```
 
 ```bash
 # View the MCPServer status
@@ -97,8 +102,8 @@ kubectl get pods -l mcp-server=kubernetes-mcp-server
 Expected output from `kubectl get mcpservers`:
 
 ```
-NAME                    READY   ACCEPTED   IMAGE                                                  PORT   ADDRESS                                                          AGE
-kubernetes-mcp-server   True    True       quay.io/containers/kubernetes_mcp_server:latest         8080   http://kubernetes-mcp-server.default.svc.cluster.local:8080/mcp   1m
+NAME                    ACCEPTED   AVAILABLE   VERIFIED   IMAGE                                             PORT   ADDRESS                                                         AGE
+kubernetes-mcp-server   True       True        True       quay.io/containers/kubernetes_mcp_server:latest    8080   http://kubernetes-mcp-server.default.svc.cluster.local:8080/mcp   1m
 ```
 
 The `ADDRESS` column shows the cluster-internal URL that can be used by other workloads to connect to the MCP server.
@@ -115,30 +120,40 @@ status:
     - type: Accepted
       status: "True"
       reason: Valid
-    - type: Ready
+    - type: Available
       status: "True"
       reason: Available
+    - type: Verified
+      status: "True"
+      reason: Verified
 ```
 
 ## Test the Service
 
-Port-forward to test connectivity:
+Port-forward the Service and leave this terminal running:
 
 ```bash
 kubectl port-forward service/kubernetes-mcp-server 8080:8080
 ```
 
-Then in another terminal:
+In another terminal, use the [MCP Inspector CLI](https://github.com/modelcontextprotocol/inspector/blob/main/clients/cli/README.md) to connect over Streamable HTTP and list the server's tools. This step requires Node.js 22.19+ and npm (for `npx`) on your local machine:
 
 ```bash
-# Test the health endpoint
-curl http://localhost:8080/healthz
-
-# Test the MCP endpoint
-curl http://localhost:8080/mcp
+npx @modelcontextprotocol/inspector --cli http://localhost:8080/mcp \
+  --transport http --method tools/list
 ```
 
-You should see a response from the MCP server.
+A successful request returns a `tools` array containing tool names, descriptions, and input schemas. This verifies the MCP initialization and tool discovery flow through the port-forwarded Service. Listing tools does not execute them; tools that access Kubernetes resources need the RBAC configuration below.
+
+If verification times out or the client cannot connect, inspect the MCPServer conditions and workload:
+
+```bash
+kubectl describe mcpserver kubernetes-mcp-server
+kubectl get pods -l mcp-server=kubernetes-mcp-server
+kubectl logs deployment/kubernetes-mcp-server
+```
+
+Check the condition messages for configuration or handshake errors, and confirm that the port-forward is still running before retrying the client.
 
 ## Production Example: MCP Server with RBAC
 

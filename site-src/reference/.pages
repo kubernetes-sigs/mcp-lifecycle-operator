@@ -1,0 +1,3 @@
+nav:
+  - "MCPServer (v1beta1)": index.md
+  - "Legacy API and Gateway Bindings (v1alpha1)": v1alpha1.md

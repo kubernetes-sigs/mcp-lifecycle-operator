@@ -138,10 +138,15 @@ status:
     - type: Accepted
       status: "True"
       reason: Valid
-    - type: Ready
+    - type: Available
       status: "True"
       reason: Available
+    - type: Verified
+      status: "True"
+      reason: Verified
 ```
+
+`Accepted` indicates valid configuration, `Available` indicates a ready workload, and `Verified` indicates that the MCP endpoint passed verification. Inspect each condition's reason and message for details.
 
 The `address.url` field provides the cluster-internal URL that other workloads can use to connect to the MCP server.
 

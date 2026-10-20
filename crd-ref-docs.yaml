@@ -11,9 +11,4 @@ processor:
 render:
   kubernetesVersion: "1.28"
 
-output:
-  markdown:
-    outputFile: site-src/reference/index.md
-
-sourceDirectories:
-  - api/v1alpha1
+# Source and output paths are supplied by hack/mkdocs/generate.sh CLI flags.

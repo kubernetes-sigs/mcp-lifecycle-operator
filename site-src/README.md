@@ -17,7 +17,8 @@ site-src/
 │   ├── quickstart.md
 │   └── gateway.md
 ├── reference/            # API reference documentation
-│   └── index.md         # Auto-generated from Go API types
+│   ├── index.md         # Auto-generated v1beta1 reference
+│   └── v1alpha1.md      # Auto-generated legacy API and gateway bindings
 ├── contributing/         # Contributing guide
 │   └── index.md
 ├── images/               # Image assets
@@ -68,9 +69,9 @@ The API reference documentation is auto-generated from Go source code:
 make api-ref-docs
 ```
 
-This creates `site-src/reference/index.md` from the CRD types under `api/` (currently `api/v1alpha1` via `hack/mkdocs/generate.sh` / `crd-ref-docs.yaml`).
+This creates `site-src/reference/index.md` from `api/v1beta1` and `site-src/reference/v1alpha1.md` from `api/v1alpha1`, including `MCPGatewayBinding`. Versions are rendered on separate pages so links to identically named types resolve within the correct API version. Historical source refs containing only `v1alpha1` generate that version as `index.md`.
 
-**Note**: The generated `index.md` file is not committed to git - it's automatically generated during the build process (`make build-docs`, `make live-docs`, or CI).
+**Note**: The generated reference Markdown files are not committed to git - they are automatically generated during the build process (`make build-docs`, `make live-docs`, or CI).
 
 ## Versioned Deployment
 

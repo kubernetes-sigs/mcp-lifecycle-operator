@@ -53,11 +53,24 @@ if [ ! -f "${CRD_REF_DOCS}" ]; then
     echo "Successfully installed crd-ref-docs"
 fi
 
-# Generate the API reference documentation
-"${CRD_REF_DOCS}" \
-    --source-path=./api/v1alpha1 \
-    --config=./crd-ref-docs.yaml \
-    --renderer=markdown \
-    --output-path=./site-src/reference/index.md
+# Keep versions on separate pages: Markdown type anchors collide when both
+# versions are rendered in one file. Prefer the current API for the index,
+# while still supporting historical source refs that only contain v1alpha1.
+PRIMARY_PAGE=true
+for VERSION in v1beta1 v1alpha1; do
+    if [ ! -d "./api/${VERSION}" ]; then
+        continue
+    fi
+    OUTPUT_PATH="./site-src/reference/${VERSION}.md"
+    if [ "${PRIMARY_PAGE}" = true ]; then
+        OUTPUT_PATH=./site-src/reference/index.md
+    fi
+    "${CRD_REF_DOCS}" \
+        --source-path="./api/${VERSION}" \
+        --config=./crd-ref-docs.yaml \
+        --renderer=markdown \
+        --output-path="${OUTPUT_PATH}"
+    PRIMARY_PAGE=false
+done
 
 echo "API reference documentation generated successfully!"
