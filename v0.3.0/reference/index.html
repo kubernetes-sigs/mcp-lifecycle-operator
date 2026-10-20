@@ -1,0 +1,2404 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://mcp-lifecycle-operator.sigs.k8s.io/v0.3.0/reference/">
+      
+      
+        <link rel="prev" href="../guides/quickstart/">
+      
+      
+        <link rel="next" href="../operating/metrics/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../images/favicon-64.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>API Reference - MCP Lifecycle Operator</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MCP Lifecycle Operator" class="md-header__button md-logo" aria-label="MCP Lifecycle Operator" data-md-component="logo">
+      
+  <img src="../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MCP Lifecycle Operator
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              API Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kubernetes-sigs/mcp-lifecycle-operator" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kubernetes-sigs/mcp-lifecycle-operator
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../introduction/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Introduction
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../operating/metrics/" class="md-tabs__link">
+          
+  
+  
+  Operating
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../contributing/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MCP Lifecycle Operator" class="md-nav__button md-logo" aria-label="MCP Lifecycle Operator" data-md-component="logo">
+      
+  <img src="../images/logo.png" alt="logo">
+
+    </a>
+    MCP Lifecycle Operator
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kubernetes-sigs/mcp-lifecycle-operator" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kubernetes-sigs/mcp-lifecycle-operator
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcpx-k8siov1alpha1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mcp.x-k8s.io/v1alpha1
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="mcp.x-k8s.io/v1alpha1">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resource-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resource Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#containerimagesource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ContainerImageSource
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#healthconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HealthConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserveraddress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerAddress
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpservercapabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerCapabilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverinfo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerInfo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mountpermissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MountPermissions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#networkconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NetworkConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtimeconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RuntimeConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretreference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecretReference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#securityconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecurityConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#serverconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ServerConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sourcetype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SourceType
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#storagemount" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StorageMount
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#storagesource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StorageSource
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#storagetype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StorageType
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tlsclientconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TLSClientConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transportconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TransportConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operating
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operating
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operating/metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcpx-k8siov1alpha1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mcp.x-k8s.io/v1alpha1
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="mcp.x-k8s.io/v1alpha1">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resource-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resource Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#containerimagesource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ContainerImageSource
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#healthconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HealthConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserveraddress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerAddress
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpservercapabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerCapabilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverinfo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerInfo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mountpermissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MountPermissions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#networkconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NetworkConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtimeconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RuntimeConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretreference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecretReference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#securityconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecurityConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#serverconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ServerConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sourcetype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SourceType
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#storagemount" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StorageMount
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#storagesource" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StorageSource
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#storagetype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StorageType
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tlsclientconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TLSClientConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transportconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TransportConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/kubernetes-sigs/mcp-lifecycle-operator/edit/main/site-src/reference/index.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h1>
+<h2 id="packages">Packages<a class="headerlink" href="#packages" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="#mcpx-k8siov1alpha1">mcp.x-k8s.io/v1alpha1</a></li>
+</ul>
+<h2 id="mcpx-k8siov1alpha1">mcp.x-k8s.io/v1alpha1<a class="headerlink" href="#mcpx-k8siov1alpha1" title="Permanent link">&para;</a></h2>
+<p>Package v1alpha1 contains API Schema definitions for the mcp v1alpha1 API group.</p>
+<h3 id="resource-types">Resource Types<a class="headerlink" href="#resource-types" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="#mcpserver">MCPServer</a></li>
+</ul>
+<h4 id="containerimagesource">ContainerImageSource<a class="headerlink" href="#containerimagesource" title="Permanent link">&para;</a></h4>
+<p>ContainerImageSource defines a container image source.</p>
+<p><em>Appears in:</em>
+- <a href="#source">Source</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ref</code> <em>string</em></td>
+<td>Ref is the container image containing the MCP server implementation.<br />Must be a valid OCI image reference.<br />Examples:<br />  - ghcr.io/modelcontextprotocol/servers/filesystem:latest<br />  - ghcr.io/modelcontextprotocol/servers/github:v1.0.0<br />  - custom-registry.io/my-mcp-server:1.2.3<br />  - custom-registry.io/my-mcp-server@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef</td>
+<td></td>
+<td>MaxLength: 1000 <br />MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>pullPolicy</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#pullpolicy-v1-core">PullPolicy</a></em></td>
+<td>PullPolicy controls when the kubelet pulls the MCP server image.<br />When omitted, Kubernetes applies its native default based on the image reference.</td>
+<td></td>
+<td>Enum: [Always IfNotPresent Never] <br />Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>imagePullSecrets</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#localobjectreference-v1-core">LocalObjectReference</a> array</em></td>
+<td>ImagePullSecrets references Secrets in the MCPServer namespace that contain<br />credentials for pulling the MCP server image from a private registry.<br />The operator passes these references to the managed Pod and does not read<br />or copy Secret data.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="healthconfig">HealthConfig<a class="headerlink" href="#healthconfig" title="Permanent link">&para;</a></h4>
+<p>HealthConfig defines health check configuration for the MCP server.
+If not specified, no health probes will be configured.</p>
+<p>The probes are passed directly to the Deployment's container spec without any
+transformation, providing full access to the Kubernetes Probe API. This includes
+all probe types (httpGet, tcpSocket, exec, grpc) and all configuration options
+(initialDelaySeconds, periodSeconds, timeoutSeconds, successThreshold, failureThreshold).</p>
+<p><em>Validation:</em>
+- MinProperties: 1</p>
+<p><em>Appears in:</em>
+- <a href="#runtimeconfig">RuntimeConfig</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>livenessProbe</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#probe-v1-core">Probe</a></em></td>
+<td>LivenessProbe defines the liveness probe for the MCP server container.<br />Kubernetes uses liveness probes to know when to restart a container.<br />If not specified, no liveness probe will be configured.<br />This probe is passed directly to the container spec without transformation,<br />providing full compatibility with the Kubernetes Probe API.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>readinessProbe</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#probe-v1-core">Probe</a></em></td>
+<td>ReadinessProbe defines the readiness probe for the MCP server container.<br />Kubernetes uses readiness probes to know when a container is ready to start accepting traffic.<br />If not specified, no readiness probe will be configured.<br />This probe is passed directly to the container spec without transformation,<br />providing full compatibility with the Kubernetes Probe API.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpconfig">MCPConfig<a class="headerlink" href="#mcpconfig" title="Permanent link">&para;</a></h4>
+<p>MCPConfig defines Model Context Protocol specific properties of the server.
+This section captures how the server behaves as an MCP server, such as whether
+it maintains session state. These properties are distinct from container configuration
+(config), deployment management (runtime), and image sourcing (source).</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverspec">MCPServerSpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>stateless</code> <em>boolean</em></td>
+<td>Stateless indicates whether the MCP server is stateless (does not maintain session state).<br />Only set this to true if the MCP server you are deploying declares that it is stateless.<br />When true, the generated Service uses SessionAffinity "None", allowing<br />requests to be freely load-balanced across replicas.<br />When false or unset, the Service uses SessionAffinity "ClientIP" so that<br />a given client's requests are routed to the same pod.<br />Defaults to false (stateful).</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserver">MCPServer<a class="headerlink" href="#mcpserver" title="Permanent link">&para;</a></h4>
+<p>MCPServer runs a Model Context Protocol (MCP) server in Kubernetes.</p>
+<p>MCPServer creates and manages a Deployment, Service, and NetworkPolicy to run an MCP server from a
+container image. The MCP server exposes tools, resources, and prompts that AI applications
+can use via the Model Context Protocol.</p>
+<p>Example:</p>
+<div class="language-text highlight"><pre><span></span><code>apiVersion: mcp.x-k8s.io/v1alpha1
+kind: MCPServer
+metadata:
+  name: example
+spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: example-mcp-image
+  config:
+    port: 8080
+</code></pre></div>
+<p>The controller manages Deployment, Service, and NetworkPolicy resources with the same name as the MCPServer,
+using ownerReferences to establish ownership. The controller will reject updates to resources
+owned by other controllers or resources with no controller owner (to prevent silent overwrites
+of manually-created resources), but will adopt orphaned resources from a deleted MCPServer
+with the same name to enable seamless recreation.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>mcp.x-k8s.io/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>MCPServer</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#mcpserverspec">MCPServerSpec</a></em></td>
+<td>spec defines the desired state of MCPServer</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#mcpserverstatus">MCPServerStatus</a></em></td>
+<td>status defines the observed state of MCPServer</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserveraddress">MCPServerAddress<a class="headerlink" href="#mcpserveraddress" title="Permanent link">&para;</a></h4>
+<p>MCPServerAddress contains the address information for the MCPServer.</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverstatus">MCPServerStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>url</code> <em>string</em></td>
+<td>URL is the cluster-internal address of the MCP server service.<br />Format: <scheme>://<servicename>.<namespace>.svc.cluster.local:<port>/<path><br />The scheme is "https" when TLS is enabled, "http" otherwise.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpservercapabilities">MCPServerCapabilities<a class="headerlink" href="#mcpservercapabilities" title="Permanent link">&para;</a></h4>
+<p>MCPServerCapabilities describes which MCP protocol capabilities the server advertises
+during the protocol handshake (initialize or server/discover).</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverinfo">MCPServerInfo</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tools</code> <em>boolean</em></td>
+<td>Tools indicates the server supports tool listing and invocation.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>resources</code> <em>boolean</em></td>
+<td>Resources indicates the server supports resource listing and reading.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>prompts</code> <em>boolean</em></td>
+<td>Prompts indicates the server supports prompt templates.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>logging</code> <em>boolean</em></td>
+<td>Logging indicates the server supports sending log messages.<br />Deprecated: logging capability is deprecated as of MCP protocol version<br />2026-07-28 (SEP-2577) and will be removed after the 12-month deprecation<br />window. The field remains functional during the transition period.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>completions</code> <em>boolean</em></td>
+<td>Completions indicates the server supports argument autocompletion.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverinfo">MCPServerInfo<a class="headerlink" href="#mcpserverinfo" title="Permanent link">&para;</a></h4>
+<p>MCPServerInfo contains identity and capability information reported by the
+MCP server during the protocol handshake (initialize or server/discover).</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverstatus">MCPServerStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code> <em>string</em></td>
+<td>Name is the server's self-reported name.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>version</code> <em>string</em></td>
+<td>Version is the server's self-reported version.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>protocolVersion</code> <em>string</em></td>
+<td>ProtocolVersion is the MCP protocol version negotiated during the protocol<br />handshake. The value reflects whichever version was agreed upon by both<br />client and server.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>instructions</code> <em>string</em></td>
+<td>Instructions describes how to use the server and its features.<br />This can be used by clients to improve the LLM's understanding of<br />available tools, resources, etc.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>capabilities</code> <em><a href="#mcpservercapabilities">MCPServerCapabilities</a></em></td>
+<td>Capabilities lists which MCP protocol features the server supports.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverspec">MCPServerSpec<a class="headerlink" href="#mcpserverspec" title="Permanent link">&para;</a></h4>
+<p>MCPServerSpec defines the desired state of MCPServer.</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserver">MCPServer</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>extraLabels</code> <em>object (keys:string, values:string)</em></td>
+<td>ExtraLabels are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.<br />The operator-managed keys "app" and "mcp-server" cannot be overridden.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>extraAnnotations</code> <em>object (keys:string, values:string)</em></td>
+<td>ExtraAnnotations are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>source</code> <em><a href="#source">Source</a></em></td>
+<td>Source is a required field that defines where the MCP server should be sourced from.<br />Currently supports container images, with potential for additional source types in the future.<br />This configuration determines how the MCP server will be deployed and run.</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>config</code> <em><a href="#serverconfig">ServerConfig</a></em></td>
+<td>Config is a required field that defines how the MCP server should be configured when it runs.<br />This includes runtime settings such as the server port, command-line arguments,<br />environment variables, and storage mounts.</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>runtime</code> <em><a href="#runtimeconfig">RuntimeConfig</a></em></td>
+<td>Runtime defines runtime management configuration.<br />If not specified, default runtime settings will be applied.</td>
+<td></td>
+<td>MinProperties: 1 <br />Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>mcp</code> <em><a href="#mcpconfig">MCPConfig</a></em></td>
+<td>MCP defines Model Context Protocol specific properties of the server.<br />This section describes the MCP server's protocol-level behavior,<br />as opposed to how it is sourced, configured, or managed at runtime.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>network</code> <em><a href="#networkconfig">NetworkConfig</a></em></td>
+<td>Network configures network policies for the MCP server pod.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>transport</code> <em><a href="#transportconfig">TransportConfig</a></em></td>
+<td>Transport configures transport-layer settings for<br />operator-to-MCP-server communication.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverstatus">MCPServerStatus<a class="headerlink" href="#mcpserverstatus" title="Permanent link">&para;</a></h4>
+<p>MCPServerStatus defines the observed state of MCPServer.</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserver">MCPServer</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td>ObservedGeneration reflects the generation most recently observed by the controller.<br />This allows users to determine if the status reflects the latest spec changes.<br />When observedGeneration matches metadata.generation, the status is up-to-date.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>deploymentName</code> <em>string</em></td>
+<td>DeploymentName is the name of the Deployment created for this MCPServer.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>serviceName</code> <em>string</em></td>
+<td>ServiceName is the name of the Service created for this MCPServer.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>address</code> <em><a href="#mcpserveraddress">MCPServerAddress</a></em></td>
+<td>Address contains the address of the MCP server service.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>serverInfo</code> <em><a href="#mcpserverinfo">MCPServerInfo</a></em></td>
+<td>ServerInfo contains identity and capability information reported by the<br />MCP server during the protocol handshake (initialize or server/discover).<br />This field is populated only after a successful handshake.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>handshakeRetryCount</code> <em>integer</em></td>
+<td>HandshakeRetryCount tracks the number of consecutive MCP handshake<br />failures for the current generation. Reset to 0 on success, spec change,<br />or when reconciliation does not reach the handshake phase.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>replicas</code> <em>integer</em></td>
+<td>Replicas is the total number of desired pods targeted by the owned Deployment.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>readyReplicas</code> <em>integer</em></td>
+<td>ReadyReplicas is the number of pods targeted by the owned Deployment with a Ready condition.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions represent the latest available observations of the MCPServer's state.<br />Standard condition types:<br />- "Accepted": Configuration is valid and all referenced resources exist<br />- "Ready": MCP server is operational and ready to serve requests<br />The "Accepted" condition validates configuration before creating resources.<br />Reasons: Valid (True), Invalid (False with details in message)<br />The "Ready" condition indicates overall server readiness.<br />Status=True means at least one instance is healthy and serving requests.<br />Reasons:<br />  - Available: Server is ready (Status=True)<br />  - ConfigurationInvalid: Accepted=False, cannot proceed<br />  - DeploymentUnavailable: No healthy instances (all deployment/pod issues)<br />  - ScaledToZero: Deployment scaled to 0 replicas<br />  - Initializing: Waiting for initial status<br />Note: Specific failure details (ImagePullBackOff, OOMKilled, CrashLoop, etc.)<br />are included in the condition message, not the reason.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mountpermissions">MountPermissions<a class="headerlink" href="#mountpermissions" title="Permanent link">&para;</a></h4>
+<p><em>Underlying type:</em> <em>string</em></p>
+<p>MountPermissions defines the access permissions for a volume mount.</p>
+<p><em>Validation:</em>
+- Enum: [ReadOnly ReadWrite RecursiveReadOnly]</p>
+<p><em>Appears in:</em>
+- <a href="#storagemount">StorageMount</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ReadOnly</code></td>
+<td>MountPermissionsReadOnly indicates the mount is read-only.<br /></td>
+</tr>
+<tr>
+<td><code>ReadWrite</code></td>
+<td>MountPermissionsReadWrite indicates the mount is read-write.<br /></td>
+</tr>
+<tr>
+<td><code>RecursiveReadOnly</code></td>
+<td>MountPermissionsRecursiveReadOnly indicates the mount and all its submounts are recursively read-only.<br />This provides stronger guarantees than ReadOnly alone.<br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="networkconfig">NetworkConfig<a class="headerlink" href="#networkconfig" title="Permanent link">&para;</a></h4>
+<p>NetworkConfig defines network policies for the MCP server pod.</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverspec">MCPServerSpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ingressFrom</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#networkpolicypeer-v1-networking">NetworkPolicyPeer</a> array</em></td>
+<td>IngressFrom restricts which sources can reach the MCP server port.<br />Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,<br />namespaceSelector, ipBlock).<br />When empty, any pod in the cluster can reach the MCP server (default).</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>egressTo</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#networkpolicypeer-v1-networking">NetworkPolicyPeer</a> array</em></td>
+<td>EgressTo restricts which destinations the MCP server pod can reach.<br />Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,<br />namespaceSelector, ipBlock).<br />When empty, egress to all destinations is allowed (default).<br />DNS (UDP/TCP port 53) egress is always permitted regardless of this<br />setting.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>egressPorts</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#networkpolicyport-v1-networking">NetworkPolicyPort</a> array</em></td>
+<td>EgressPorts restricts which ports the MCP server pod can connect to.<br />When empty and EgressTo is set, all ports are allowed to the<br />specified destinations. When set, only listed ports are allowed<br />(in addition to DNS port 53 which is always permitted).</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="runtimeconfig">RuntimeConfig<a class="headerlink" href="#runtimeconfig" title="Permanent link">&para;</a></h4>
+<p>RuntimeConfig defines runtime execution configuration for the MCP server.</p>
+<p>This section covers how the MCP server executes and behaves at runtime,
+including replicas, security, resource allocation, and health probes.</p>
+<p>If not specified, default runtime settings will be applied.
+See individual field documentation for specific defaults.</p>
+<p><em>Validation:</em>
+- MinProperties: 1</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverspec">MCPServerSpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>replicas</code> <em>integer</em></td>
+<td>Replicas is the number of MCP server pod replicas to run.<br />Defaults to 1 if not specified.<br />Set to 0 to scale down the deployment.<br />This field is a pointer (*int32) to distinguish between:<br />  - nil (not specified) -&gt; defaults to 1 replica<br />  - ptr.To(0) (explicit 0) -&gt; scale-to-zero<br />This follows the same pattern as Deployment.Spec.Replicas in k8s.io/api/apps/v1.</td>
+<td></td>
+<td>Minimum: 0 <br />Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>security</code> <em><a href="#securityconfig">SecurityConfig</a></em></td>
+<td>Security defines security-related configuration.<br />If not specified, default security settings will be applied.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>resources</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#resourcerequirements-v1-core">ResourceRequirements</a></em></td>
+<td>Resources defines the resource requirements for the MCP server container.<br />This includes CPU and memory requests and limits.<br />If not specified, the following defaults are applied:<br />  - Requests: 50m CPU, 64Mi memory<br />  - Limits: 500m CPU, 256Mi memory<br />Supports partial specification (e.g., only requests or only limits).<br />When partially specified, only the provided fields are used; defaults<br />are not merged into the unspecified fields.<br />Example:<br />  resources:<br />    requests:<br />      cpu: "100m"<br />      memory: "256Mi"<br />    limits:<br />      cpu: "500m"<br />      memory: "512Mi"</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>health</code> <em><a href="#healthconfig">HealthConfig</a></em></td>
+<td>Health defines health check configuration for the MCP server.<br />If not specified, no health probes will be configured.</td>
+<td></td>
+<td>MinProperties: 1 <br />Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="secretreference">SecretReference<a class="headerlink" href="#secretreference" title="Permanent link">&para;</a></h4>
+<p>SecretReference references a Secret in the same namespace as the MCPServer.</p>
+<p><em>Appears in:</em>
+- <a href="#tlsclientconfig">TLSClientConfig</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code> <em>string</em></td>
+<td>Name of the Secret.</td>
+<td></td>
+<td>MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="securityconfig">SecurityConfig<a class="headerlink" href="#securityconfig" title="Permanent link">&para;</a></h4>
+<p>SecurityConfig defines security-related configuration.
+If not specified, default security settings will be applied.
+See individual field documentation for specific defaults.</p>
+<p><em>Appears in:</em>
+- <a href="#runtimeconfig">RuntimeConfig</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>serviceAccountName</code> <em>string</em></td>
+<td>ServiceAccountName is the name of the ServiceAccount to use for the MCP server pods.<br />The ServiceAccount should have appropriate RBAC permissions for the MCP server's operations.<br />If not specified, the default ServiceAccount for the namespace will be used.<br />Must be a string that follows the DNS1123 subdomain format.<br />Must be at most 253 characters in length, and must consist only of lower case alphanumeric characters, '-'<br />and '.', and must start and end with an alphanumeric character.<br />Example: For kubernetes-mcp-server with read-only access, create a ServiceAccount<br />and bind it to the 'view' ClusterRole.</td>
+<td></td>
+<td>MaxLength: 253 <br />Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>podSecurityContext</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#podsecuritycontext-v1-core">PodSecurityContext</a></em></td>
+<td>PodSecurityContext specifies the security context for the MCP server pod.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>securityContext</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#securitycontext-v1-core">SecurityContext</a></em></td>
+<td>SecurityContext specifies the security context for the MCP server container.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="serverconfig">ServerConfig<a class="headerlink" href="#serverconfig" title="Permanent link">&para;</a></h4>
+<p>ServerConfig defines how the MCP server should be configured when it runs.</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverspec">MCPServerSpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>port</code> <em>integer</em></td>
+<td>Port is a required field that specifies the port number on which the MCP server listens for connections.<br />Must be between 1 and 65535.<br />This should match the port that the MCP server container exposes and will be used for<br />configuring the Kubernetes Service.</td>
+<td></td>
+<td>Maximum: 65535 <br />Minimum: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>arguments</code> <em>string array</em></td>
+<td>Arguments are command line arguments for the MCP server container.<br />Use this to pass configuration flags to the server.<br />Example: ["--config", "/etc/mcp-config/config.toml", "--verbose"]<br />When not specified, the container image's default arguments (CMD/ENTRYPOINT) are used.<br />Empty strings within the array are not allowed.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>env</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#envvar-v1-core">EnvVar</a> array</em></td>
+<td>Env is a list of environment variables to set in the MCP server container.<br />Supports the full Kubernetes EnvVar API including valueFrom for secrets and configmaps.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>envFrom</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#envfromsource-v1-core">EnvFromSource</a> array</em></td>
+<td>EnvFrom is a list of sources to populate environment variables in the MCP server container.<br />Each entry injects all key-value pairs from a Secret or ConfigMap as environment variables.<br />The keys become the variable names. Useful when a Secret's keys already match<br />the expected env var names (e.g., GITHUB_TOKEN).</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>storage</code> <em><a href="#storagemount">StorageMount</a> array</em></td>
+<td>Storage defines storage mounts for ConfigMaps, Secrets, and EmptyDirs.<br />Each item uses native Kubernetes volume source types for consistency and feature parity.<br />If specified, must contain at least 1 item. Maximum 64 items.<br />Each storage mount must have a unique path.</td>
+<td></td>
+<td>MaxItems: 64 <br />MinItems: 1 <br />Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>path</code> <em>string</em></td>
+<td>Path is the HTTP path where the MCP server listens for SSE/Streamable HTTP connections.<br />This path is appended to the service address in the status URL.<br />Must be a valid URI path component starting with '/'.<br />Maximum 253 characters. Cannot contain spaces, control characters, or query/fragment separators (? #).<br />Examples: /mcp, /api/v1/mcp, /services/mcp-server<br />Defaults to /mcp if not specified.</td>
+<td>/mcp</td>
+<td>MaxLength: 253 <br />MinLength: 1 <br />Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="source">Source<a class="headerlink" href="#source" title="Permanent link">&para;</a></h4>
+<p>Source defines where the MCP server's container image (or other source types in the future) is located.</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverspec">MCPServerSpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code> <em><a href="#sourcetype">SourceType</a></em></td>
+<td>Type is a required field that configures how the MCP server should be sourced.<br />Allowed values are: ContainerImage.<br />When set to ContainerImage, the MCP server will be sourced directly from an OCI<br />container image following the configuration specified in containerImage.</td>
+<td></td>
+<td>Enum: [ContainerImage] <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>containerImage</code> <em><a href="#containerimagesource">ContainerImageSource</a></em></td>
+<td>ContainerImage specifies container image details when Type is ContainerImage.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="sourcetype">SourceType<a class="headerlink" href="#sourcetype" title="Permanent link">&para;</a></h4>
+<p><em>Underlying type:</em> <em>string</em></p>
+<p>SourceType defines the type of source for the MCP server.</p>
+<p><em>Validation:</em>
+- Enum: [ContainerImage]</p>
+<p><em>Appears in:</em>
+- <a href="#source">Source</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ContainerImage</code></td>
+<td>SourceTypeContainerImage indicates the source is a container image.<br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="storagemount">StorageMount<a class="headerlink" href="#storagemount" title="Permanent link">&para;</a></h4>
+<p>StorageMount defines a storage mount combining volume source and mount configuration.
+The Path and Permissions fields apply to all storage types, while Source contains
+the type-specific configuration (ConfigMap, Secret, or EmptyDir).</p>
+<p><em>Appears in:</em>
+- <a href="#serverconfig">ServerConfig</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>path</code> <em>string</em></td>
+<td>Path is a required field that specifies where the volume should be mounted in the container.<br />Must be an absolute path (starting with /).<br />The ConfigMap or Secret data will be accessible to the MCP server process at this location.<br />Must be between 1 and 4096 characters, start with '/', and must not contain ':'.</td>
+<td></td>
+<td>MaxLength: 4096 <br />MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>permissions</code> <em><a href="#mountpermissions">MountPermissions</a></em></td>
+<td>Permissions specifies the access permissions for the mount.<br />Allowed values are ReadOnly, ReadWrite, and RecursiveReadOnly.<br />When set to ReadOnly, the mount is read-only.<br />When set to ReadWrite, the mount is read-write.<br />When set to RecursiveReadOnly, the mount and all submounts are recursively read-only.<br />Defaults to ReadOnly for ConfigMap and Secret mounts.<br />For EmptyDir mounts, ReadWrite is more common for writable scratch space.</td>
+<td>ReadOnly</td>
+<td>Enum: [ReadOnly ReadWrite RecursiveReadOnly] <br />Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>source</code> <em><a href="#storagesource">StorageSource</a></em></td>
+<td>Source defines where the storage data comes from (ConfigMap, Secret, or EmptyDir).</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="storagesource">StorageSource<a class="headerlink" href="#storagesource" title="Permanent link">&para;</a></h4>
+<p>StorageSource defines the source of the storage to mount (ConfigMap, Secret, or EmptyDir).</p>
+<p><em>Appears in:</em>
+- <a href="#storagemount">StorageMount</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code> <em><a href="#storagetype">StorageType</a></em></td>
+<td>Type is a required field that specifies the type of volume source.<br />Allowed values are: ConfigMap, Secret, EmptyDir.<br />This determines which volume source field (configMap, secret, or emptyDir) should be configured.</td>
+<td></td>
+<td>Enum: [ConfigMap Secret EmptyDir] <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>configMap</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#configmapvolumesource-v1-core">ConfigMapVolumeSource</a></em></td>
+<td>ConfigMap specifies a ConfigMap volume source (when Type is ConfigMap).<br />Uses native Kubernetes ConfigMapVolumeSource type for full feature parity.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>secret</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#secretvolumesource-v1-core">SecretVolumeSource</a></em></td>
+<td>Secret specifies a Secret volume source (when Type is Secret).<br />Uses native Kubernetes SecretVolumeSource type for full feature parity.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>emptyDir</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#emptydirvolumesource-v1-core">EmptyDirVolumeSource</a></em></td>
+<td>EmptyDir specifies an EmptyDir volume source (when Type is EmptyDir).<br />Uses native Kubernetes EmptyDirVolumeSource type for full feature parity.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="storagetype">StorageType<a class="headerlink" href="#storagetype" title="Permanent link">&para;</a></h4>
+<p><em>Underlying type:</em> <em>string</em></p>
+<p>StorageType defines the type of storage mount.</p>
+<p><em>Validation:</em>
+- Enum: [ConfigMap Secret EmptyDir]</p>
+<p><em>Appears in:</em>
+- <a href="#storagesource">StorageSource</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ConfigMap</code></td>
+<td>StorageTypeConfigMap indicates a ConfigMap volume source.<br /></td>
+</tr>
+<tr>
+<td><code>Secret</code></td>
+<td>StorageTypeSecret indicates a Secret volume source.<br /></td>
+</tr>
+<tr>
+<td><code>EmptyDir</code></td>
+<td>StorageTypeEmptyDir indicates an EmptyDir volume source.<br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="tlsclientconfig">TLSClientConfig<a class="headerlink" href="#tlsclientconfig" title="Permanent link">&para;</a></h4>
+<p>TLSClientConfig configures TLS for operator-to-MCP-server communication
+during handshake and discovery probes.</p>
+<p><em>Appears in:</em>
+- <a href="#transportconfig">TransportConfig</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code> <em>boolean</em></td>
+<td>Enabled controls whether the operator uses HTTPS for handshake/discovery.<br />When true, the operator connects to the MCP server using TLS.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>caBundleSecret</code> <em><a href="#secretreference">SecretReference</a></em></td>
+<td>CABundleSecret references a Secret containing a CA certificate bundle<br />under the key "ca.crt". Used to verify the MCP server's TLS certificate.<br />When unset and enabled is true, system CA certificates are used.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+<tr>
+<td><code>insecureSkipVerify</code> <em>boolean</em></td>
+<td>InsecureSkipVerify disables TLS certificate verification.<br />For development and testing only.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="transportconfig">TransportConfig<a class="headerlink" href="#transportconfig" title="Permanent link">&para;</a></h4>
+<p>TransportConfig configures transport-layer settings for
+operator-to-MCP-server communication.</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverspec">MCPServerSpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tls</code> <em><a href="#tlsclientconfig">TLSClientConfig</a></em></td>
+<td>TLS configures TLS for operator-to-MCP-server communication<br />during handshake and discovery probes.</td>
+<td></td>
+<td>Optional: {} <br /></td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/kubernetes-sigs/mcp-lifecycle-operator" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://kubernetes.slack.com/messages/sig-apps" target="_blank" rel="noopener" title="kubernetes.slack.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M94.1 315.1c0 25.9-21.2 47.1-47.1 47.1S0 341 0 315.1 21.2 268 47.1 268h47.1v47.1zm23.7 0c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1v117.8c0 25.9-21.2 47.1-47.1 47.1s-47.1-21.2-47.1-47.1zm47.1-189c-25.9 0-47.1-21.2-47.1-47.1s21.2-47 47.1-47S212 53.2 212 79.1v47.1h-47.1zm0 23.7c25.9 0 47.1 21.2 47.1 47.1S190.8 244 164.9 244H47.1C21.2 244 0 222.8 0 196.9s21.2-47.1 47.1-47.1zm189 47.1c0-25.9 21.2-47.1 47.1-47.1s47 21.2 47 47.1-21.2 47.1-47.1 47.1h-47.1v-47.1zm-23.7 0c0 25.9-21.2 47.1-47.1 47.1S236 222.8 236 196.9V79.1c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1zm-47.1 189c25.9 0 47.1 21.2 47.1 47.1s-21.2 47-47.1 47-47.1-21.2-47.1-47.1v-47.1h47.1zm0-23.7c-25.9 0-47.1-21.2-47.1-47.1s21.2-47.1 47.1-47.1h117.8c25.9 0 47.1 21.2 47.1 47.1s-21.2 47.1-47.1 47.1z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["search.highlight", "navigation.tabs", "navigation.top", "navigation.expand", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
