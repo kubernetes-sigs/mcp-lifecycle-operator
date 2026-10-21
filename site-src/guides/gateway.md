@@ -188,6 +188,8 @@ kubectl get mcpserver my-mcp-server -o jsonpath='{.status.address.url}'
 
 The operator includes an integration controller for the `kuadrant` provider, which registers MCP servers with the [Kuadrant MCP Gateway](https://docs.kuadrant.io/latest/mcp-gateway/). It creates a Gateway API HTTPRoute and a Kuadrant `MCPServerRegistration` resource that enables the MCP Gateway broker to discover and federate the server's tools and prompts.
 
+For components, Gateway and extension setup, listener selection, and request flow diagrams, see [Kuadrant MCP Gateway Architecture](kuadrant-architecture.md).
+
 ### Prerequisites
 
 - [Gateway API CRDs](https://gateway-api.sigs.k8s.io/guides/#installing-gateway-api) installed on the cluster

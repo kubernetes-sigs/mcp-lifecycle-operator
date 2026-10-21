@@ -6,6 +6,7 @@ Welcome to the MCP Lifecycle Operator guides! These guides will help you get sta
 
 - **[Quickstart](quickstart.md)** - Deploy your first MCP server in minutes
 - **[Gateway Integration](gateway.md)** - Expose MCP servers through external gateways
+- **[Kuadrant MCP Gateway Architecture](kuadrant-architecture.md)** - Understand setup, resource management, and request routing
 
 ## Examples
 
