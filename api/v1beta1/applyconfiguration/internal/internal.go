@@ -39,6 +39,18 @@ func Parser() *typed.Parser {
 var parserOnce sync.Once
 var parser *typed.Parser
 var schemaYAML = typed.YAMLObject(`types:
+- name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.CatalogCounts
+  map:
+    fields:
+    - name: promptCount
+      type:
+        scalar: numeric
+    - name: resourceCount
+      type:
+        scalar: numeric
+    - name: toolCount
+      type:
+        scalar: numeric
 - name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.ContainerImageSource
   map:
     fields:
@@ -137,6 +149,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: capabilities
       type:
         namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.MCPServerCapabilities
+    - name: catalogCounts
+      type:
+        namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.CatalogCounts
     - name: instructions
       type:
         scalar: string
