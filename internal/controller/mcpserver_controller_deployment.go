@@ -260,7 +260,7 @@ func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1beta1.MCPServer) 
 		ImagePullPolicy: mcpServer.Spec.Source.ContainerImage.PullPolicy,
 		Ports: []corev1.ContainerPort{
 			{
-				Name:          "mcp",
+				Name:          mcpPortName,
 				ContainerPort: mcpServer.Spec.Config.Port,
 				Protocol:      corev1.ProtocolTCP,
 			},
