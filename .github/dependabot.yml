@@ -40,6 +40,14 @@ updates:
     labels:
       - dependencies
 
+  # Python dependencies for the mkdocs image.
+  - package-ecosystem: pip
+    directory: /hack/mkdocs/image
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
