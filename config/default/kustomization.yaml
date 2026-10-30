@@ -46,9 +46,9 @@ patches:
 # Uncomment the patches line if you enable Metrics and CertManager
 # [METRICS-WITH-CERTS] To enable metrics protected with certManager, uncomment the following line.
 # This patch will protect the metrics with certManager self-signed certs.
-#- path: cert_metrics_manager_patch.yaml
-#  target:
-#    kind: Deployment
+- path: cert_metrics_manager_patch.yaml
+  target:
+    kind: Deployment
 
 # [WEBHOOK] Webhook deployment patch
 - path: manager_webhook_patch.yaml
@@ -61,43 +61,79 @@ patches:
 
 # [CERTMANAGER] cert-manager CA injection annotations
 replacements:
-# - source: # Uncomment the following block to enable certificates for metrics
-#     kind: Service
-#     version: v1
-#     name: controller-manager-metrics-service
-#     fieldPath: metadata.name
-#   targets:
-#     - select:
-#         kind: Certificate
-#         group: cert-manager.io
-#         version: v1
-#         name: metrics-certs
-#       fieldPaths:
-#         - spec.dnsNames.0
-#         - spec.dnsNames.1
-#       options:
-#         delimiter: '.'
-#         index: 0
-#         create: true
+- source: # Certificates for the metrics service DNS name.
+    kind: Service
+    version: v1
+    name: controller-manager-metrics-service
+    fieldPath: metadata.name
+  targets:
+    - select:
+        kind: Certificate
+        group: cert-manager.io
+        version: v1
+        name: metrics-certs
+      fieldPaths:
+        - spec.dnsNames.0
+        - spec.dnsNames.1
+      options:
+        delimiter: '.'
+        index: 0
+        create: true
 
-# - source:
-#     kind: Service
-#     version: v1
-#     name: controller-manager-metrics-service
-#     fieldPath: metadata.namespace
-#   targets:
-#     - select:
-#         kind: Certificate
-#         group: cert-manager.io
-#         version: v1
-#         name: metrics-certs
-#       fieldPaths:
-#         - spec.dnsNames.0
-#         - spec.dnsNames.1
-#       options:
-#         delimiter: '.'
-#         index: 1
-#         create: true
+- source:
+    kind: Service
+    version: v1
+    name: controller-manager-metrics-service
+    fieldPath: metadata.namespace
+  targets:
+    - select:
+        kind: Certificate
+        group: cert-manager.io
+        version: v1
+        name: metrics-certs
+      fieldPaths:
+        - spec.dnsNames.0
+        - spec.dnsNames.1
+      options:
+        delimiter: '.'
+        index: 1
+        create: true
+
+# ServiceMonitor serverName injection from the metrics Service DNS name.
+# The ServiceMonitor only enters this build when ../prometheus is enabled
+# above; the replacements then resolve the tlsConfig.serverName placeholders
+# from the metrics Service. Selection is by kind because the monitor's name
+# is transformed in some downstream overlays before the replacements run.
+- source:
+    kind: Service
+    version: v1
+    name: controller-manager-metrics-service
+    fieldPath: metadata.name
+  targets:
+    - select:
+        kind: ServiceMonitor
+        group: monitoring.coreos.com
+        version: v1
+      fieldPaths:
+        - spec.endpoints.0.tlsConfig.serverName
+      options:
+        delimiter: '.'
+        index: 0
+- source:
+    kind: Service
+    version: v1
+    name: controller-manager-metrics-service
+    fieldPath: metadata.namespace
+  targets:
+    - select:
+        kind: ServiceMonitor
+        group: monitoring.coreos.com
+        version: v1
+      fieldPaths:
+        - spec.endpoints.0.tlsConfig.serverName
+      options:
+        delimiter: '.'
+        index: 1
 
 # [WEBHOOK] Webhook service DNS name injection into Certificate
 - source:
