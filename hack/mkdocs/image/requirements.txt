@@ -5,4 +5,4 @@ mkdocs-awesome-pages-plugin~=2.10
 mkdocs-mermaid2-plugin~=1.2
 mike~=2.2
 pymdown-extensions~=12.3
-markdown~=3.6
+markdown~=3.11
