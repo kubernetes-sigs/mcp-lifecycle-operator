@@ -1440,3 +1440,13 @@ var _ = Describe("MCPServer Controller - BYO Combined", func() {
 		})
 	})
 })
+
+var _ = Describe("BYO port admission", func() {
+	It("should require a container port for a managed workload even with serviceRef", func() {
+		server := newTestBYOMCPServer("managed-byo-service-no-port", nil, &mcpv1beta1.ServiceReference{Name: "external"})
+		server.Spec.Config.Port = 0
+		err := k8sClient.Create(context.Background(), server)
+		Expect(errors.IsInvalid(err)).To(BeTrue())
+		Expect(err.Error()).To(ContainSubstring("config.port is required"))
+	})
+})

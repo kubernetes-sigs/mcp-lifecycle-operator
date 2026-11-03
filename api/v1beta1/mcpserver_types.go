@@ -214,7 +214,8 @@ type StorageMount struct {
 type ServerConfig struct {
 	// Port specifies the port number on which the MCP server listens for connections.
 	// Must be between 1 and 65535.
-	// Required when serviceRef is not set. When serviceRef is set and port is omitted,
+	// Required for operator-managed workloads or when serviceRef is not set.
+	// When both workloadRef and serviceRef are set and port is omitted,
 	// the port is resolved from the referenced Service.
 	// +optional
 	// +kubebuilder:validation:Minimum=1
@@ -437,7 +438,7 @@ type NetworkConfig struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.health)",message="runtime.health must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.network)",message="network must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.serviceRef) || !has(self.mcp) || !has(self.mcp.stateless)",message="mcp.stateless must not be set when serviceRef is set"
-// +kubebuilder:validation:XValidation:rule="has(self.serviceRef) || (has(self.config) && has(self.config.port))",message="config.port is required when serviceRef is not set"
+// +kubebuilder:validation:XValidation:rule="(has(self.workloadRef) && has(self.serviceRef)) || (has(self.config) && has(self.config.port))",message="config.port is required for operator-managed workloads or when serviceRef is not set"
 // +kubebuilder:validation:XValidation:rule="!(has(self.workloadRef) && has(self.serviceRef)) || !has(self.extraLabels)",message="extraLabels must not be set when both workloadRef and serviceRef are set"
 // +kubebuilder:validation:XValidation:rule="!(has(self.workloadRef) && has(self.serviceRef)) || !has(self.extraAnnotations)",message="extraAnnotations must not be set when both workloadRef and serviceRef are set"
 type MCPServerSpec struct {

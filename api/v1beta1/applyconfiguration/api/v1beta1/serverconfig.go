@@ -29,7 +29,8 @@ import (
 type ServerConfigApplyConfiguration struct {
 	// Port specifies the port number on which the MCP server listens for connections.
 	// Must be between 1 and 65535.
-	// Required when serviceRef is not set. When serviceRef is set and port is omitted,
+	// Required for operator-managed workloads or when serviceRef is not set.
+	// When both workloadRef and serviceRef are set and port is omitted,
 	// the port is resolved from the referenced Service.
 	Port *int32 `json:"port,omitempty"`
 	// Arguments are command line arguments for the MCP server container.
