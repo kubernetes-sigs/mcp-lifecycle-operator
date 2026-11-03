@@ -120,6 +120,10 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "my-mcp-deploy", Namespace: "default"}, dep); err == nil {
 				Expect(k8sClient.Delete(ctx, dep)).To(Succeed())
 			}
+			svc := &corev1.Service{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, svc); err == nil {
+				Expect(k8sClient.Delete(ctx, svc)).To(Succeed())
+			}
 		})
 
 		It("should not create an operator-managed Deployment and should reflect BYO workload status", func() {
@@ -146,6 +150,19 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			Expect(mcpServer.Status.WorkloadSummary).To(Equal("BYO:Deployment/my-mcp-deploy"))
 			Expect(mcpServer.Status.Replicas).To(Equal(int32(2)))
 			Expect(mcpServer.Status.ReadyReplicas).To(Equal(int32(2)))
+		})
+
+		It("should create a Service using the BYO workload's selector labels", func() {
+			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			svc := &corev1.Service{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, svc)).To(Succeed())
+			Expect(svc.Spec.Selector).To(Equal(map[string]string{"app": "my-mcp"}))
 		})
 	})
 
@@ -198,6 +215,10 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			ds := &appsv1.DaemonSet{}
 			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "my-mcp-ds", Namespace: "default"}, ds); err == nil {
 				Expect(k8sClient.Delete(ctx, ds)).To(Succeed())
+			}
+			svc := &corev1.Service{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, svc); err == nil {
+				Expect(k8sClient.Delete(ctx, svc)).To(Succeed())
 			}
 		})
 
@@ -275,6 +296,10 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "my-mcp-sts", Namespace: "default"}, sts); err == nil {
 				Expect(k8sClient.Delete(ctx, sts)).To(Succeed())
 			}
+			svc := &corev1.Service{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, svc); err == nil {
+				Expect(k8sClient.Delete(ctx, svc)).To(Succeed())
+			}
 		})
 
 		It("should reflect StatefulSet status using ReadyReplicas/Spec.Replicas", func() {
@@ -345,6 +370,80 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			Expect(availableCondition).NotTo(BeNil())
 			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
 			Expect(availableCondition.Reason).To(Equal(ReasonConfigurationInvalid))
+		})
+	})
+
+	Context("When BYO workload has only matchExpressions (no matchLabels)", func() {
+		const resourceName = "test-byo-match-expressions"
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			dep := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "expr-only-deploy",
+					Namespace: "default",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To[int32](1),
+					Selector: &metav1.LabelSelector{
+						MatchExpressions: []metav1.LabelSelectorRequirement{{
+							Key:      "app",
+							Operator: metav1.LabelSelectorOpIn,
+							Values:   []string{"my-mcp"},
+						}},
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "my-mcp"}},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{
+								Name:  "server",
+								Image: "my-mcp:latest",
+							}},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, dep)).To(Succeed())
+
+			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+				Name: "expr-only-deploy",
+				Kind: mcpv1beta1.WorkloadKindDeployment,
+			}, nil)
+			Expect(k8sClient.Create(ctx, server)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			resource := &mcpv1beta1.MCPServer{}
+			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
+			dep := &appsv1.Deployment{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "expr-only-deploy", Namespace: "default"}, dep); err == nil {
+				Expect(k8sClient.Delete(ctx, dep)).To(Succeed())
+			}
+		})
+
+		It("should set Accepted=False because Service selector requires matchLabels", func() {
+			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			mcpServer := &mcpv1beta1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+
+			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAccepted)
+			Expect(acceptedCondition).NotTo(BeNil())
+			Expect(acceptedCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(acceptedCondition.Reason).To(Equal(ReasonInvalid))
+			Expect(acceptedCondition.Message).To(ContainSubstring("matchLabels"))
+			Expect(acceptedCondition.Message).To(ContainSubstring("serviceRef"))
 		})
 	})
 })
@@ -733,6 +832,7 @@ var _ = Describe("getWorkloadStatus - unit tests", func() {
 		Expect(ws.Ready).To(BeFalse())
 		Expect(ws.ReadyReplicas).To(Equal(int32(1)))
 		Expect(ws.TotalReplicas).To(Equal(int32(3)))
+		Expect(ws.SelectorLabels).To(Equal(map[string]string{"app": "test"}))
 	})
 
 	It("should report not-ready DaemonSet when NumberReady < DesiredNumberScheduled", func() {
@@ -949,6 +1049,10 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "not-ready-deploy", Namespace: "default"}, dep); err == nil {
 				Expect(k8sClient.Delete(ctx, dep)).To(Succeed())
 			}
+			svc := &corev1.Service{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, svc); err == nil {
+				Expect(k8sClient.Delete(ctx, svc)).To(Succeed())
+			}
 		})
 
 		It("should set Available=False with WorkloadUnavailable reason", func() {
@@ -1021,6 +1125,10 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "zero-scale-deploy", Namespace: "default"}, dep); err == nil {
 				Expect(k8sClient.Delete(ctx, dep)).To(Succeed())
 			}
+			svc := &corev1.Service{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, svc); err == nil {
+				Expect(k8sClient.Delete(ctx, svc)).To(Succeed())
+			}
 		})
 
 		It("should set Available=True with ScaledToZero reason", func() {
@@ -1088,6 +1196,10 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			ds := &appsv1.DaemonSet{}
 			if err := k8sClient.Get(ctx, types.NamespacedName{Name: "init-ds", Namespace: "default"}, ds); err == nil {
 				Expect(k8sClient.Delete(ctx, ds)).To(Succeed())
+			}
+			svc := &corev1.Service{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, svc); err == nil {
+				Expect(k8sClient.Delete(ctx, svc)).To(Succeed())
 			}
 		})
 

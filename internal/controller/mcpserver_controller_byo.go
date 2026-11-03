@@ -43,6 +43,7 @@ type WorkloadStatus struct {
 	TotalReplicas      int32
 	DesiredReplicas    *int32
 	NoSchedulableNodes bool
+	SelectorLabels     map[string]string
 	Message            string
 }
 
@@ -58,12 +59,16 @@ func getWorkloadStatus(ctx context.Context, r client.Reader, name string, kind m
 			return WorkloadStatus{}, err
 		}
 		total := ptr.Deref(dep.Spec.Replicas, 1)
-		return WorkloadStatus{
+		ws := WorkloadStatus{
 			Ready:           dep.Status.ReadyReplicas > 0 && dep.Status.ReadyReplicas >= total,
 			ReadyReplicas:   dep.Status.ReadyReplicas,
 			TotalReplicas:   total,
 			DesiredReplicas: dep.Spec.Replicas,
-		}, nil
+		}
+		if dep.Spec.Selector != nil {
+			ws.SelectorLabels = dep.Spec.Selector.MatchLabels
+		}
+		return ws, nil
 
 	case mcpv1beta1.WorkloadKindDaemonSet:
 		ds := &appsv1.DaemonSet{}
@@ -77,6 +82,9 @@ func getWorkloadStatus(ctx context.Context, r client.Reader, name string, kind m
 			Ready:         ds.Status.NumberReady > 0 && ds.Status.NumberReady >= ds.Status.DesiredNumberScheduled,
 			ReadyReplicas: ds.Status.NumberReady,
 			TotalReplicas: ds.Status.DesiredNumberScheduled,
+		}
+		if ds.Spec.Selector != nil {
+			ws.SelectorLabels = ds.Spec.Selector.MatchLabels
 		}
 		if ds.Status.DesiredNumberScheduled == 0 {
 			ws.NoSchedulableNodes = true
@@ -93,12 +101,16 @@ func getWorkloadStatus(ctx context.Context, r client.Reader, name string, kind m
 			return WorkloadStatus{}, err
 		}
 		total := ptr.Deref(sts.Spec.Replicas, 1)
-		return WorkloadStatus{
+		ws := WorkloadStatus{
 			Ready:           sts.Status.ReadyReplicas > 0 && sts.Status.ReadyReplicas >= total,
 			ReadyReplicas:   sts.Status.ReadyReplicas,
 			TotalReplicas:   total,
 			DesiredReplicas: sts.Spec.Replicas,
-		}, nil
+		}
+		if sts.Spec.Selector != nil {
+			ws.SelectorLabels = sts.Spec.Selector.MatchLabels
+		}
+		return ws, nil
 
 	default:
 		return WorkloadStatus{}, fmt.Errorf("unsupported workload kind: %s", kind)
@@ -151,7 +163,7 @@ func (r *MCPServerReconciler) reconcileServiceOrBYO(
 	}
 
 	serviceStart := time.Now()
-	if err := r.reconcileService(ctx, mcpServer); err != nil {
+	if err := r.reconcileService(ctx, mcpServer, managedWorkloadSelector(mcpServer.Name)); err != nil {
 		reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
 		return "", 0, err
 	}
@@ -229,6 +241,10 @@ func (r *MCPServerReconciler) reconcileBYO(
 			return ctrl.Result{}, resolveErr
 		}
 		port = resolvedPort
+	} else {
+		if err := r.reconcileService(ctx, mcpServer, ws.SelectorLabels); err != nil {
+			return ctrl.Result{}, fmt.Errorf("reconciling Service for BYO workload: %w", err)
+		}
 	}
 
 	path := mcpServer.Spec.Config.Path

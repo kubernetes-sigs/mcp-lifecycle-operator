@@ -272,7 +272,7 @@ var _ = Describe("MCPServer Controller - reconcileService", func() {
 			APIReader: k8sClient,
 		}
 
-		err := reconciler.reconcileService(ctx, mcpServer)
+		err := reconciler.reconcileService(ctx, mcpServer, managedWorkloadSelector(resourceName))
 		Expect(err).NotTo(HaveOccurred())
 
 		svc := &corev1.Service{}
@@ -295,8 +295,8 @@ var _ = Describe("MCPServer Controller - reconcileService", func() {
 			APIReader: k8sClient,
 		}
 
-		Expect(reconciler.reconcileService(ctx, mcpServer)).To(Succeed())
-		Expect(reconciler.reconcileService(ctx, mcpServer)).To(Succeed())
+		Expect(reconciler.reconcileService(ctx, mcpServer, managedWorkloadSelector(resourceName))).To(Succeed())
+		Expect(reconciler.reconcileService(ctx, mcpServer, managedWorkloadSelector(resourceName))).To(Succeed())
 	})
 
 	It("should restore a drifted selector without changing the ClusterIP", func() {
@@ -310,7 +310,7 @@ var _ = Describe("MCPServer Controller - reconcileService", func() {
 		}
 
 		By("Creating the managed Service")
-		Expect(reconciler.reconcileService(ctx, mcpServer)).To(Succeed())
+		Expect(reconciler.reconcileService(ctx, mcpServer, managedWorkloadSelector(resourceName))).To(Succeed())
 
 		svc := &corev1.Service{}
 		serviceKey := client.ObjectKey{Name: resourceName, Namespace: "default"}
@@ -326,7 +326,7 @@ var _ = Describe("MCPServer Controller - reconcileService", func() {
 		Expect(k8sClient.Update(ctx, svc)).To(Succeed())
 
 		By("Reconciling the Service selector drift")
-		Expect(reconciler.reconcileService(ctx, mcpServer)).To(Succeed())
+		Expect(reconciler.reconcileService(ctx, mcpServer, managedWorkloadSelector(resourceName))).To(Succeed())
 
 		By("Verifying the selector is restored and allocated addresses are preserved")
 		Expect(k8sClient.Get(ctx, serviceKey, svc)).To(Succeed())
@@ -368,7 +368,7 @@ var _ = Describe("MCPServer Controller - Stateless Service", func() {
 			APIReader: k8sClient,
 		}
 
-		err := reconciler.reconcileService(ctx, mcpServer)
+		err := reconciler.reconcileService(ctx, mcpServer, managedWorkloadSelector(resourceName))
 		Expect(err).NotTo(HaveOccurred())
 
 		svc := &corev1.Service{}
@@ -392,7 +392,7 @@ var _ = Describe("MCPServer Controller - Stateless Service", func() {
 			APIReader: k8sClient,
 		}
 
-		err := reconciler.reconcileService(ctx, mcpServer)
+		err := reconciler.reconcileService(ctx, mcpServer, managedWorkloadSelector(resourceName))
 		Expect(err).NotTo(HaveOccurred())
 
 		svc := &corev1.Service{}
@@ -417,7 +417,7 @@ var _ = Describe("MCPServer Controller - Stateless Service", func() {
 			APIReader: k8sClient,
 		}
 
-		err := reconciler.reconcileService(ctx, mcpServer)
+		err := reconciler.reconcileService(ctx, mcpServer, managedWorkloadSelector(resourceName))
 		Expect(err).NotTo(HaveOccurred())
 
 		svc := &corev1.Service{}
@@ -834,7 +834,7 @@ var _ = Describe("MCPServer Controller - Service ExtraLabels/ExtraAnnotations on
 			APIReader: k8sClient,
 		}
 
-		err := reconciler.reconcileService(ctx, mcpServer)
+		err := reconciler.reconcileService(ctx, mcpServer, managedWorkloadSelector(mcpServer.Name))
 		Expect(err).NotTo(HaveOccurred())
 
 		createdService := &corev1.Service{}

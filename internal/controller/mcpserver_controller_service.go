@@ -33,13 +33,15 @@ import (
 )
 
 // reconcileService creates or updates the Service for the MCPServer.
+// selector is the label selector the Service uses to target pods.
 func (r *MCPServerReconciler) reconcileService(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
+	selector map[string]string,
 ) error {
 	logger := log.FromContext(ctx)
 
-	service := r.createService(mcpServer)
+	service := r.createService(mcpServer, selector)
 	if err := controllerutil.SetControllerReference(mcpServer, service, r.Scheme); err != nil {
 		logger.Error(err, "Failed to set controller reference for Service")
 		return err
@@ -114,8 +116,8 @@ func (r *MCPServerReconciler) reconcileService(
 	return nil
 }
 
-// createService creates a Service for the MCPServer
-func (r *MCPServerReconciler) createService(mcpServer *mcpv1beta1.MCPServer) *corev1.Service {
+// createService creates a Service for the MCPServer using the given selector.
+func (r *MCPServerReconciler) createService(mcpServer *mcpv1beta1.MCPServer, selector map[string]string) *corev1.Service {
 	labels := managedWorkloadLabels(mcpServer.Name)
 
 	service := &corev1.Service{
@@ -126,7 +128,7 @@ func (r *MCPServerReconciler) createService(mcpServer *mcpv1beta1.MCPServer) *co
 		},
 		Spec: corev1.ServiceSpec{
 			Type:     corev1.ServiceTypeClusterIP,
-			Selector: managedWorkloadSelector(mcpServer.Name),
+			Selector: selector,
 			Ports: []corev1.ServicePort{
 				{
 					Name:       mcpPortName,

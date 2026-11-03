@@ -214,6 +214,25 @@ func TestBYOWorkloadHappyPath(t *testing.T) {
 			t.Log("confirmed no operator-managed Deployment exists")
 			return ctx
 		}).
+		Assess("operator-managed Service uses BYO workload selector", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			svc := &corev1.Service{}
+			if err := r.Get(ctx, server.Name, server.Namespace, svc); err != nil {
+				t.Fatalf("expected operator-managed Service %s to exist: %v", server.Name, err)
+			}
+
+			expectedSelector := map[string]string{"app": byoDeployName}
+			for k, v := range expectedSelector {
+				if svc.Spec.Selector[k] != v {
+					t.Fatalf("Service selector mismatch: expected %s=%s, got %s=%s", k, v, k, svc.Spec.Selector[k])
+				}
+			}
+
+			t.Logf("confirmed Service %s uses BYO workload selector %v", svc.Name, svc.Spec.Selector)
+			return ctx
+		}).
 		Assess("no ownerRef on BYO Deployment", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
@@ -459,6 +478,81 @@ func TestBYOWorkloadStatusUpdate(t *testing.T) {
 			dep := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: byoDeployName, Namespace: ns}}
 			if err := r.Delete(ctx, dep); err != nil && !apierrors.IsNotFound(err) {
 				t.Logf("failed to delete BYO Deployment: %v", err)
+			}
+			return ctx
+		}).
+		Feature()
+
+	testenv.Test(t, feature)
+}
+
+func TestBYOMatchExpressionsOnlyRejected(t *testing.T) {
+	t.Parallel()
+	feature := features.New("BYO workload with matchExpressions only is rejected").
+		WithLabel(category.Label, category.Lifecycle).
+		WithLabel(speed.Label, speed.Fast).
+		WithLabel(scenario.Label, scenario.BYO).
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			ns := ctx.Value(f.NsKey).(string)
+			r := cfg.Client().Resources()
+
+			dep := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "expr-only-deploy",
+					Namespace: ns,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: ptr.To(int32(1)),
+					Selector: &metav1.LabelSelector{
+						MatchExpressions: []metav1.LabelSelectorRequirement{{
+							Key:      "app",
+							Operator: metav1.LabelSelectorOpIn,
+							Values:   []string{"expr-only"},
+						}},
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{"app": "expr-only"},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{
+								Name:    "busybox",
+								Image:   f.BusyboxImage,
+								Command: []string{"sleep", "3600"},
+							}},
+						},
+					},
+				},
+			}
+			if err := r.Create(ctx, dep); err != nil {
+				t.Fatalf("failed to create Deployment: %v", err)
+			}
+
+			return f.SetupMCPServer(ctx, t, cfg, "test-byo-expr", false,
+				f.WithWorkloadRef(&mcpv1beta1.WorkloadReference{
+					Name: "expr-only-deploy",
+					Kind: mcpv1beta1.WorkloadKindDeployment,
+				}))
+		}).
+		Assess("Accepted is False with matchLabels message", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			f.WaitForMCPServerConditionMessageContains(ctx, t, r, server,
+				mcpcontroller.ConditionTypeAccepted, metav1.ConditionFalse, mcpcontroller.ReasonInvalid, "matchLabels")
+
+			t.Log("confirmed Accepted=False for BYO workload with matchExpressions only")
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			ns := ctx.Value(f.NsKey).(string)
+			r := cfg.Client().Resources()
+
+			ctx = f.TeardownMCPServer(ctx, t, cfg)
+
+			dep := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "expr-only-deploy", Namespace: ns}}
+			if err := r.Delete(ctx, dep); err != nil && !apierrors.IsNotFound(err) {
+				t.Logf("failed to delete Deployment: %v", err)
 			}
 			return ctx
 		}).

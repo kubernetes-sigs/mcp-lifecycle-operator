@@ -362,6 +362,34 @@ func (r *MCPServerReconciler) validateWorkloadRef(
 	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: mcpServer.Namespace}, obj); err != nil {
 		return classifyAPIError(desc, mcpServer.Namespace, err)
 	}
+
+	// When no serviceRef is set, the operator creates a Service targeting the
+	// workload's pods. Kubernetes Services require equality-based selectors, so
+	// the workload must have non-empty matchLabels.
+	if mcpServer.Spec.ServiceRef == nil {
+		var matchLabels map[string]string
+		switch w := obj.(type) {
+		case *appsv1.Deployment:
+			if w.Spec.Selector != nil {
+				matchLabels = w.Spec.Selector.MatchLabels
+			}
+		case *appsv1.DaemonSet:
+			if w.Spec.Selector != nil {
+				matchLabels = w.Spec.Selector.MatchLabels
+			}
+		case *appsv1.StatefulSet:
+			if w.Spec.Selector != nil {
+				matchLabels = w.Spec.Selector.MatchLabels
+			}
+		}
+		if len(matchLabels) == 0 {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("%s has no matchLabels in its selector; set serviceRef to provide a Service with a suitable selector", desc),
+			}
+		}
+	}
+
 	return nil
 }
 

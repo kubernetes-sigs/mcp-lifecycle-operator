@@ -806,9 +806,9 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 				}
 				return availableCondition.Reason
 			}).Should(Or(
-				Equal("Initializing"),          // Initial state after creation
+				Equal("Initializing"),        // Initial state after creation
 				Equal("WorkloadUnavailable"), // Deployment exists but not ready yet
-				Equal("Available"),             // Fully ready
+				Equal("Available"),           // Fully ready
 			), "MCPServer should be reconciling successfully after adopting orphaned deployment")
 
 			By("Cleanup")
@@ -925,9 +925,9 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 				}
 				return availableCondition.Reason
 			}).Should(Or(
-				Equal("Initializing"),          // Initial state after creation
+				Equal("Initializing"),        // Initial state after creation
 				Equal("WorkloadUnavailable"), // Deployment exists but not ready yet
-				Equal("Available"),             // Fully ready
+				Equal("Available"),           // Fully ready
 			), "MCPServer should be reconciling successfully after adopting orphaned service")
 
 			By("Cleanup")
