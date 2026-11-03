@@ -244,7 +244,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	pathType := gatewayv1.PathMatchPathPrefix
 
 	gwNS := gatewayv1.Namespace(gwNamespace)
-	port := mcpServer.Spec.Config.Port
+	serviceName, port, err := mcpcontroller.ResolveServiceEndpoint(ctx, r.APIReader, mcpServer)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	httpRoute := &gatewayv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
@@ -278,7 +281,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 								BackendObjectReference: gatewayv1.BackendObjectReference{
 									Group: ptr.To(gatewayv1.Group("")),
 									Kind:  ptr.To(gatewayv1.Kind("Service")),
-									Name:  gatewayv1.ObjectName(mcpServer.Name),
+									Name:  gatewayv1.ObjectName(serviceName),
 									Port:  &port,
 								},
 								Weight: ptr.To(int32(1)), //nolint:modernize // value is 1, not zero

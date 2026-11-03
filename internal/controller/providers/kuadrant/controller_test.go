@@ -347,6 +347,43 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		}
 	})
 
+	DescribeTable("BYO Service route backend", func(inferPort bool) {
+		server := newTestMCPServer(mcpServerName)
+		server.Spec.ServiceRef = &mcpv1beta1.ServiceReference{Name: "external-mcp"}
+		expectedPort := int32(8080)
+		if inferPort {
+			server.Spec.Source = mcpv1beta1.Source{}
+			server.Spec.WorkloadRef = &mcpv1beta1.WorkloadReference{Name: "external-workload", Kind: mcpv1beta1.WorkloadKindDeployment}
+			server.Spec.Config.Port = 0
+			expectedPort = 9090
+		}
+		Expect(k8sClient.Create(ctx, server)).To(Succeed())
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "external-mcp", Namespace: testNamespace},
+			Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{
+				{Name: "metrics", Port: 2112},
+				{Name: "mcp", Port: 9090},
+			}},
+		}
+		Expect(k8sClient.Create(ctx, svc)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, svc)).To(Succeed()) })
+
+		createGatewayExtension("myserver.mcp.local", true)
+		createConfigMap(validConfigData())
+		createBinding()
+
+		_, err := doReconcile()
+		Expect(err).NotTo(HaveOccurred())
+		route := &gatewayv1.HTTPRoute{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
+		backend := route.Spec.Rules[0].BackendRefs[0]
+		Expect(string(backend.Name)).To(Equal(svc.Name))
+		Expect(*backend.Port).To(Equal(expectedPort))
+	},
+		Entry("managed workload with explicit port", false),
+		Entry("BYO workload with inferred mcp port", true),
+	)
+
 	It("should create HTTPRoute and MCPServerRegistration from valid binding", func() {
 		createMCPServer()
 		createGatewayExtension("myserver.mcp.local", true)

@@ -146,6 +146,18 @@ func resolveServicePort(ctx context.Context, r client.Reader, serviceName, names
 	return svc.Spec.Ports[0].Port, nil
 }
 
+// ResolveServiceEndpoint returns the Service name and port used for MCP traffic.
+// Gateway providers use the same resolution as the MCP handshake, including
+// inferred ports on externally managed Services.
+func ResolveServiceEndpoint(ctx context.Context, reader client.Reader, server *mcpv1beta1.MCPServer) (string, int32, error) {
+	if server.Spec.ServiceRef == nil {
+		return server.Name, server.Spec.Config.Port, nil
+	}
+	name := server.Spec.ServiceRef.Name
+	port, err := resolveServicePort(ctx, reader, name, server.Namespace, server.Spec.Config.Port)
+	return name, port, err
+}
+
 // reconcileServiceOrBYO either reconciles the operator-managed Service or
 // resolves the BYO Service name and port. Returns serviceName, port, error.
 func (r *MCPServerReconciler) reconcileServiceOrBYO(
@@ -153,12 +165,7 @@ func (r *MCPServerReconciler) reconcileServiceOrBYO(
 	mcpServer *mcpv1beta1.MCPServer,
 ) (string, int32, error) {
 	if mcpServer.Spec.ServiceRef != nil {
-		serviceName := mcpServer.Spec.ServiceRef.Name
-		port, err := resolveServicePort(ctx, r.APIReader, serviceName, mcpServer.Namespace, mcpServer.Spec.Config.Port)
-		if err != nil {
-			return "", 0, fmt.Errorf("resolving BYO service port: %w", err)
-		}
-		return serviceName, port, nil
+		return ResolveServiceEndpoint(ctx, r.APIReader, mcpServer)
 	}
 
 	serviceStart := time.Now()
@@ -233,13 +240,10 @@ func (r *MCPServerReconciler) reconcileBYO(
 	serviceName := mcpServer.Name
 	port := mcpServer.Spec.Config.Port
 	if mcpServer.Spec.ServiceRef != nil {
-		serviceName = mcpServer.Spec.ServiceRef.Name
-		resolvedPort, resolveErr := resolveServicePort(ctx, r.APIReader, serviceName, mcpServer.Namespace, port)
-		if resolveErr != nil {
-			logger.Error(resolveErr, "Failed to resolve BYO Service port")
-			return ctrl.Result{}, resolveErr
+		serviceName, port, err = ResolveServiceEndpoint(ctx, r.APIReader, mcpServer)
+		if err != nil {
+			return ctrl.Result{}, err
 		}
-		port = resolvedPort
 	} else {
 		if err := r.reconcileService(ctx, mcpServer, ws.SelectorLabels); err != nil {
 			return ctrl.Result{}, fmt.Errorf("reconciling Service for BYO workload: %w", err)
