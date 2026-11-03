@@ -32,6 +32,8 @@ type MCPServerSpecApplyConfiguration struct {
 	// in the same namespace. When set, the operator monitors the referenced
 	// workload read-only and never creates its own Deployment.
 	// Mutually exclusive with source and operator-managed workload fields.
+	// Cannot be added or removed after creation; create a new MCPServer to switch
+	// between managed and BYO workloads. The referenced name and kind may change.
 	WorkloadRef *WorkloadReferenceApplyConfiguration `json:"workloadRef,omitempty"`
 	// ServiceRef references an external Service in the same namespace.
 	// When set, the operator skips Service creation and uses the referenced

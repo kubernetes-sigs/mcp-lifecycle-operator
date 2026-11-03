@@ -1450,3 +1450,40 @@ var _ = Describe("BYO port admission", func() {
 		Expect(err.Error()).To(ContainSubstring("config.port is required"))
 	})
 })
+
+var _ = Describe("BYO workload mode admission", func() {
+	DescribeTable("should preserve workload management mode on updates", func(byo bool) {
+		ctx := context.Background()
+		name := "immutable-managed-mode"
+		var ref *mcpv1beta1.WorkloadReference
+		if byo {
+			name = "immutable-byo-mode"
+			ref = &mcpv1beta1.WorkloadReference{Name: "external", Kind: mcpv1beta1.WorkloadKindDeployment}
+		}
+		server := newTestBYOMCPServer(name, ref, nil)
+		Expect(k8sClient.Create(ctx, server)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, server)).To(Succeed()) })
+
+		// Ordinary updates and changing an existing BYO reference remain valid.
+		server.Labels = map[string]string{"team": "platform"}
+		if byo {
+			server.Spec.WorkloadRef.Name = "another-workload"
+			server.Spec.WorkloadRef.Kind = mcpv1beta1.WorkloadKindStatefulSet
+		}
+		Expect(k8sClient.Update(ctx, server)).To(Succeed())
+
+		if byo {
+			server.Spec.WorkloadRef = nil
+			server.Spec.Source = newTestBYOMCPServer("unused", nil, nil).Spec.Source
+		} else {
+			server.Spec.Source = mcpv1beta1.Source{}
+			server.Spec.WorkloadRef = &mcpv1beta1.WorkloadReference{Name: "external", Kind: mcpv1beta1.WorkloadKindDeployment}
+		}
+		err := k8sClient.Update(ctx, server)
+		Expect(errors.IsInvalid(err)).To(BeTrue())
+		Expect(err.Error()).To(ContainSubstring("workloadRef cannot be added or removed after creation"))
+	},
+		Entry("managed to BYO", false),
+		Entry("BYO to managed", true),
+	)
+})

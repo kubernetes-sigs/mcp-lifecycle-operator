@@ -4544,6 +4544,8 @@ spec:
                   in the same namespace. When set, the operator monitors the referenced
                   workload read-only and never creates its own Deployment.
                   Mutually exclusive with source and operator-managed workload fields.
+                  Cannot be added or removed after creation; create a new MCPServer to switch
+                  between managed and BYO workloads. The referenced name and kind may change.
                 properties:
                   kind:
                     description: Kind of the workload resource.
@@ -4596,6 +4598,8 @@ spec:
             - message: extraAnnotations must not be set when both workloadRef and
                 serviceRef are set
               rule: '!(has(self.workloadRef) && has(self.serviceRef)) || !has(self.extraAnnotations)'
+            - message: workloadRef cannot be added or removed after creation
+              rule: has(self.workloadRef) == has(oldSelf.workloadRef)
           status:
             description: status defines the observed state of MCPServer
             properties:

@@ -441,6 +441,7 @@ type NetworkConfig struct {
 // +kubebuilder:validation:XValidation:rule="(has(self.workloadRef) && has(self.serviceRef)) || (has(self.config) && has(self.config.port))",message="config.port is required for operator-managed workloads or when serviceRef is not set"
 // +kubebuilder:validation:XValidation:rule="!(has(self.workloadRef) && has(self.serviceRef)) || !has(self.extraLabels)",message="extraLabels must not be set when both workloadRef and serviceRef are set"
 // +kubebuilder:validation:XValidation:rule="!(has(self.workloadRef) && has(self.serviceRef)) || !has(self.extraAnnotations)",message="extraAnnotations must not be set when both workloadRef and serviceRef are set"
+// +kubebuilder:validation:XValidation:rule="has(self.workloadRef) == has(oldSelf.workloadRef)",message="workloadRef cannot be added or removed after creation"
 type MCPServerSpec struct {
 	// ExtraLabels are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
 	// The operator-managed keys "app" and "mcp-server" cannot be overridden.
@@ -454,6 +455,8 @@ type MCPServerSpec struct {
 	// in the same namespace. When set, the operator monitors the referenced
 	// workload read-only and never creates its own Deployment.
 	// Mutually exclusive with source and operator-managed workload fields.
+	// Cannot be added or removed after creation; create a new MCPServer to switch
+	// between managed and BYO workloads. The referenced name and kind may change.
 	// +optional
 	WorkloadRef *WorkloadReference `json:"workloadRef,omitempty"`
 
