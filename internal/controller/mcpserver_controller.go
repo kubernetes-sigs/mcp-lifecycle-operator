@@ -311,7 +311,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Validate configuration
 	validationStart := time.Now()
-	workload, err := r.validateConfig(ctx, mcpServer)
+	workload, err := r.validateConfigAndResolveWorkload(ctx, mcpServer)
 	if err != nil {
 		reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseValidation}).Observe(time.Since(validationStart).Seconds())
 
@@ -362,7 +362,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	status := workloadStatusConfiguration(mcpServer, ptr.Deref(existingDeployment.Spec.Replicas, 1), existingDeployment.Status.ReadyReplicas)
 
 	// Reconcile Service - skip creation when using BYO serviceRef.
-	resolvedPort, svcErr := r.reconcileServiceOrBYO(ctx, mcpServer, managedWorkloadSelector(mcpServer.Name))
+	endpoint, svcErr := r.reconcileServiceOrBYO(ctx, mcpServer, managedWorkloadSelector(mcpServer.Name))
 	if svcErr != nil {
 		return r.handleResourceFailure(ctx, mcpServer, status, acceptedCondition, svcErr, resourceFailureParams{
 			counter:     serviceFailuresTotal,
@@ -412,7 +412,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	r.maybeEmitWorkloadUnavailableEvent(mcpServer, availableCondition)
 
-	return r.reconcileEndpoint(ctx, mcpServer, acceptedCondition, availableCondition, status, resolvedPort, &networkPolicyCondition)
+	return r.reconcileEndpoint(ctx, mcpServer, acceptedCondition, availableCondition, status, endpoint, &networkPolicyCondition)
 }
 
 func serverInfoToAC(info *mcpv1beta1.MCPServerInfo) *acv1beta1.MCPServerInfoApplyConfiguration {

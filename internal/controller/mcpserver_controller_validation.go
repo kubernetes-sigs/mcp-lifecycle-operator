@@ -44,10 +44,10 @@ func (e *ValidationError) Error() string {
 	return e.Message
 }
 
-// validateConfig validates the MCPServer configuration.
+// validateConfigAndResolveWorkload validates configuration and resolves the BYO workload.
 // Returns the validated BYO workload snapshot, if any. Configuration errors are
 // ValidationErrors; transient API failures are returned for retry.
-func (r *MCPServerReconciler) validateConfig(
+func (r *MCPServerReconciler) validateConfigAndResolveWorkload(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
 ) (workload client.Object, err error) {
@@ -193,8 +193,7 @@ func (r *MCPServerReconciler) validateCABundleSecret(
 }
 
 // validateStorageMount validates a single storage mount configuration.
-// Returns the validated BYO workload snapshot, if any. Configuration errors are
-// ValidationErrors; transient API failures are returned for retry.
+// Configuration errors are ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateStorageMount(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
@@ -262,8 +261,7 @@ func (r *MCPServerReconciler) validateStorageMount(
 }
 
 // validateEnvFrom validates a single envFrom configuration.
-// Returns the validated BYO workload snapshot, if any. Configuration errors are
-// ValidationErrors; transient API failures are returned for retry.
+// Configuration errors are ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateEnvFrom(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
@@ -290,8 +288,7 @@ func (r *MCPServerReconciler) validateEnvFrom(
 }
 
 // validateEnvValueFrom validates a single env var's valueFrom configuration.
-// Returns the validated BYO workload snapshot, if any. Configuration errors are
-// ValidationErrors; transient API failures are returned for retry.
+// Configuration errors are ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateEnvValueFrom(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,

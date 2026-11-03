@@ -295,17 +295,17 @@ func EnsureBindingAnnotations(
 	return c.Patch(ctx, binding, patch)
 }
 
-// ResolveBackendService records the backend Service dependency as well as its
+// ResolveAndRecordBackendService records the backend Service dependency as well as its
 // resolved port. Recording the name even when the Service is missing lets its
 // creation enqueue the binding without waiting for an unrelated resource change.
-func ResolveBackendService(ctx context.Context, c client.Client, reader client.Reader, binding *mcpv1alpha1.MCPGatewayBinding, server *mcpv1beta1.MCPServer) (string, int32, error) {
-	name, port, resolveErr := mcpcontroller.ResolveServiceEndpoint(ctx, reader, server)
+func ResolveAndRecordBackendService(ctx context.Context, c client.Client, reader client.Reader, binding *mcpv1alpha1.MCPGatewayBinding, server *mcpv1beta1.MCPServer) (mcpcontroller.ServiceEndpoint, error) {
+	endpoint, resolveErr := mcpcontroller.ResolveServiceEndpoint(ctx, reader, server)
 	if err := EnsureBindingAnnotations(ctx, c, binding, map[string]string{
-		AnnotationServiceRef: RefKey(server.Namespace, name),
+		AnnotationServiceRef: RefKey(server.Namespace, endpoint.Name),
 	}); err != nil {
-		return "", 0, err
+		return mcpcontroller.ServiceEndpoint{}, err
 	}
-	return name, port, resolveErr
+	return endpoint, resolveErr
 }
 
 // FindBindingsForService maps a metadata-only Service event to bindings of this

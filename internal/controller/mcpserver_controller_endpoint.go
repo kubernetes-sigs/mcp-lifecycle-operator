@@ -56,7 +56,7 @@ func (r *MCPServerReconciler) reconcileEndpoint(
 	mcpServer *mcpv1beta1.MCPServer,
 	acceptedCondition, availableCondition metav1.Condition,
 	status *acv1beta1.MCPServerStatusApplyConfiguration,
-	port int32,
+	endpoint ServiceEndpoint,
 	networkPolicyCondition *metav1.Condition,
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -82,7 +82,7 @@ func (r *MCPServerReconciler) reconcileEndpoint(
 	}
 
 	mcpURL := fmt.Sprintf("%s://%s.%s.svc.cluster.local:%d%s",
-		urlScheme(mcpServer), serviceNameFor(mcpServer), mcpServer.Namespace, port, path)
+		urlScheme(mcpServer), endpoint.Name, mcpServer.Namespace, endpoint.Port, path)
 
 	// Compute current TLS CA bundle hash so the handshake is re-verified
 	// when the CA bundle Secret content changes (which does not bump generation).

@@ -243,7 +243,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	pathType := gatewayv1.PathMatchPathPrefix
 
 	gwNS := gatewayv1.Namespace(gwNamespace)
-	serviceName, port, err := providers.ResolveBackendService(ctx, r.Client, r.APIReader, binding, mcpServer)
+	endpoint, err := providers.ResolveAndRecordBackendService(ctx, r.Client, r.APIReader, binding, mcpServer)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -280,8 +280,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 								BackendObjectReference: gatewayv1.BackendObjectReference{
 									Group: ptr.To(gatewayv1.Group("")),
 									Kind:  ptr.To(gatewayv1.Kind("Service")),
-									Name:  gatewayv1.ObjectName(serviceName),
-									Port:  &port,
+									Name:  gatewayv1.ObjectName(endpoint.Name),
+									Port:  &endpoint.Port,
 								},
 								Weight: ptr.To(int32(1)), //nolint:modernize // value is 1, not zero
 							},

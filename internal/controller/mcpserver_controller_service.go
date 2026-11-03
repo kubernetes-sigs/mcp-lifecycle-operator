@@ -19,6 +19,9 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -152,4 +155,88 @@ func (r *MCPServerReconciler) createService(mcpServer *mcpv1beta1.MCPServer, sel
 	}
 
 	return service
+}
+
+// ServiceEndpoint identifies the Service and exposed port used for MCP traffic.
+// Resolution preserves Name on error so callers can record the dependency.
+type ServiceEndpoint struct {
+	Name string
+	Port int32
+}
+
+// resolveServicePort determines the port to use for the MCP endpoint when
+// serviceRef is set. If configPort > 0, it is used directly. Otherwise the
+// referenced Service is fetched and a port named "mcp" is preferred, falling
+// back to the first port.
+func resolveServicePort(ctx context.Context, r client.Reader, serviceName, namespace string, configPort int32) (int32, error) {
+	if configPort > 0 {
+		return configPort, nil
+	}
+
+	svc := &corev1.Service{}
+	if err := r.Get(ctx, client.ObjectKey{Name: serviceName, Namespace: namespace}, svc); err != nil {
+		if apierrors.IsNotFound(err) {
+			return 0, fmt.Errorf("referenced Service %s not found", serviceName)
+		}
+		return 0, err
+	}
+
+	if len(svc.Spec.Ports) == 0 {
+		return 0, fmt.Errorf("referenced Service %s has no ports", serviceName)
+	}
+
+	for _, p := range svc.Spec.Ports {
+		if p.Name == mcpPortName {
+			return p.Port, nil
+		}
+	}
+
+	return svc.Spec.Ports[0].Port, nil
+}
+
+// serviceNameFor returns the Service identity even when endpoint resolution or
+// configuration validation fails.
+func serviceNameFor(server *mcpv1beta1.MCPServer) string {
+	if server.Spec.ServiceRef != nil {
+		return server.Spec.ServiceRef.Name
+	}
+	return server.Name
+}
+
+// ResolveServiceEndpoint returns the Service name and port used for MCP traffic.
+// Gateway providers use the same resolution as the MCP handshake, including
+// inferred ports on externally managed Services.
+func ResolveServiceEndpoint(ctx context.Context, reader client.Reader, server *mcpv1beta1.MCPServer) (ServiceEndpoint, error) {
+	if server.Spec.ServiceRef == nil {
+		return ServiceEndpoint{Name: serviceNameFor(server), Port: server.Spec.Config.Port}, nil
+	}
+	name := serviceNameFor(server)
+	configPort := server.Spec.Config.Port
+	if server.Spec.WorkloadRef == nil {
+		// For managed workloads config.port describes the container, which may
+		// differ from the referenced Service's exposed port.
+		configPort = 0
+	}
+	port, err := resolveServicePort(ctx, reader, name, server.Namespace, configPort)
+	return ServiceEndpoint{Name: name, Port: port}, err
+}
+
+// reconcileServiceOrBYO either reconciles the operator-managed Service or
+// resolves the BYO Service port. Service identity comes from serviceNameFor.
+func (r *MCPServerReconciler) reconcileServiceOrBYO(
+	ctx context.Context,
+	mcpServer *mcpv1beta1.MCPServer,
+	selector map[string]string,
+) (ServiceEndpoint, error) {
+	if mcpServer.Spec.ServiceRef != nil {
+		return ResolveServiceEndpoint(ctx, r.APIReader, mcpServer)
+	}
+
+	serviceStart := time.Now()
+	if err := r.reconcileService(ctx, mcpServer, selector); err != nil {
+		reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
+		return ServiceEndpoint{}, err
+	}
+	reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
+	return ServiceEndpoint{Name: serviceNameFor(mcpServer), Port: mcpServer.Spec.Config.Port}, nil
 }

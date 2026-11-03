@@ -454,7 +454,7 @@ func (r *Reconciler) reconcileHTTPRoute(
 	pathType := gatewayv1.PathMatchPathPrefix
 	gwNS := gatewayv1.Namespace(gwNamespace)
 	sn := gatewayv1.SectionName(sectionName)
-	serviceName, port, err := providers.ResolveBackendService(ctx, r.Client, r.APIReader, binding, mcpServer)
+	endpoint, err := providers.ResolveAndRecordBackendService(ctx, r.Client, r.APIReader, binding, mcpServer)
 	if err != nil {
 		return err
 	}
@@ -493,8 +493,8 @@ func (r *Reconciler) reconcileHTTPRoute(
 								BackendObjectReference: gatewayv1.BackendObjectReference{
 									Group: ptr.To(gatewayv1.Group("")),
 									Kind:  ptr.To(gatewayv1.Kind("Service")),
-									Name:  gatewayv1.ObjectName(serviceName),
-									Port:  &port,
+									Name:  gatewayv1.ObjectName(endpoint.Name),
+									Port:  &endpoint.Port,
 								},
 								Weight: ptr.To(int32(1)), //nolint:modernize // value is 1, not zero
 							},
