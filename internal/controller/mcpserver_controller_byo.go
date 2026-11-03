@@ -178,7 +178,7 @@ func byoAvailableCondition(
 		if ws.Message != "" {
 			msg = ws.Message
 		}
-		return newAvailableCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
+		return newAvailableCondition(metav1.ConditionFalse, ReasonWorkloadUnavailable,
 			msg, generation, existingConditions)
 	}
 }
@@ -207,7 +207,7 @@ func (r *MCPServerReconciler) reconcileBYO(
 	availableCondition := byoAvailableCondition(ws, ref.Kind, mcpServer.Generation, mcpServer.Status.Conditions)
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		availableCondition.Type, string(availableCondition.Status), availableCondition.Reason)
-	r.maybeEmitDeploymentUnavailableEvent(mcpServer, availableCondition)
+	r.maybeEmitWorkloadUnavailableEvent(mcpServer, availableCondition)
 
 	// Resolve service name and port for the MCP endpoint URL.
 	serviceName := mcpServer.Name

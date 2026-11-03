@@ -492,6 +492,12 @@ func duplicateDeploymentUnavailable(conditions []metav1.Condition, message strin
 		prev.Reason == ReasonDeploymentUnavailable && prev.Message == message
 }
 
+func duplicateWorkloadUnavailable(conditions []metav1.Condition, message string) bool {
+	prev := meta.FindStatusCondition(conditions, ConditionTypeAvailable)
+	return prev != nil && prev.Status == metav1.ConditionFalse &&
+		prev.Reason == ReasonWorkloadUnavailable && prev.Message == message
+}
+
 func duplicateServiceUnavailable(conditions []metav1.Condition, message string) bool {
 	prev := meta.FindStatusCondition(conditions, ConditionTypeAvailable)
 	return prev != nil && prev.Status == metav1.ConditionFalse &&

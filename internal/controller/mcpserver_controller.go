@@ -88,6 +88,7 @@ const (
 	ReasonAvailable                = "Available"
 	ReasonConfigurationInvalid     = "ConfigurationInvalid"
 	ReasonDeploymentUnavailable    = "DeploymentUnavailable"
+	ReasonWorkloadUnavailable      = "WorkloadUnavailable"
 	ReasonServiceUnavailable       = "ServiceUnavailable"
 	ReasonNetworkPolicyUnavailable = "NetworkPolicyUnavailable"
 	ReasonScaledToZero             = "ScaledToZero"
@@ -820,6 +821,25 @@ func withAddressWhenVerified(
 		return status.WithAddress(acv1beta1.MCPServerAddress().WithURL(mcpURL))
 	}
 	return status
+}
+
+func (r *MCPServerReconciler) maybeEmitWorkloadUnavailableEvent(
+	mcpServer *mcpv1beta1.MCPServer,
+	availableCondition metav1.Condition,
+) {
+	if availableCondition.Status == metav1.ConditionFalse &&
+		availableCondition.Reason == ReasonWorkloadUnavailable &&
+		!duplicateWorkloadUnavailable(mcpServer.Status.Conditions, availableCondition.Message) {
+		r.emitWorkloadUnavailable(mcpServer, availableCondition.Message)
+	}
+}
+
+func (r *MCPServerReconciler) emitWorkloadUnavailable(mcpServer *mcpv1beta1.MCPServer, message string) {
+	if r.Recorder == nil {
+		return
+	}
+	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonWorkloadUnavailable, eventActionDeploymentReconcileFailed,
+		"MCPServer %s: %s", mcpServer.Name, message)
 }
 
 func (r *MCPServerReconciler) emitDeploymentReconcileFailed(mcpServer *mcpv1beta1.MCPServer, message string) {

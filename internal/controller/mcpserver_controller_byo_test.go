@@ -929,7 +929,7 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			}
 		})
 
-		It("should set Available=False with DeploymentUnavailable reason", func() {
+		It("should set Available=False with WorkloadUnavailable reason", func() {
 			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -943,7 +943,7 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
 			Expect(availableCondition).NotTo(BeNil())
 			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(availableCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
+			Expect(availableCondition.Reason).To(Equal(ReasonWorkloadUnavailable))
 			Expect(availableCondition.Message).To(ContainSubstring("1 of 3"))
 		})
 	})
