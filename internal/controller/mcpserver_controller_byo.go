@@ -26,7 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1ac "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -247,6 +246,10 @@ func (r *MCPServerReconciler) reconcileBYO(
 		}
 	}
 
+	if err := r.reconcileGatewayBinding(ctx, mcpServer); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	path := mcpServer.Spec.Config.Path
 	if path == "" {
 		path = DefaultMCPPath
@@ -269,6 +272,13 @@ func (r *MCPServerReconciler) reconcileBYO(
 
 	handshakeRetryCount := r.reconcileHandshakeEventsAndRetryCount(mcpServer, &verifiedCondition)
 
+	gwStatus := r.reconcileGatewayCondition(ctx, mcpServer)
+	var gwErr error
+	if gwStatus != nil {
+		availableCondition, mcpURL = r.applyGatewayStatus(mcpServer, gwStatus, availableCondition, mcpURL)
+		gwErr = gwStatus.err
+	}
+
 	// Normal Event once per transition to fully ready (Available + Verified).
 	if pendingServerReadyEvent &&
 		availableCondition.Status == metav1.ConditionTrue &&
@@ -279,20 +289,16 @@ func (r *MCPServerReconciler) reconcileBYO(
 	workloadName := fmt.Sprintf("%s/%s", ref.Kind, ref.Name)
 	workloadSummary := fmt.Sprintf("BYO:%s/%s", ref.Kind, ref.Name)
 
-	conditions := r.appendPersistentConditions(mcpServer, []*v1ac.ConditionApplyConfiguration{
-		conditionToAC(acceptedCondition),
-		conditionToAC(availableCondition),
-		conditionToAC(verifiedCondition),
-	}, nil)
-
 	status := acv1beta1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
 		WithServiceName(serviceName).
 		WithWorkloadName(workloadName).
 		WithWorkloadSummary(workloadSummary).
 		WithReplicas(ws.TotalReplicas).
-		WithReadyReplicas(ws.ReadyReplicas).
-		WithConditions(conditions...)
+		WithReadyReplicas(ws.ReadyReplicas)
+
+	applyGatewayStatusToAC(status, gwStatus, acceptedCondition, availableCondition, verifiedCondition)
+	status.WithConditions(conditionToAC(r.policyEnforcedCondition(mcpServer.Generation, mcpServer.Status.Conditions)))
 
 	status = withAddressWhenVerified(status, verifiedCondition, mcpURL)
 
@@ -324,5 +330,5 @@ func (r *MCPServerReconciler) reconcileBYO(
 		return result, nil
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, gwErr
 }

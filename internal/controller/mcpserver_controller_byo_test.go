@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
@@ -166,6 +167,41 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			Expect(svc.Spec.Selector).To(Equal(map[string]string{"app": "my-mcp"}))
 			Expect(svc.Spec.Ports[0].TargetPort).To(Equal(intstr.FromInt32(8080)), "BYO pods have no named container port")
 		})
+		It("should register a BYO workload with a gateway and publish its address", func() {
+			server := &mcpv1beta1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
+			server.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-config"}
+			Expect(k8sClient.Update(ctx, server)).To(Succeed())
+			r := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+			req := reconcile.Request{NamespacedName: typeNamespacedName}
+			_, err := r.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+
+			binding := &mcpv1alpha1.MCPGatewayBinding{}
+			key := types.NamespacedName{Name: gatewayBindingName(resourceName), Namespace: "default"}
+			Expect(k8sClient.Get(ctx, key, binding)).To(Succeed())
+			DeferCleanup(func() { Expect(k8sClient.Delete(ctx, binding)).To(Succeed()) })
+			Expect(binding.Spec.MCPServerRef).To(Equal(resourceName))
+			Expect(binding.Spec.ConfigRef).To(Equal("gw-config"))
+			Expect(metav1.GetControllerOf(binding).UID).To(Equal(server.UID))
+			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
+			Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeGatewayRegistered).Status).To(Equal(metav1.ConditionFalse))
+			Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAvailable).Reason).To(Equal(ReasonGatewayNotRegistered))
+
+			binding.Status.URL = testGatewayURL
+			meta.SetStatusCondition(&binding.Status.Conditions, metav1.Condition{
+				Type: ConditionTypeRegistered, Status: metav1.ConditionTrue, Reason: "Registered", ObservedGeneration: binding.Generation,
+			})
+			Expect(k8sClient.Status().Update(ctx, binding)).To(Succeed())
+			_, err = r.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
+			Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeGatewayRegistered).Status).To(Equal(metav1.ConditionTrue))
+			Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAvailable).Status).To(Equal(metav1.ConditionTrue))
+			Expect(server.Status.GatewayBinding.Name).To(Equal(binding.Name))
+			Expect(server.Status.Address.URL).To(Equal(testGatewayURL))
+		})
+
 	})
 
 	Context("When reconciling with BYO DaemonSet workloadRef", func() {
