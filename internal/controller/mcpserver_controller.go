@@ -517,11 +517,7 @@ func (r *MCPServerReconciler) handleDeploymentReconcileError(
 		conditionToAC(verifiedCondition),
 	}, nil)
 
-	status := acv1beta1.MCPServerStatus().
-		WithObservedGeneration(mcpServer.Generation).
-		WithServiceName(serviceNameFor(mcpServer)).
-		WithReplicas(mcpServer.Status.Replicas).
-		WithReadyReplicas(mcpServer.Status.ReadyReplicas).
+	status := workloadStatusConfiguration(mcpServer, mcpServer.Status.Replicas, mcpServer.Status.ReadyReplicas).
 		WithConditions(conditions...)
 
 	if mcpServer.Status.GatewayBinding != nil {
@@ -585,11 +581,7 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 		conditionToAC(verifiedCondition),
 	}, nil)
 
-	status := acv1beta1.MCPServerStatus().
-		WithObservedGeneration(mcpServer.Generation).
-		WithServiceName(serviceNameFor(mcpServer)).
-		WithReplicas(mcpServer.Status.Replicas).
-		WithReadyReplicas(mcpServer.Status.ReadyReplicas).
+	status := workloadStatusConfiguration(mcpServer, mcpServer.Status.Replicas, mcpServer.Status.ReadyReplicas).
 		WithConditions(conditions...)
 
 	if mcpServer.Status.GatewayBinding != nil {

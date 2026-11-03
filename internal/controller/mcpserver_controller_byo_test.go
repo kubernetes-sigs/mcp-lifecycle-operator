@@ -158,6 +158,29 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			Expect(mcpServer.Status.ReadyReplicas).To(Equal(int32(2)))
 		})
 
+		It("should retain BYO identity when the referenced workload disappears", func() {
+			r := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+			req := reconcile.Request{NamespacedName: typeNamespacedName}
+			_, err := r.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+			server := &mcpv1beta1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
+			Expect(server.Status.WorkloadName).To(Equal("Deployment/my-mcp-deploy"))
+			Expect(server.Status.WorkloadSummary).To(Equal("BYO:Deployment/my-mcp-deploy"))
+			baseline := server.Status
+			Expect(k8sClient.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "my-mcp-deploy", Namespace: "default"}})).To(Succeed())
+
+			_, err = r.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
+			Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAccepted).Status).To(Equal(metav1.ConditionFalse))
+			Expect(server.Status.WorkloadName).To(Equal(baseline.WorkloadName))
+			Expect(server.Status.WorkloadSummary).To(Equal(baseline.WorkloadSummary))
+			Expect(server.Status.ServiceName).To(Equal(baseline.ServiceName))
+			Expect(server.Status.Replicas).To(Equal(baseline.Replicas))
+			Expect(server.Status.ReadyReplicas).To(Equal(baseline.ReadyReplicas))
+		})
+
 		It("should create a Service using the BYO workload's selector labels", func() {
 			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
 
