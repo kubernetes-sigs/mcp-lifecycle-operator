@@ -4587,6 +4587,12 @@ spec:
               rule: '!has(self.serviceRef) || !has(self.mcp) || !has(self.mcp.stateless)'
             - message: config.port is required when serviceRef is not set
               rule: has(self.serviceRef) || (has(self.config) && has(self.config.port))
+            - message: extraLabels must not be set when both workloadRef and serviceRef
+                are set
+              rule: '!(has(self.workloadRef) && has(self.serviceRef)) || !has(self.extraLabels)'
+            - message: extraAnnotations must not be set when both workloadRef and
+                serviceRef are set
+              rule: '!(has(self.workloadRef) && has(self.serviceRef)) || !has(self.extraAnnotations)'
           status:
             description: status defines the observed state of MCPServer
             properties:

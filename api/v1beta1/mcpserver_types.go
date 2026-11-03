@@ -438,6 +438,8 @@ type NetworkConfig struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.network)",message="network must not be set when workloadRef is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.serviceRef) || !has(self.mcp) || !has(self.mcp.stateless)",message="mcp.stateless must not be set when serviceRef is set"
 // +kubebuilder:validation:XValidation:rule="has(self.serviceRef) || (has(self.config) && has(self.config.port))",message="config.port is required when serviceRef is not set"
+// +kubebuilder:validation:XValidation:rule="!(has(self.workloadRef) && has(self.serviceRef)) || !has(self.extraLabels)",message="extraLabels must not be set when both workloadRef and serviceRef are set"
+// +kubebuilder:validation:XValidation:rule="!(has(self.workloadRef) && has(self.serviceRef)) || !has(self.extraAnnotations)",message="extraAnnotations must not be set when both workloadRef and serviceRef are set"
 type MCPServerSpec struct {
 	// ExtraLabels are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
 	// The operator-managed keys "app" and "mcp-server" cannot be overridden.
