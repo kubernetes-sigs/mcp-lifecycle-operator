@@ -38,11 +38,12 @@ import (
 
 // WorkloadStatus normalizes status from different workload kinds.
 type WorkloadStatus struct {
-	Ready           bool
-	ReadyReplicas   int32
-	TotalReplicas   int32
-	DesiredReplicas *int32
-	Message         string
+	Ready              bool
+	ReadyReplicas      int32
+	TotalReplicas      int32
+	DesiredReplicas    *int32
+	NoSchedulableNodes bool
+	Message            string
 }
 
 // getWorkloadStatus fetches the referenced BYO workload and returns normalized status.
@@ -72,11 +73,16 @@ func getWorkloadStatus(ctx context.Context, r client.Reader, name string, kind m
 			}
 			return WorkloadStatus{}, err
 		}
-		return WorkloadStatus{
+		ws := WorkloadStatus{
 			Ready:         ds.Status.NumberReady > 0 && ds.Status.NumberReady >= ds.Status.DesiredNumberScheduled,
 			ReadyReplicas: ds.Status.NumberReady,
 			TotalReplicas: ds.Status.DesiredNumberScheduled,
-		}, nil
+		}
+		if ds.Status.DesiredNumberScheduled == 0 {
+			ws.NoSchedulableNodes = true
+			ws.Message = fmt.Sprintf("DaemonSet %s has no nodes matching its scheduling constraints", name)
+		}
+		return ws, nil
 
 	case mcpv1beta1.WorkloadKindStatefulSet:
 		sts := &appsv1.StatefulSet{}
@@ -170,6 +176,9 @@ func byoAvailableCondition(
 	case ws.DesiredReplicas != nil && *ws.DesiredReplicas == 0:
 		return newAvailableCondition(metav1.ConditionTrue, ReasonScaledToZero,
 			fmt.Sprintf("BYO %s is scaled to zero", kind), generation, existingConditions)
+	case ws.NoSchedulableNodes:
+		return newAvailableCondition(metav1.ConditionFalse, ReasonWorkloadUnavailable,
+			ws.Message, generation, existingConditions)
 	case ws.TotalReplicas == 0 && ws.ReadyReplicas == 0:
 		return newAvailableCondition(metav1.ConditionUnknown, ReasonInitializing,
 			fmt.Sprintf("Waiting for BYO %s to report status", kind), generation, existingConditions)

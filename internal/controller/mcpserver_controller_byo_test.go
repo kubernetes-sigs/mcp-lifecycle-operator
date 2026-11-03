@@ -757,6 +757,28 @@ var _ = Describe("getWorkloadStatus - unit tests", func() {
 		Expect(ws.TotalReplicas).To(Equal(int32(3)))
 	})
 
+	It("should report no schedulable nodes for DaemonSet with DesiredNumberScheduled=0", func() {
+		ds := &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{Name: "no-nodes-ds", Namespace: "default"},
+			Spec: appsv1.DaemonSetSpec{
+				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "test"}},
+					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "c", Image: "img"}}},
+				},
+			},
+			Status: appsv1.DaemonSetStatus{NumberReady: 0, DesiredNumberScheduled: 0},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(ds).
+			WithStatusSubresource(ds).Build()
+
+		ws, err := getWorkloadStatus(ctx, fakeClient, "no-nodes-ds", mcpv1beta1.WorkloadKindDaemonSet, "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ws.Ready).To(BeFalse())
+		Expect(ws.NoSchedulableNodes).To(BeTrue())
+		Expect(ws.Message).To(ContainSubstring("no nodes matching"))
+	})
+
 	It("should report not-ready StatefulSet when ReadyReplicas < desired", func() {
 		sts := &appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: "partial-sts", Namespace: "default"},
@@ -1020,8 +1042,8 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 		})
 	})
 
-	Context("When BYO DaemonSet has no nodes scheduled yet (initializing)", func() {
-		const resourceName = "test-byo-initializing"
+	Context("When BYO DaemonSet has no schedulable nodes", func() {
+		const resourceName = "test-byo-no-schedulable-nodes"
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
@@ -1069,7 +1091,7 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			}
 		})
 
-		It("should set Available=Unknown with Initializing reason", func() {
+		It("should set Available=False with WorkloadUnavailable reason", func() {
 			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -1082,9 +1104,9 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 
 			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
 			Expect(availableCondition).NotTo(BeNil())
-			Expect(availableCondition.Status).To(Equal(metav1.ConditionUnknown))
-			Expect(availableCondition.Reason).To(Equal(ReasonInitializing))
-			Expect(availableCondition.Message).To(ContainSubstring("Waiting for BYO"))
+			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(availableCondition.Reason).To(Equal(ReasonWorkloadUnavailable))
+			Expect(availableCondition.Message).To(ContainSubstring("no nodes matching"))
 		})
 	})
 })
