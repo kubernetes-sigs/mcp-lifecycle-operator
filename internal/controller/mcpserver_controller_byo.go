@@ -146,14 +146,23 @@ func resolveServicePort(ctx context.Context, r client.Reader, serviceName, names
 	return svc.Spec.Ports[0].Port, nil
 }
 
+// serviceNameFor returns the Service identity even when endpoint resolution or
+// configuration validation fails.
+func serviceNameFor(server *mcpv1beta1.MCPServer) string {
+	if server.Spec.ServiceRef != nil {
+		return server.Spec.ServiceRef.Name
+	}
+	return server.Name
+}
+
 // ResolveServiceEndpoint returns the Service name and port used for MCP traffic.
 // Gateway providers use the same resolution as the MCP handshake, including
 // inferred ports on externally managed Services.
 func ResolveServiceEndpoint(ctx context.Context, reader client.Reader, server *mcpv1beta1.MCPServer) (string, int32, error) {
 	if server.Spec.ServiceRef == nil {
-		return server.Name, server.Spec.Config.Port, nil
+		return serviceNameFor(server), server.Spec.Config.Port, nil
 	}
-	name := server.Spec.ServiceRef.Name
+	name := serviceNameFor(server)
 	port, err := resolveServicePort(ctx, reader, name, server.Namespace, server.Spec.Config.Port)
 	return name, port, err
 }
@@ -237,7 +246,7 @@ func (r *MCPServerReconciler) reconcileBYO(
 	r.maybeEmitWorkloadUnavailableEvent(mcpServer, availableCondition)
 
 	// Resolve service name and port for the MCP endpoint URL.
-	serviceName := mcpServer.Name
+	serviceName := serviceNameFor(mcpServer)
 	port := mcpServer.Spec.Config.Port
 	if mcpServer.Spec.ServiceRef != nil {
 		serviceName, port, err = ResolveServiceEndpoint(ctx, r.APIReader, mcpServer)

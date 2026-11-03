@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -848,5 +849,60 @@ var _ = Describe("MCPServer Controller - Optimistic Locking Conflicts", func() {
 			"transient optimistic-lock conflict must not flip Available to ServiceUnavailable")
 		Expect(after.Status).NotTo(Equal(metav1.ConditionFalse))
 		Expect(after.Reason).To(Equal(baselineReason))
+	})
+})
+
+var _ = Describe("BYO Service failure status", func() {
+	It("should preserve the referenced Service name through validation, resource failure and recovery", func() {
+		ctx := context.Background()
+		server := newTestBYOMCPServer("byo-service-error-status", nil, &mcpv1beta1.ServiceReference{Name: "external-error-status"})
+		Expect(k8sClient.Create(ctx, server)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, server)).To(Succeed()) })
+		req := reconcile.Request{NamespacedName: client.ObjectKeyFromObject(server)}
+		r := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+
+		// Missing Service is a permanent validation failure.
+		_, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(k8sClient.Get(ctx, req.NamespacedName, server)).To(Succeed())
+		Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAccepted).Status).To(Equal(metav1.ConditionFalse))
+		Expect(server.Status.ServiceName).To(Equal("external-error-status"))
+
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "external-error-status", Namespace: "default"},
+			Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
+		}
+		Expect(k8sClient.Create(ctx, svc)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, svc)).To(Succeed()) })
+		DeferCleanup(func() {
+			Expect(k8sClient.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace}})).To(Succeed())
+		})
+		failPolicy := true
+		wrappedClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+		Expect(err).NotTo(HaveOccurred())
+		wrapped := interceptor.NewClient(wrappedClient, interceptor.Funcs{
+			Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+				if _, ok := obj.(*networkingv1.NetworkPolicy); ok && failPolicy {
+					return fmt.Errorf("injected NetworkPolicy creation failure")
+				}
+				return c.Create(ctx, obj, opts...)
+			},
+		})
+		r.Client = wrapped
+		_, err = r.Reconcile(ctx, req)
+		Expect(err).To(MatchError(ContainSubstring("injected NetworkPolicy creation failure")))
+		Expect(k8sClient.Get(ctx, req.NamespacedName, server)).To(Succeed())
+		Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAvailable).Status).To(Equal(metav1.ConditionFalse))
+		Expect(server.Status.ServiceName).To(Equal(svc.Name))
+
+		failPolicy = false
+		_, err = r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			Expect(k8sClient.Delete(ctx, &networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Name: server.Name, Namespace: server.Namespace}})).To(Succeed())
+		})
+		Expect(k8sClient.Get(ctx, req.NamespacedName, server)).To(Succeed())
+		Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAccepted).Status).To(Equal(metav1.ConditionTrue))
+		Expect(server.Status.ServiceName).To(Equal(svc.Name))
 	})
 })

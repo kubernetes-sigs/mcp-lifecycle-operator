@@ -627,11 +627,6 @@ func (r *MCPServerReconciler) handleDeploymentReconcileError(
 		r.emitWorkloadUnavailable(mcpServer, availableCondition.Message)
 	}
 
-	deployErrServiceName := mcpServer.Name
-	if mcpServer.Spec.ServiceRef != nil {
-		deployErrServiceName = mcpServer.Spec.ServiceRef.Name
-	}
-
 	conditions := r.appendPersistentConditions(mcpServer, []*v1ac.ConditionApplyConfiguration{
 		conditionToAC(acceptedCondition),
 		conditionToAC(availableCondition),
@@ -640,7 +635,7 @@ func (r *MCPServerReconciler) handleDeploymentReconcileError(
 
 	status := acv1beta1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
-		WithServiceName(deployErrServiceName).
+		WithServiceName(serviceNameFor(mcpServer)).
 		WithReplicas(mcpServer.Status.Replicas).
 		WithReadyReplicas(mcpServer.Status.ReadyReplicas).
 		WithConditions(conditions...)
@@ -708,7 +703,7 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 
 	status := acv1beta1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
-		WithServiceName(mcpServer.Name).
+		WithServiceName(serviceNameFor(mcpServer)).
 		WithReplicas(mcpServer.Status.Replicas).
 		WithReadyReplicas(mcpServer.Status.ReadyReplicas).
 		WithConditions(conditions...)
@@ -904,7 +899,7 @@ func (r *MCPServerReconciler) handleResourceFailure(
 	status := acv1beta1.MCPServerStatus().
 		WithObservedGeneration(mcpServer.Generation).
 		WithDeploymentName(existingDeployment.Name).
-		WithServiceName(mcpServer.Name).
+		WithServiceName(serviceNameFor(mcpServer)).
 		WithReplicas(ptr.Deref(existingDeployment.Spec.Replicas, 1)).
 		WithReadyReplicas(existingDeployment.Status.ReadyReplicas).
 		WithConditions(conditions...)
