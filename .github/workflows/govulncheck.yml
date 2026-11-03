@@ -1,6 +1,6 @@
 # Copyright 2026 The Kubernetes Authors.
 
-name: GH
+name: Govulncheck
 
 on:
   pull_request:
