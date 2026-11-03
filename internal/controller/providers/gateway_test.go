@@ -831,3 +831,28 @@ func namespacePtr(s string) *gatewayv1.Namespace {
 	ns := gatewayv1.Namespace(s)
 	return &ns
 }
+
+func TestFindBindingsForService(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := mcpv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	binding := func(name, namespace, provider, service string) client.Object {
+		return &mcpv1alpha1.MCPGatewayBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Annotations: map[string]string{AnnotationServiceRef: service}},
+			Spec:       mcpv1alpha1.MCPGatewayBindingSpec{Provider: provider},
+		}
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		binding("matching", "tenant", "httproute", "tenant/backend"),
+		binding("other-provider", "tenant", "kuadrant", "tenant/backend"),
+		binding("other-service", "tenant", "httproute", "tenant/other"),
+		binding("other-namespace", "other", "httproute", "tenant/backend"),
+	).Build()
+	// WatchesMetadata delivers this type, not a typed Service.
+	service := &metav1.PartialObjectMetadata{ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "tenant"}}
+	requests := FindBindingsForService(context.Background(), c, "httproute", service)
+	if len(requests) != 1 || requests[0].Name != "matching" || requests[0].Namespace != "tenant" {
+		t.Fatalf("expected only matching tenant/provider binding, got %v", requests)
+	}
+}
