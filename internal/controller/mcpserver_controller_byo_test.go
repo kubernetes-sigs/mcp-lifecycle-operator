@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -1486,4 +1487,50 @@ var _ = Describe("BYO workload mode admission", func() {
 		Entry("managed to BYO", false),
 		Entry("BYO to managed", true),
 	)
+})
+
+var _ = Describe("BYO workload mixed selector", func() {
+	It("should require serviceRef rather than broaden a mixed workload selector", func() {
+		ctx := context.Background()
+		dep := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "mixed-selector-workload", Namespace: "default"},
+			Spec: appsv1.DeploymentSpec{
+				Selector: &metav1.LabelSelector{
+					MatchLabels:      map[string]string{"app": "mcp"},
+					MatchExpressions: []metav1.LabelSelectorRequirement{{Key: "version", Operator: metav1.LabelSelectorOpIn, Values: []string{"v2", "v3"}}},
+				},
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "mcp", "version": "v2"}},
+					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "server", Image: "mcp:latest"}}},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, dep)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, dep)).To(Succeed()) })
+		server := newTestBYOMCPServer("mixed-selector-server", &mcpv1beta1.WorkloadReference{Name: dep.Name, Kind: mcpv1beta1.WorkloadKindDeployment}, nil)
+		Expect(k8sClient.Create(ctx, server)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, server)).To(Succeed()) })
+		r := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+		req := reconcile.Request{NamespacedName: client.ObjectKeyFromObject(server)}
+		_, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(k8sClient.Get(ctx, req.NamespacedName, server)).To(Succeed())
+		accepted := meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAccepted)
+		Expect(accepted.Status).To(Equal(metav1.ConditionFalse))
+		Expect(accepted.Message).To(ContainSubstring("matchExpressions"))
+		Expect(accepted.Message).To(ContainSubstring("serviceRef"))
+		Expect(errors.IsNotFound(k8sClient.Get(ctx, req.NamespacedName, &corev1.Service{}))).To(BeTrue())
+
+		svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "mixed-selector-service", Namespace: "default"}, Spec: corev1.ServiceSpec{
+			Selector: map[string]string{"app": "mcp", "version": "v2"}, Ports: []corev1.ServicePort{{Port: 8080}},
+		}}
+		Expect(k8sClient.Create(ctx, svc)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, svc)).To(Succeed()) })
+		server.Spec.ServiceRef = &mcpv1beta1.ServiceReference{Name: svc.Name}
+		Expect(k8sClient.Update(ctx, server)).To(Succeed())
+		_, err = r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(k8sClient.Get(ctx, req.NamespacedName, server)).To(Succeed())
+		Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAccepted).Status).To(Equal(metav1.ConditionTrue))
+	})
 })

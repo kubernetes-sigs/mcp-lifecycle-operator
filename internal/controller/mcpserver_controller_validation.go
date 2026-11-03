@@ -26,6 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -367,25 +368,25 @@ func (r *MCPServerReconciler) validateWorkloadRef(
 	// workload's pods. Kubernetes Services require equality-based selectors, so
 	// the workload must have non-empty matchLabels.
 	if mcpServer.Spec.ServiceRef == nil {
-		var matchLabels map[string]string
+		var selector *metav1.LabelSelector
 		switch w := obj.(type) {
 		case *appsv1.Deployment:
-			if w.Spec.Selector != nil {
-				matchLabels = w.Spec.Selector.MatchLabels
-			}
+			selector = w.Spec.Selector
 		case *appsv1.DaemonSet:
-			if w.Spec.Selector != nil {
-				matchLabels = w.Spec.Selector.MatchLabels
-			}
+			selector = w.Spec.Selector
 		case *appsv1.StatefulSet:
-			if w.Spec.Selector != nil {
-				matchLabels = w.Spec.Selector.MatchLabels
-			}
+			selector = w.Spec.Selector
 		}
-		if len(matchLabels) == 0 {
+		if selector == nil || len(selector.MatchLabels) == 0 {
 			return &ValidationError{
 				Reason:  ReasonInvalid,
 				Message: fmt.Sprintf("%s has no matchLabels in its selector; set serviceRef to provide a Service with a suitable selector", desc),
+			}
+		}
+		if len(selector.MatchExpressions) > 0 {
+			return &ValidationError{
+				Reason:  ReasonInvalid,
+				Message: fmt.Sprintf("%s uses matchExpressions in its selector; set serviceRef to avoid routing traffic to pods outside the workload", desc),
 			}
 		}
 	}
