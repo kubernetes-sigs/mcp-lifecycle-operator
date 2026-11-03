@@ -29,10 +29,8 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
-	acv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1/applyconfiguration/api/v1beta1"
 )
 
 // WorkloadStatus normalizes status from different workload kinds.
@@ -42,7 +40,7 @@ type WorkloadStatus struct {
 	TotalReplicas      int32
 	DesiredReplicas    *int32
 	NoSchedulableNodes bool
-	SelectorLabels     map[string]string
+	Selector           *metav1.LabelSelector
 	Message            string
 }
 
@@ -64,9 +62,7 @@ func getWorkloadStatus(ctx context.Context, r client.Reader, name string, kind m
 			TotalReplicas:   total,
 			DesiredReplicas: dep.Spec.Replicas,
 		}
-		if dep.Spec.Selector != nil {
-			ws.SelectorLabels = dep.Spec.Selector.MatchLabels
-		}
+		ws.Selector = dep.Spec.Selector
 		return ws, nil
 
 	case mcpv1beta1.WorkloadKindDaemonSet:
@@ -82,9 +78,7 @@ func getWorkloadStatus(ctx context.Context, r client.Reader, name string, kind m
 			ReadyReplicas: ds.Status.NumberReady,
 			TotalReplicas: ds.Status.DesiredNumberScheduled,
 		}
-		if ds.Spec.Selector != nil {
-			ws.SelectorLabels = ds.Spec.Selector.MatchLabels
-		}
+		ws.Selector = ds.Spec.Selector
 		if ds.Status.DesiredNumberScheduled == 0 {
 			ws.NoSchedulableNodes = true
 			ws.Message = fmt.Sprintf("DaemonSet %s has no nodes matching its scheduling constraints", name)
@@ -106,9 +100,7 @@ func getWorkloadStatus(ctx context.Context, r client.Reader, name string, kind m
 			TotalReplicas:   total,
 			DesiredReplicas: sts.Spec.Replicas,
 		}
-		if sts.Spec.Selector != nil {
-			ws.SelectorLabels = sts.Spec.Selector.MatchLabels
-		}
+		ws.Selector = sts.Spec.Selector
 		return ws, nil
 
 	default:
@@ -168,22 +160,24 @@ func ResolveServiceEndpoint(ctx context.Context, reader client.Reader, server *m
 }
 
 // reconcileServiceOrBYO either reconciles the operator-managed Service or
-// resolves the BYO Service name and port. Returns serviceName, port, error.
+// resolves the BYO Service port. Service identity comes from serviceNameFor.
 func (r *MCPServerReconciler) reconcileServiceOrBYO(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
-) (string, int32, error) {
+	selector map[string]string,
+) (int32, error) {
 	if mcpServer.Spec.ServiceRef != nil {
-		return ResolveServiceEndpoint(ctx, r.APIReader, mcpServer)
+		_, port, err := ResolveServiceEndpoint(ctx, r.APIReader, mcpServer)
+		return port, err
 	}
 
 	serviceStart := time.Now()
-	if err := r.reconcileService(ctx, mcpServer, managedWorkloadSelector(mcpServer.Name)); err != nil {
+	if err := r.reconcileService(ctx, mcpServer, selector); err != nil {
 		reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
-		return "", 0, err
+		return 0, err
 	}
 	reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
-	return mcpServer.Name, mcpServer.Spec.Config.Port, nil
+	return mcpServer.Spec.Config.Port, nil
 }
 
 // byoAvailableCondition derives the Available condition for a BYO workload from
@@ -226,122 +220,29 @@ func (r *MCPServerReconciler) reconcileBYO(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
 	acceptedCondition metav1.Condition,
-	pendingServerReadyEvent bool,
+	ws WorkloadStatus,
 ) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
 	ref := mcpServer.Spec.WorkloadRef
-
-	ws, err := getWorkloadStatus(ctx, r.APIReader, ref.Name, ref.Kind, mcpServer.Namespace)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			logger.Info("BYO workload not found, should have been caught by validation")
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, err
-	}
 
 	availableCondition := byoAvailableCondition(ws, ref.Kind, mcpServer.Generation, mcpServer.Status.Conditions)
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		availableCondition.Type, string(availableCondition.Status), availableCondition.Reason)
 	r.maybeEmitWorkloadUnavailableEvent(mcpServer, availableCondition)
 
-	// Resolve service name and port for the MCP endpoint URL.
-	serviceName := serviceNameFor(mcpServer)
-	port := mcpServer.Spec.Config.Port
-	if mcpServer.Spec.ServiceRef != nil {
-		serviceName, port, err = ResolveServiceEndpoint(ctx, r.APIReader, mcpServer)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-	} else {
-		if err := r.reconcileService(ctx, mcpServer, ws.SelectorLabels); err != nil {
-			return ctrl.Result{}, fmt.Errorf("reconciling Service for BYO workload: %w", err)
-		}
+	status := workloadStatusConfiguration(mcpServer, ws.TotalReplicas, ws.ReadyReplicas)
+	var selector map[string]string
+	if ws.Selector != nil {
+		selector = ws.Selector.MatchLabels
 	}
-
-	if err := r.reconcileGatewayBinding(ctx, mcpServer); err != nil {
-		return ctrl.Result{}, err
+	port, err := r.reconcileServiceOrBYO(ctx, mcpServer, selector)
+	if err != nil {
+		return r.handleResourceFailure(ctx, mcpServer, status, acceptedCondition, err, resourceFailureParams{
+			counter:     serviceFailuresTotal,
+			reason:      ReasonServiceUnavailable,
+			resource:    "Service",
+			isDuplicate: duplicateServiceUnavailable,
+			emitEvent:   r.emitServiceReconcileFailed,
+		})
 	}
-
-	path := mcpServer.Spec.Config.Path
-	if path == "" {
-		path = DefaultMCPPath
-	}
-
-	mcpURL := fmt.Sprintf("%s://%s.%s.svc.cluster.local:%d%s",
-		urlScheme(mcpServer), serviceName, mcpServer.Namespace, port, path)
-
-	// Compute current TLS CA bundle hash so the handshake is re-verified when the
-	// CA bundle Secret content changes (which does not bump generation).
-	var tlsCABundleHash string
-	if mcpServer.Spec.Transport != nil && mcpServer.Spec.Transport.TLS != nil {
-		tlsCABundleHash = computeTLSCABundleHash(ctx, r.APIReader, mcpServer.Namespace, mcpServer.Spec.Transport.TLS)
-	}
-
-	// If the workload is available, verify the MCP endpoint.
-	verifiedCondition, serverInfo := r.reconcileHandshake(ctx, mcpServer, mcpURL, availableCondition, tlsCABundleHash)
-	recordCondition(mcpServer.Name, mcpServer.Namespace,
-		verifiedCondition.Type, string(verifiedCondition.Status), verifiedCondition.Reason)
-
-	handshakeRetryCount := r.reconcileHandshakeEventsAndRetryCount(mcpServer, &verifiedCondition)
-
-	gwStatus := r.reconcileGatewayCondition(ctx, mcpServer)
-	var gwErr error
-	if gwStatus != nil {
-		availableCondition, mcpURL = r.applyGatewayStatus(mcpServer, gwStatus, availableCondition, mcpURL)
-		gwErr = gwStatus.err
-	}
-
-	// Normal Event once per transition to fully ready (Available + Verified).
-	if pendingServerReadyEvent &&
-		availableCondition.Status == metav1.ConditionTrue &&
-		verifiedCondition.Status == metav1.ConditionTrue {
-		r.emitServerReady(mcpServer)
-	}
-
-	workloadName := fmt.Sprintf("%s/%s", ref.Kind, ref.Name)
-	workloadSummary := fmt.Sprintf("BYO:%s/%s", ref.Kind, ref.Name)
-
-	status := acv1beta1.MCPServerStatus().
-		WithObservedGeneration(mcpServer.Generation).
-		WithServiceName(serviceName).
-		WithWorkloadName(workloadName).
-		WithWorkloadSummary(workloadSummary).
-		WithReplicas(ws.TotalReplicas).
-		WithReadyReplicas(ws.ReadyReplicas)
-
-	applyGatewayStatusToAC(status, gwStatus, acceptedCondition, availableCondition, verifiedCondition)
-	status.WithConditions(conditionToAC(r.policyEnforcedCondition(mcpServer.Generation, mcpServer.Status.Conditions)))
-
-	status = withAddressWhenVerified(status, verifiedCondition, mcpURL)
-
-	capDiff := capabilityChangeMessage(mcpServer, serverInfo)
-	if serverInfo != nil {
-		status = status.WithServerInfo(serverInfoToAC(serverInfo))
-	}
-
-	if err := r.applyStatus(ctx, mcpServer, status); err != nil {
-		logger.Error(err, "Failed to apply MCPServer status")
-		return ctrl.Result{}, err
-	}
-
-	r.updateTLSCABundleHash(mcpServer, tlsCABundleHash, verifiedCondition)
-
-	if capDiff != "" {
-		capabilityChangesTotal.WithLabelValues(mcpServer.Name, mcpServer.Namespace).Inc()
-		r.emitCapabilityChangeDetected(mcpServer, capDiff)
-		auditCapabilityChange(ctx, mcpServer, capDiff)
-	}
-
-	logger.Info("Successfully reconciled BYO MCPServer",
-		"workload", workloadName,
-		"available", availableCondition.Status,
-		"verified", verifiedCondition.Status)
-
-	// If the MCP endpoint is not yet reachable, requeue with exponential backoff.
-	if result, done := handshakeRequeue(ctx, mcpServer, verifiedCondition, int(handshakeRetryCount)); done {
-		return result, nil
-	}
-
-	return ctrl.Result{}, gwErr
+	return r.reconcileEndpoint(ctx, mcpServer, acceptedCondition, availableCondition, status, port, nil)
 }

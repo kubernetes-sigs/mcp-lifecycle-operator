@@ -35,7 +35,7 @@ type MCPServerStatusApplyConfiguration struct {
 	DeploymentName *string `json:"deploymentName,omitempty"`
 	// ServiceName is the name of the Service backing this MCPServer.
 	// For operator-managed mode this is the created Service; for BYO this
-	// is the serviceRef name (or the workloadRef name when serviceRef is unset).
+	// is the serviceRef name, or the MCPServer name when serviceRef is unset.
 	ServiceName *string `json:"serviceName,omitempty"`
 	// WorkloadName identifies the workload backing this MCPServer.
 	// For BYO: "{Kind}/{Name}" (e.g. "DaemonSet/my-ds").

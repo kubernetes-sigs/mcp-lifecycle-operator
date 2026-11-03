@@ -22,11 +22,9 @@ import (
 	"fmt"
 	"net"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,20 +44,22 @@ func (e *ValidationError) Error() string {
 }
 
 // validateConfig validates the MCPServer configuration.
-// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
+// Returns the validated BYO workload snapshot, if any. Configuration errors are
+// ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateConfig(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
-) error {
+) (workload *WorkloadStatus, err error) {
 	if mcpServer.Spec.WorkloadRef != nil {
-		if err := r.validateWorkloadRef(ctx, mcpServer); err != nil {
-			return err
+		workload, err = r.validateWorkloadRef(ctx, mcpServer)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	if mcpServer.Spec.ServiceRef != nil {
 		if err := r.validateServiceRef(ctx, mcpServer); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -68,21 +68,21 @@ func (r *MCPServerReconciler) validateConfig(
 		// Validate storage mounts
 		for i, storage := range mcpServer.Spec.Config.Storage {
 			if err := r.validateStorageMount(ctx, mcpServer, storage, i); err != nil {
-				return err
+				return nil, err
 			}
 		}
 
 		// Validate envFrom references
 		for i, envFrom := range mcpServer.Spec.Config.EnvFrom {
 			if err := r.validateEnvFrom(ctx, mcpServer, envFrom, i); err != nil {
-				return err
+				return nil, err
 			}
 		}
 
 		// Validate env valueFrom references
 		for i, env := range mcpServer.Spec.Config.Env {
 			if err := r.validateEnvValueFrom(ctx, mcpServer, env, i); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
@@ -91,22 +91,22 @@ func (r *MCPServerReconciler) validateConfig(
 	if mcpServer.Spec.Network != nil {
 		for i, peer := range mcpServer.Spec.Network.IngressFrom {
 			if err := validateNetworkPolicyPeer(peer, "network.ingressFrom", i); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		for i, peer := range mcpServer.Spec.Network.EgressTo {
 			if err := validateNetworkPolicyPeer(peer, "network.egressTo", i); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		for i, port := range mcpServer.Spec.Network.EgressPorts {
 			if err := validateNetworkPolicyPort(port, "network.egressPorts", i); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		if mcpServer.Spec.Network.DNSEgressPeer != nil {
 			if err := validateNetworkPolicyPeerAtPath(*mcpServer.Spec.Network.DNSEgressPeer, "network.dnsEgressPeer"); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
@@ -117,7 +117,7 @@ func (r *MCPServerReconciler) validateConfig(
 		mcpServer.Spec.Transport.TLS.Enabled {
 		tlsCfg := mcpServer.Spec.Transport.TLS
 		if tlsCfg.InsecureSkipVerify && tlsCfg.CABundleSecret != nil {
-			return &ValidationError{
+			return nil, &ValidationError{
 				Reason:  ReasonInvalid,
 				Message: "insecureSkipVerify and caBundleSecret are mutually exclusive",
 			}
@@ -128,13 +128,13 @@ func (r *MCPServerReconciler) validateConfig(
 				mcpServer.Namespace,
 				tlsCfg.CABundleSecret.Name,
 			); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 
 	// All validation passed
-	return nil
+	return workload, nil
 }
 
 // validateReferencedConfigMap returns a permanent ValidationError on NotFound/BadRequest,
@@ -192,7 +192,8 @@ func (r *MCPServerReconciler) validateCABundleSecret(
 }
 
 // validateStorageMount validates a single storage mount configuration.
-// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
+// Returns the validated BYO workload snapshot, if any. Configuration errors are
+// ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateStorageMount(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
@@ -260,7 +261,8 @@ func (r *MCPServerReconciler) validateStorageMount(
 }
 
 // validateEnvFrom validates a single envFrom configuration.
-// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
+// Returns the validated BYO workload snapshot, if any. Configuration errors are
+// ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateEnvFrom(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
@@ -287,7 +289,8 @@ func (r *MCPServerReconciler) validateEnvFrom(
 }
 
 // validateEnvValueFrom validates a single env var's valueFrom configuration.
-// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
+// Returns the validated BYO workload snapshot, if any. Configuration errors are
+// ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateEnvValueFrom(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
@@ -337,61 +340,35 @@ func classifyAPIError(resourceDesc string, namespace string, err error) error {
 	return fmt.Errorf("transient error validating %s: %w", resourceDesc, err)
 }
 
-// validateWorkloadRef checks that the referenced BYO workload exists.
+// validateWorkloadRef reads and validates a BYO workload once, returning the same
+// snapshot used for its Service selector and availability during reconciliation.
 func (r *MCPServerReconciler) validateWorkloadRef(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
-) error {
+) (*WorkloadStatus, error) {
 	ref := mcpServer.Spec.WorkloadRef
 	desc := fmt.Sprintf("referenced %s %q", ref.Kind, ref.Name)
-
-	var obj client.Object
 	switch ref.Kind {
-	case mcpv1beta1.WorkloadKindDeployment:
-		obj = &appsv1.Deployment{}
-	case mcpv1beta1.WorkloadKindDaemonSet:
-		obj = &appsv1.DaemonSet{}
-	case mcpv1beta1.WorkloadKindStatefulSet:
-		obj = &appsv1.StatefulSet{}
+	case mcpv1beta1.WorkloadKindDeployment, mcpv1beta1.WorkloadKindDaemonSet, mcpv1beta1.WorkloadKindStatefulSet:
 	default:
-		return &ValidationError{
-			Reason:  ReasonInvalid,
-			Message: fmt.Sprintf("unsupported workloadRef kind: %s", ref.Kind),
-		}
+		return nil, &ValidationError{Reason: ReasonInvalid, Message: fmt.Sprintf("unsupported workloadRef kind: %s", ref.Kind)}
 	}
-
-	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: mcpServer.Namespace}, obj); err != nil {
-		return classifyAPIError(desc, mcpServer.Namespace, err)
+	workload, err := getWorkloadStatus(ctx, r.APIReader, ref.Name, ref.Kind, mcpServer.Namespace)
+	if err != nil {
+		return nil, classifyAPIError(desc, mcpServer.Namespace, err)
 	}
-
-	// When no serviceRef is set, the operator creates a Service targeting the
-	// workload's pods. Kubernetes Services require equality-based selectors, so
-	// the workload must have non-empty matchLabels.
+	// A managed Service must represent the complete workload selector. Dropping
+	// expressions would broaden it and could route MCP traffic to unrelated pods.
 	if mcpServer.Spec.ServiceRef == nil {
-		var selector *metav1.LabelSelector
-		switch w := obj.(type) {
-		case *appsv1.Deployment:
-			selector = w.Spec.Selector
-		case *appsv1.DaemonSet:
-			selector = w.Spec.Selector
-		case *appsv1.StatefulSet:
-			selector = w.Spec.Selector
-		}
+		selector := workload.Selector
 		if selector == nil || len(selector.MatchLabels) == 0 {
-			return &ValidationError{
-				Reason:  ReasonInvalid,
-				Message: fmt.Sprintf("%s has no matchLabels in its selector; set serviceRef to provide a Service with a suitable selector", desc),
-			}
+			return nil, &ValidationError{Reason: ReasonInvalid, Message: fmt.Sprintf("%s has no matchLabels in its selector; set serviceRef to provide a Service with a suitable selector", desc)}
 		}
 		if len(selector.MatchExpressions) > 0 {
-			return &ValidationError{
-				Reason:  ReasonInvalid,
-				Message: fmt.Sprintf("%s uses matchExpressions in its selector; set serviceRef to avoid routing traffic to pods outside the workload", desc),
-			}
+			return nil, &ValidationError{Reason: ReasonInvalid, Message: fmt.Sprintf("%s uses matchExpressions in its selector; set serviceRef to avoid routing traffic to pods outside the workload", desc)}
 		}
 	}
-
-	return nil
+	return &workload, nil
 }
 
 // validateServiceRef checks that the referenced BYO Service exists.

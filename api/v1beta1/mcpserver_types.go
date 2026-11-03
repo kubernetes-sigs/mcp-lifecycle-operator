@@ -651,7 +651,7 @@ type MCPServerStatus struct {
 
 	// ServiceName is the name of the Service backing this MCPServer.
 	// For operator-managed mode this is the created Service; for BYO this
-	// is the serviceRef name (or the workloadRef name when serviceRef is unset).
+	// is the serviceRef name, or the MCPServer name when serviceRef is unset.
 	// +optional
 	ServiceName string `json:"serviceName,omitempty"`
 

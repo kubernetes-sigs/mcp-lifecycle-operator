@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,6 +32,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
@@ -202,6 +204,54 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			Expect(server.Status.GatewayBinding.Name).To(Equal(binding.Name))
 			Expect(server.Status.Address.URL).To(Equal(testGatewayURL))
 		})
+
+		DescribeTable("BYO resource failure status", func(gatewayFailure bool) {
+			r := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+			req := reconcile.Request{NamespacedName: typeNamespacedName}
+			_, err := r.Reconcile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+			server := &mcpv1beta1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
+			Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeVerified).Status).To(Equal(metav1.ConditionTrue))
+			Expect(server.Status.Address).NotTo(BeNil())
+
+			expectedReason := ReasonServiceUnavailable
+			if gatewayFailure {
+				server.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute"}
+				expectedReason = ReasonGatewayNotRegistered
+			} else {
+				server.Spec.Config.Port++ // Force an update of the managed Service.
+			}
+			Expect(k8sClient.Update(ctx, server)).To(Succeed())
+			wrapped, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
+			Expect(err).NotTo(HaveOccurred())
+			r.Client = interceptor.NewClient(wrapped, interceptor.Funcs{
+				Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+					if _, ok := obj.(*mcpv1alpha1.MCPGatewayBinding); ok {
+						return fmt.Errorf("injected binding failure")
+					}
+					return c.Create(ctx, obj, opts...)
+				},
+				Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+					if _, ok := obj.(*corev1.Service); ok {
+						return fmt.Errorf("injected Service failure")
+					}
+					return c.Update(ctx, obj, opts...)
+				},
+			})
+			_, err = r.Reconcile(ctx, req)
+			Expect(err).To(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
+			available := meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAvailable)
+			Expect(available.Status).To(Equal(metav1.ConditionFalse))
+			Expect(available.Reason).To(Equal(expectedReason))
+			Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeVerified).Status).To(Equal(metav1.ConditionUnknown))
+			Expect(server.Status.Address).To(BeNil())
+			Expect(server.Status.WorkloadName).To(Equal("Deployment/my-mcp-deploy"))
+		},
+			Entry("Service update failure withdraws verification", false),
+			Entry("gateway binding failure withdraws verification", true),
+		)
 
 	})
 
@@ -871,7 +921,7 @@ var _ = Describe("getWorkloadStatus - unit tests", func() {
 		Expect(ws.Ready).To(BeFalse())
 		Expect(ws.ReadyReplicas).To(Equal(int32(1)))
 		Expect(ws.TotalReplicas).To(Equal(int32(3)))
-		Expect(ws.SelectorLabels).To(Equal(map[string]string{"app": "test"}))
+		Expect(ws.Selector.MatchLabels).To(Equal(map[string]string{"app": "test"}))
 	})
 
 	It("should report not-ready DaemonSet when NumberReady < DesiredNumberScheduled", func() {
