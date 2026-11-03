@@ -50,6 +50,7 @@ func (src *MCPServer) ConvertTo(dstRaw conversion.Hub) error {
 	dst.Status.ServiceName = src.Status.ServiceName
 	dst.Status.Address = convertAddressTo(src.Status.Address)
 	dst.Status.ServerInfo = convertServerInfoTo(src.Status.ServerInfo)
+	dst.Status.ServerCard = convertServerCardTo(src.Status.ServerCard)
 	// HandshakeRetryCount is intentionally not carried to the hub (v1beta1): the
 	// field is dropped from v1beta1 and lives only in controller-internal state
 	// going forward, so the deprecated v1alpha1 value is not propagated.
@@ -84,6 +85,7 @@ func (dst *MCPServer) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Status.ServiceName = src.Status.ServiceName
 	dst.Status.Address = convertAddressFrom(src.Status.Address)
 	dst.Status.ServerInfo = convertServerInfoFrom(src.Status.ServerInfo)
+	dst.Status.ServerCard = convertServerCardFrom(src.Status.ServerCard)
 	// HandshakeRetryCount does not exist on the hub (v1beta1); the deprecated
 	// v1alpha1 field stays at its zero value and is populated by the controller,
 	// not by conversion from the hub.
@@ -347,6 +349,54 @@ func convertServerInfoFrom(in *v1beta1.MCPServerInfo) *MCPServerInfo {
 		Version:         in.Version,
 		ProtocolVersion: in.ProtocolVersion,
 		Instructions:    in.Instructions,
+	}
+	if in.Capabilities != nil {
+		out.Capabilities = &MCPServerCapabilities{
+			Tools:       in.Capabilities.Tools,
+			Resources:   in.Capabilities.Resources,
+			Prompts:     in.Capabilities.Prompts,
+			Logging:     in.Capabilities.Logging, //nolint:staticcheck // deprecated field must be preserved for round-trip conversion
+			Completions: in.Capabilities.Completions,
+		}
+	}
+	return out
+}
+
+func convertServerCardTo(in *MCPServerCard) *v1beta1.MCPServerCard {
+	if in == nil {
+		return nil
+	}
+	out := &v1beta1.MCPServerCard{
+		Name:            in.Name,
+		Version:         in.Version,
+		ProtocolVersion: in.ProtocolVersion,
+		Address:         in.Address,
+		Labels:          in.Labels,
+		Annotations:     in.Annotations,
+	}
+	if in.Capabilities != nil {
+		out.Capabilities = &v1beta1.MCPServerCapabilities{
+			Tools:       in.Capabilities.Tools,
+			Resources:   in.Capabilities.Resources,
+			Prompts:     in.Capabilities.Prompts,
+			Logging:     in.Capabilities.Logging, //nolint:staticcheck // deprecated field must be preserved for round-trip conversion
+			Completions: in.Capabilities.Completions,
+		}
+	}
+	return out
+}
+
+func convertServerCardFrom(in *v1beta1.MCPServerCard) *MCPServerCard {
+	if in == nil {
+		return nil
+	}
+	out := &MCPServerCard{
+		Name:            in.Name,
+		Version:         in.Version,
+		ProtocolVersion: in.ProtocolVersion,
+		Address:         in.Address,
+		Labels:          in.Labels,
+		Annotations:     in.Annotations,
 	}
 	if in.Capabilities != nil {
 		out.Capabilities = &MCPServerCapabilities{
