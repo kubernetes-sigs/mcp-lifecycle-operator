@@ -214,6 +214,8 @@ type StorageMount struct {
 type ServerConfig struct {
 	// Port specifies the port number on which the MCP server listens for connections.
 	// Must be between 1 and 65535.
+	// For operator-managed workloads, this is the container port; a referenced
+	// Service may expose a different port, which is resolved from that Service.
 	// Required for operator-managed workloads or when serviceRef is not set.
 	// When both workloadRef and serviceRef are set and port is omitted,
 	// the port is resolved from the referenced Service.

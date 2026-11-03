@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -334,22 +335,26 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		}
 	})
 
-	DescribeTable("BYO Service route backend", func(inferPort bool) {
+	DescribeTable("BYO Service route backend", func(mode string) {
 		server := newTestMCPServer(mcpServerName)
 		server.Spec.ServiceRef = &mcpv1beta1.ServiceReference{Name: "external-mcp"}
-		expectedPort := int32(8080)
-		if inferPort {
+		expectedPort := int32(9090)
+		if mode != "managed" {
 			server.Spec.Source = mcpv1beta1.Source{}
 			server.Spec.WorkloadRef = &mcpv1beta1.WorkloadReference{Name: "external-workload", Kind: mcpv1beta1.WorkloadKindDeployment}
-			server.Spec.Config.Port = 0
-			expectedPort = 9090
+			if mode == "inferred" {
+				server.Spec.Config.Port = 0
+			} else {
+				expectedPort = 8080
+			}
 		}
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{Name: "external-mcp", Namespace: testNamespace},
 			Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{
 				{Name: "metrics", Port: 2112},
-				{Name: "mcp", Port: 9090},
+				{Name: "mcp", Port: 9090, TargetPort: intstr.FromInt32(8080)},
+				{Name: "alternate", Port: 8080},
 			}},
 		}
 		Expect(k8sClient.Create(ctx, svc)).To(Succeed())
@@ -370,8 +375,9 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(string(backend.Name)).To(Equal(svc.Name))
 		Expect(*backend.Port).To(Equal(expectedPort))
 	},
-		Entry("managed workload with explicit port", false),
-		Entry("BYO workload with inferred mcp port", true),
+		Entry("managed container port differs from Service port", "managed"),
+		Entry("BYO workload with inferred mcp port", "inferred"),
+		Entry("BYO workload with explicit Service port", "explicit"),
 	)
 
 	It("should create an HTTPRoute from a binding with httproute provider", func() {

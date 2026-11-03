@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -792,7 +793,7 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 		})
 	})
 
-	Context("When serviceRef is set with explicit config.port", func() {
+	Context("When a BYO Service translates the managed container port", func() {
 		const resourceName = "test-byo-service-explicit-port"
 
 		typeNamespacedName := types.NamespacedName{
@@ -808,7 +809,7 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 				},
 				Spec: corev1.ServiceSpec{
 					Ports: []corev1.ServicePort{
-						{Name: "http", Port: 9090, Protocol: corev1.ProtocolTCP},
+						{Name: "http", Port: 80, TargetPort: intstr.FromInt32(8080), Protocol: corev1.ProtocolTCP},
 					},
 					Selector: map[string]string{"app": "my-mcp"},
 				},
@@ -818,7 +819,7 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			server := newTestBYOMCPServer(resourceName, nil, &mcpv1beta1.ServiceReference{
 				Name: "my-mcp-svc-port",
 			})
-			server.Spec.Config.Port = 7777
+			server.Spec.Config.Port = 8080
 			Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		})
 
@@ -837,8 +838,13 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			}
 		})
 
-		It("should use config.port instead of resolving from Service", func() {
+		It("should verify the Service port while retaining the container and probe ports", func() {
 			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+			var dialedURL string
+			controllerReconciler.MCPDialer = func(_ context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+				dialedURL = url
+				return &mcpv1beta1.MCPServerInfo{Name: "test-server"}, nil
+			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -847,6 +853,8 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 
 			dep := &appsv1.Deployment{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, dep)).To(Succeed())
+			Expect(dep.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort).To(Equal(int32(8080)))
+			Expect(dep.Spec.Template.Spec.Containers[0].ReadinessProbe.TCPSocket.Port).To(Equal(intstr.FromInt32(8080)))
 			dep.Status.ReadyReplicas = 1
 			dep.Status.Replicas = 1
 			dep.Status.Conditions = []appsv1.DeploymentCondition{
@@ -862,9 +870,10 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			mcpServer := &mcpv1beta1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
+			Expect(dialedURL).To(Equal("http://my-mcp-svc-port.default.svc.cluster.local:80/mcp"))
 			Expect(mcpServer.Status.Address).NotTo(BeNil())
-			Expect(mcpServer.Status.Address.URL).To(ContainSubstring("7777"))
-			Expect(mcpServer.Status.Address.URL).NotTo(ContainSubstring("9090"))
+			Expect(mcpServer.Status.Address.URL).To(ContainSubstring(":80/"))
+			Expect(mcpServer.Status.Address.URL).NotTo(ContainSubstring(":8080/"))
 			Expect(mcpServer.Status.Address.URL).To(ContainSubstring("my-mcp-svc-port"))
 		})
 	})

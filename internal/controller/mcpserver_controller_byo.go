@@ -144,7 +144,13 @@ func ResolveServiceEndpoint(ctx context.Context, reader client.Reader, server *m
 		return serviceNameFor(server), server.Spec.Config.Port, nil
 	}
 	name := serviceNameFor(server)
-	port, err := resolveServicePort(ctx, reader, name, server.Namespace, server.Spec.Config.Port)
+	configPort := server.Spec.Config.Port
+	if server.Spec.WorkloadRef == nil {
+		// For managed workloads config.port describes the container, which may
+		// differ from the referenced Service's exposed port.
+		configPort = 0
+	}
+	port, err := resolveServicePort(ctx, reader, name, server.Namespace, configPort)
 	return name, port, err
 }
 
