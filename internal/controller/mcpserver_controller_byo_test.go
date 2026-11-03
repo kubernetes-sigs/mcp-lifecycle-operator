@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -163,6 +164,7 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			svc := &corev1.Service{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, svc)).To(Succeed())
 			Expect(svc.Spec.Selector).To(Equal(map[string]string{"app": "my-mcp"}))
+			Expect(svc.Spec.Ports[0].TargetPort).To(Equal(intstr.FromInt32(8080)), "BYO pods have no named container port")
 		})
 	})
 

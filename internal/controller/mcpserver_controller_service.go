@@ -119,6 +119,11 @@ func (r *MCPServerReconciler) reconcileService(
 // createService creates a Service for the MCPServer using the given selector.
 func (r *MCPServerReconciler) createService(mcpServer *mcpv1beta1.MCPServer, selector map[string]string) *corev1.Service {
 	labels := managedWorkloadLabels(mcpServer.Name)
+	targetPort := intstr.FromString(mcpPortName)
+	if mcpServer.Spec.WorkloadRef != nil {
+		// External containers need not declare an operator-specific named port.
+		targetPort = intstr.FromInt32(mcpServer.Spec.Config.Port)
+	}
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -133,7 +138,7 @@ func (r *MCPServerReconciler) createService(mcpServer *mcpv1beta1.MCPServer, sel
 				{
 					Name:       mcpPortName,
 					Port:       mcpServer.Spec.Config.Port,
-					TargetPort: intstr.FromString(mcpPortName),
+					TargetPort: targetPort,
 					Protocol:   corev1.ProtocolTCP,
 				},
 			},

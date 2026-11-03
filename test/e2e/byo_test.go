@@ -155,7 +155,7 @@ func TestBYOWorkloadHappyPath(t *testing.T) {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
 
-			dep := newBYODeployment(byoDeployName, ns, 1)
+			dep := newBYOMCPDeployment(byoDeployName, ns, 1, 8080)
 			if err := r.Create(ctx, dep); err != nil {
 				t.Fatalf("failed to create BYO Deployment: %v", err)
 			}
@@ -173,7 +173,7 @@ func TestBYOWorkloadHappyPath(t *testing.T) {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
-			f.WaitForMCPServerReconciled(ctx, t, r, server)
+			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
 
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
 				t.Fatalf("failed to get MCPServer: %v", err)
