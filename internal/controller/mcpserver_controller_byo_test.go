@@ -287,6 +287,9 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
 			ds.Status.NumberReady = 3
 			ds.Status.DesiredNumberScheduled = 3
+			ds.Status.ObservedGeneration = ds.Generation
+			ds.Status.NumberAvailable = ds.Status.NumberReady
+			ds.Status.CurrentNumberScheduled = ds.Status.DesiredNumberScheduled
 			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
 
 			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
@@ -367,6 +370,9 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			Expect(k8sClient.Create(ctx, sts)).To(Succeed())
 			sts.Status.ReadyReplicas = 3
 			sts.Status.Replicas = 3
+			sts.Status.ObservedGeneration = sts.Generation
+			sts.Status.AvailableReplicas = sts.Status.ReadyReplicas
+			sts.Status.UpdatedReplicas = sts.Status.ReadyReplicas
 			Expect(k8sClient.Status().Update(ctx, sts)).To(Succeed())
 
 			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
@@ -573,6 +579,9 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			Expect(k8sClient.Create(ctx, dep)).To(Succeed())
 			dep.Status.ReadyReplicas = 1
 			dep.Status.Replicas = 1
+			dep.Status.AvailableReplicas = 1
+			dep.Status.ObservedGeneration = dep.Generation
+			dep.Status.Conditions = []appsv1.DeploymentCondition{{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue}}
 			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
 
 			svc := &corev1.Service{
@@ -667,6 +676,9 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			Expect(k8sClient.Create(ctx, dep)).To(Succeed())
 			dep.Status.ReadyReplicas = 1
 			dep.Status.Replicas = 1
+			dep.Status.AvailableReplicas = 1
+			dep.Status.ObservedGeneration = dep.Generation
+			dep.Status.Conditions = []appsv1.DeploymentCondition{{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue}}
 			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
 
 			svc := &corev1.Service{
@@ -858,161 +870,24 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 	})
 })
 
-var _ = Describe("getWorkloadStatus - unit tests", func() {
-	ctx := context.Background()
-
-	It("should return not-found error for missing DaemonSet", func() {
-		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
-
-		ws, err := getWorkloadStatus(ctx, fakeClient, "no-such-ds", mcpv1beta1.WorkloadKindDaemonSet, "default")
-		Expect(err).To(HaveOccurred())
+var _ = Describe("BYO workload fetch errors", func() {
+	DescribeTable("preserves API error classification and workload identity", func(kind mcpv1beta1.WorkloadKind) {
+		reader := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
+		workload, err := getWorkload(context.Background(), reader, "missing-workload", kind, "default")
+		Expect(workload).To(BeNil())
 		Expect(errors.IsNotFound(err)).To(BeTrue())
-		Expect(ws.Message).To(ContainSubstring("DaemonSet"))
-		Expect(ws.Message).To(ContainSubstring("no-such-ds"))
-	})
-
-	It("should return not-found error for missing StatefulSet", func() {
-		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
-
-		ws, err := getWorkloadStatus(ctx, fakeClient, "no-such-sts", mcpv1beta1.WorkloadKindStatefulSet, "default")
-		Expect(err).To(HaveOccurred())
-		Expect(errors.IsNotFound(err)).To(BeTrue())
-		Expect(ws.Message).To(ContainSubstring("StatefulSet"))
-		Expect(ws.Message).To(ContainSubstring("no-such-sts"))
-	})
-
-	It("should return not-found error for missing Deployment", func() {
-		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
-
-		ws, err := getWorkloadStatus(ctx, fakeClient, "no-such-deploy", mcpv1beta1.WorkloadKindDeployment, "default")
-		Expect(err).To(HaveOccurred())
-		Expect(errors.IsNotFound(err)).To(BeTrue())
-		Expect(ws.Message).To(ContainSubstring("Deployment"))
-		Expect(ws.Message).To(ContainSubstring("no-such-deploy"))
-	})
-
-	It("should return error for unsupported workload kind", func() {
-		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
-
-		_, err := getWorkloadStatus(ctx, fakeClient, "anything", mcpv1beta1.WorkloadKind("CronJob"), "default")
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("unsupported workload kind"))
-		Expect(err.Error()).To(ContainSubstring("CronJob"))
-	})
-
-	It("should report not-ready Deployment when ReadyReplicas < desired", func() {
-		dep := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Name: "partial-deploy", Namespace: "default"},
-			Spec: appsv1.DeploymentSpec{
-				Replicas: ptr.To[int32](3),
-				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
-				Template: corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "test"}},
-					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "c", Image: "img"}}},
-				},
-			},
-			Status: appsv1.DeploymentStatus{ReadyReplicas: 1, Replicas: 3},
-		}
-		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(dep).
-			WithStatusSubresource(dep).Build()
-
-		ws, err := getWorkloadStatus(ctx, fakeClient, "partial-deploy", mcpv1beta1.WorkloadKindDeployment, "default")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ws.Ready).To(BeFalse())
-		Expect(ws.ReadyReplicas).To(Equal(int32(1)))
-		Expect(ws.TotalReplicas).To(Equal(int32(3)))
-		Expect(ws.Selector.MatchLabels).To(Equal(map[string]string{"app": "test"}))
-	})
-
-	It("should report not-ready DaemonSet when NumberReady < DesiredNumberScheduled", func() {
-		ds := &appsv1.DaemonSet{
-			ObjectMeta: metav1.ObjectMeta{Name: "partial-ds", Namespace: "default"},
-			Spec: appsv1.DaemonSetSpec{
-				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
-				Template: corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "test"}},
-					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "c", Image: "img"}}},
-				},
-			},
-			Status: appsv1.DaemonSetStatus{NumberReady: 1, DesiredNumberScheduled: 3},
-		}
-		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(ds).
-			WithStatusSubresource(ds).Build()
-
-		ws, err := getWorkloadStatus(ctx, fakeClient, "partial-ds", mcpv1beta1.WorkloadKindDaemonSet, "default")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ws.Ready).To(BeFalse())
-		Expect(ws.ReadyReplicas).To(Equal(int32(1)))
-		Expect(ws.TotalReplicas).To(Equal(int32(3)))
-	})
-
-	It("should report no schedulable nodes for DaemonSet with DesiredNumberScheduled=0", func() {
-		ds := &appsv1.DaemonSet{
-			ObjectMeta: metav1.ObjectMeta{Name: "no-nodes-ds", Namespace: "default"},
-			Spec: appsv1.DaemonSetSpec{
-				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
-				Template: corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "test"}},
-					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "c", Image: "img"}}},
-				},
-			},
-			Status: appsv1.DaemonSetStatus{NumberReady: 0, DesiredNumberScheduled: 0},
-		}
-		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(ds).
-			WithStatusSubresource(ds).Build()
-
-		ws, err := getWorkloadStatus(ctx, fakeClient, "no-nodes-ds", mcpv1beta1.WorkloadKindDaemonSet, "default")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ws.Ready).To(BeFalse())
-		Expect(ws.NoSchedulableNodes).To(BeTrue())
-		Expect(ws.Message).To(ContainSubstring("no nodes matching"))
-	})
-
-	It("should report not-ready StatefulSet when ReadyReplicas < desired", func() {
-		sts := &appsv1.StatefulSet{
-			ObjectMeta: metav1.ObjectMeta{Name: "partial-sts", Namespace: "default"},
-			Spec: appsv1.StatefulSetSpec{
-				Replicas: ptr.To[int32](3),
-				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
-				Template: corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "test"}},
-					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "c", Image: "img"}}},
-				},
-			},
-			Status: appsv1.StatefulSetStatus{ReadyReplicas: 1, Replicas: 3},
-		}
-		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(sts).
-			WithStatusSubresource(sts).Build()
-
-		ws, err := getWorkloadStatus(ctx, fakeClient, "partial-sts", mcpv1beta1.WorkloadKindStatefulSet, "default")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ws.Ready).To(BeFalse())
-		Expect(ws.ReadyReplicas).To(Equal(int32(1)))
-		Expect(ws.TotalReplicas).To(Equal(int32(3)))
-	})
-
-	It("should report zero replicas when Deployment is scaled to zero", func() {
-		dep := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Name: "zero-deploy", Namespace: "default"},
-			Spec: appsv1.DeploymentSpec{
-				Replicas: ptr.To[int32](0),
-				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
-				Template: corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "test"}},
-					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "c", Image: "img"}}},
-				},
-			},
-			Status: appsv1.DeploymentStatus{ReadyReplicas: 0, Replicas: 0},
-		}
-		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(dep).
-			WithStatusSubresource(dep).Build()
-
-		ws, err := getWorkloadStatus(ctx, fakeClient, "zero-deploy", mcpv1beta1.WorkloadKindDeployment, "default")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ws.Ready).To(BeFalse())
-		Expect(ws.ReadyReplicas).To(Equal(int32(0)))
-		Expect(ws.TotalReplicas).To(Equal(int32(0)))
-		Expect(ws.DesiredReplicas).To(Equal(ptr.To[int32](0)))
+		Expect(err.Error()).To(ContainSubstring(string(kind)))
+		Expect(err.Error()).To(ContainSubstring("missing-workload"))
+	},
+		Entry("Deployment", mcpv1beta1.WorkloadKindDeployment),
+		Entry("DaemonSet", mcpv1beta1.WorkloadKindDaemonSet),
+		Entry("StatefulSet", mcpv1beta1.WorkloadKindStatefulSet),
+	)
+	It("rejects an unsupported kind as a configuration error", func() {
+		reader := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
+		_, err := getWorkload(context.Background(), reader, "anything", mcpv1beta1.WorkloadKind("CronJob"), "default")
+		Expect(err).To(BeAssignableToTypeOf(&ValidationError{}))
+		Expect(err.Error()).To(ContainSubstring("unsupported workloadRef kind: CronJob"))
 	})
 })
 
@@ -1118,8 +993,10 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, dep)).To(Succeed())
-			dep.Status.ReadyReplicas = 1
+			dep.Status.ReadyReplicas = 0
 			dep.Status.Replicas = 3
+			dep.Status.ObservedGeneration = dep.Generation
+			dep.Status.Conditions = []appsv1.DeploymentCondition{{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionFalse, Message: "waiting for replicas"}}
 			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
 
 			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
@@ -1159,7 +1036,7 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			Expect(availableCondition).NotTo(BeNil())
 			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
 			Expect(availableCondition.Reason).To(Equal(ReasonWorkloadUnavailable))
-			Expect(availableCondition.Message).To(ContainSubstring("1 of 3"))
+			Expect(availableCondition.Message).To(ContainSubstring("waiting for replicas"))
 		})
 	})
 
@@ -1235,7 +1112,7 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			Expect(availableCondition).NotTo(BeNil())
 			Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
 			Expect(availableCondition.Reason).To(Equal(ReasonScaledToZero))
-			Expect(availableCondition.Message).To(ContainSubstring("scaled to zero"))
+			Expect(availableCondition.Message).To(ContainSubstring("scaled to 0"))
 		})
 	})
 
@@ -1269,6 +1146,8 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, ds)).To(Succeed())
+			ds.Status.ObservedGeneration = ds.Generation
+			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
 
 			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
 				Name: "init-ds",
@@ -1348,6 +1227,9 @@ var _ = Describe("MCPServer Controller - BYO Combined", func() {
 			Expect(k8sClient.Create(ctx, dep)).To(Succeed())
 			dep.Status.ReadyReplicas = 2
 			dep.Status.Replicas = 2
+			dep.Status.AvailableReplicas = 2
+			dep.Status.ObservedGeneration = dep.Generation
+			dep.Status.Conditions = []appsv1.DeploymentCondition{{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue}}
 			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
 
 			svc := &corev1.Service{
@@ -1583,4 +1465,65 @@ var _ = Describe("BYO workload mixed selector", func() {
 		Expect(k8sClient.Get(ctx, req.NamespacedName, server)).To(Succeed())
 		Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeAccepted).Status).To(Equal(metav1.ConditionTrue))
 	})
+})
+
+var _ = Describe("BYO availability from workload status", func() {
+	daemonSet := func(status appsv1.DaemonSetStatus) client.Object {
+		return &appsv1.DaemonSet{ObjectMeta: metav1.ObjectMeta{Name: "status-ds", Namespace: "default", Generation: 2}, Status: status}
+	}
+	statefulSet := func(replicas int32, status appsv1.StatefulSetStatus) client.Object {
+		return &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "status-sts", Namespace: "default", Generation: 2}, Spec: appsv1.StatefulSetSpec{Replicas: &replicas}, Status: status}
+	}
+	deployment := func(replicas int32, observed int64) client.Object {
+		return &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "status-deployment", Namespace: "default", Generation: 2},
+			Spec:       appsv1.DeploymentSpec{Replicas: &replicas},
+			Status: appsv1.DeploymentStatus{
+				ObservedGeneration: observed, ReadyReplicas: 1, AvailableReplicas: 1,
+				Conditions: []appsv1.DeploymentCondition{{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue}},
+			},
+		}
+	}
+	DescribeTable("uses availability rather than requiring a completed rollout", func(obj client.Object, kind mcpv1beta1.WorkloadKind, expected metav1.ConditionStatus, reason, message string) {
+		ctx := context.Background()
+		reader := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(obj).Build()
+		workload, err := getWorkload(ctx, reader, obj.GetName(), kind, obj.GetNamespace())
+		Expect(err).NotTo(HaveOccurred())
+		server := newTestBYOMCPServer("status-server", &mcpv1beta1.WorkloadReference{Name: obj.GetName(), Kind: kind}, nil)
+		r := newReconcilerForTest(reader, k8sClient.Scheme())
+		observation, err := r.observeWorkload(ctx, server, workload, metav1.Condition{Status: metav1.ConditionTrue})
+		Expect(err).NotTo(HaveOccurred())
+		condition := observation.availability
+		Expect(condition.Status).To(Equal(expected))
+		Expect(condition.Reason).To(Equal(reason))
+		Expect(condition.Message).To(ContainSubstring(message))
+	},
+		Entry("DaemonSet with partial availability and incomplete scheduling", daemonSet(appsv1.DaemonSetStatus{
+			ObservedGeneration: 2, DesiredNumberScheduled: 3, CurrentNumberScheduled: 2, NumberReady: 2, NumberAvailable: 1, NumberUnavailable: 2,
+		}), mcpv1beta1.WorkloadKindDaemonSet, metav1.ConditionTrue, ReasonAvailable, "2 unavailable; 2 of 3 instances scheduled"),
+		Entry("DaemonSet ready pods have not met minReadySeconds", daemonSet(appsv1.DaemonSetStatus{
+			ObservedGeneration: 2, DesiredNumberScheduled: 3, CurrentNumberScheduled: 3, NumberReady: 3, NumberAvailable: 0, NumberUnavailable: 3,
+		}), mcpv1beta1.WorkloadKindDaemonSet, metav1.ConditionFalse, ReasonWorkloadUnavailable, "0 of 3 instances available (3 ready)"),
+		Entry("DaemonSet with no status", daemonSet(appsv1.DaemonSetStatus{}), mcpv1beta1.WorkloadKindDaemonSet, metav1.ConditionUnknown, ReasonInitializing, "report status"),
+		Entry("observed DaemonSet with no matching nodes", daemonSet(appsv1.DaemonSetStatus{ObservedGeneration: 2}), mcpv1beta1.WorkloadKindDaemonSet, metav1.ConditionFalse, ReasonWorkloadUnavailable, "no nodes matching"),
+		Entry("DaemonSet status predates spec update", daemonSet(appsv1.DaemonSetStatus{
+			ObservedGeneration: 1, DesiredNumberScheduled: 3, NumberReady: 3, NumberAvailable: 3,
+		}), mcpv1beta1.WorkloadKindDaemonSet, metav1.ConditionFalse, ReasonWorkloadUnavailable, "processing spec update"),
+		Entry("StatefulSet with partial availability during rollout", statefulSet(3, appsv1.StatefulSetStatus{
+			ObservedGeneration: 2, ReadyReplicas: 2, AvailableReplicas: 1, UpdatedReplicas: 2,
+		}), mcpv1beta1.WorkloadKindStatefulSet, metav1.ConditionTrue, ReasonAvailable, "rolling update in progress"),
+		Entry("StatefulSet ready pods have not met minReadySeconds", statefulSet(3, appsv1.StatefulSetStatus{
+			ObservedGeneration: 2, ReadyReplicas: 3, AvailableReplicas: 0, UpdatedReplicas: 3,
+		}), mcpv1beta1.WorkloadKindStatefulSet, metav1.ConditionFalse, ReasonWorkloadUnavailable, "0 of 3 instances available (3 ready)"),
+		Entry("StatefulSet scaled to zero with lingering replicas", statefulSet(0, appsv1.StatefulSetStatus{
+			ObservedGeneration: 1, ReadyReplicas: 3, AvailableReplicas: 3,
+		}), mcpv1beta1.WorkloadKindStatefulSet, metav1.ConditionTrue, ReasonScaledToZero, "scaled to zero"),
+		Entry("StatefulSet with no status", statefulSet(3, appsv1.StatefulSetStatus{}), mcpv1beta1.WorkloadKindStatefulSet, metav1.ConditionUnknown, ReasonInitializing, "report status"),
+		Entry("StatefulSet status predates spec update", statefulSet(3, appsv1.StatefulSetStatus{
+			ObservedGeneration: 1, ReadyReplicas: 3, AvailableReplicas: 3,
+		}), mcpv1beta1.WorkloadKindStatefulSet, metav1.ConditionFalse, ReasonWorkloadUnavailable, "processing spec update"),
+		Entry("Deployment uses managed availability semantics for partial availability", deployment(3, 2), mcpv1beta1.WorkloadKindDeployment, metav1.ConditionTrue, ReasonAvailable, "1 of 3 instances healthy"),
+		Entry("Deployment status predates spec update", deployment(3, 1), mcpv1beta1.WorkloadKindDeployment, metav1.ConditionFalse, ReasonWorkloadUnavailable, "processing spec update"),
+		Entry("Deployment scaled to zero with lingering replicas", deployment(0, 2), mcpv1beta1.WorkloadKindDeployment, metav1.ConditionTrue, ReasonScaledToZero, "scaled to 0"),
+	)
 })

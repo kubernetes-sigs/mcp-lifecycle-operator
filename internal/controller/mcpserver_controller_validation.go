@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 
@@ -49,7 +50,7 @@ func (e *ValidationError) Error() string {
 func (r *MCPServerReconciler) validateConfig(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
-) (workload *WorkloadStatus, err error) {
+) (workload client.Object, err error) {
 	if mcpServer.Spec.WorkloadRef != nil {
 		workload, err = r.validateWorkloadRef(ctx, mcpServer)
 		if err != nil {
@@ -345,22 +346,20 @@ func classifyAPIError(resourceDesc string, namespace string, err error) error {
 func (r *MCPServerReconciler) validateWorkloadRef(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
-) (*WorkloadStatus, error) {
+) (client.Object, error) {
 	ref := mcpServer.Spec.WorkloadRef
 	desc := fmt.Sprintf("referenced %s %q", ref.Kind, ref.Name)
-	switch ref.Kind {
-	case mcpv1beta1.WorkloadKindDeployment, mcpv1beta1.WorkloadKindDaemonSet, mcpv1beta1.WorkloadKindStatefulSet:
-	default:
-		return nil, &ValidationError{Reason: ReasonInvalid, Message: fmt.Sprintf("unsupported workloadRef kind: %s", ref.Kind)}
-	}
-	workload, err := getWorkloadStatus(ctx, r.APIReader, ref.Name, ref.Kind, mcpServer.Namespace)
+	workload, err := getWorkload(ctx, r.APIReader, ref.Name, ref.Kind, mcpServer.Namespace)
 	if err != nil {
+		if validationErr, ok := errors.AsType[*ValidationError](err); ok {
+			return nil, validationErr
+		}
 		return nil, classifyAPIError(desc, mcpServer.Namespace, err)
 	}
 	// A managed Service must represent the complete workload selector. Dropping
 	// expressions would broaden it and could route MCP traffic to unrelated pods.
 	if mcpServer.Spec.ServiceRef == nil {
-		selector := workload.Selector
+		selector := workloadSelector(workload)
 		if selector == nil || len(selector.MatchLabels) == 0 {
 			return nil, &ValidationError{Reason: ReasonInvalid, Message: fmt.Sprintf("%s has no matchLabels in its selector; set serviceRef to provide a Service with a suitable selector", desc)}
 		}
@@ -368,7 +367,7 @@ func (r *MCPServerReconciler) validateWorkloadRef(
 			return nil, &ValidationError{Reason: ReasonInvalid, Message: fmt.Sprintf("%s uses matchExpressions in its selector; set serviceRef to avoid routing traffic to pods outside the workload", desc)}
 		}
 	}
-	return &workload, nil
+	return workload, nil
 }
 
 // validateServiceRef checks that the referenced BYO Service exists.

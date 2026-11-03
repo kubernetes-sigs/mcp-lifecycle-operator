@@ -348,7 +348,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// BYO workload path: skip Deployment/NetworkPolicy creation, read status from
 	// the referenced workload.
 	if mcpServer.Spec.WorkloadRef != nil {
-		return r.reconcileBYO(ctx, mcpServer, acceptedCondition, *workload)
+		return r.reconcileBYO(ctx, mcpServer, acceptedCondition, workload)
 	}
 
 	// Configuration is valid, proceed with deployment reconciliation

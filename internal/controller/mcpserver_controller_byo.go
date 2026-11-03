@@ -33,79 +33,68 @@ import (
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
-// WorkloadStatus normalizes status from different workload kinds.
-type WorkloadStatus struct {
-	Ready              bool
-	ReadyReplicas      int32
-	TotalReplicas      int32
-	DesiredReplicas    *int32
-	NoSchedulableNodes bool
-	Selector           *metav1.LabelSelector
-	Message            string
+// workloadObservation contains only the information shared reconciliation needs.
+// Native workload resources remain local to validation and availability handling.
+type workloadObservation struct {
+	selector      *metav1.LabelSelector
+	replicas      int32
+	readyReplicas int32
+	availability  metav1.Condition
 }
 
-// getWorkloadStatus fetches the referenced BYO workload and returns normalized status.
-func getWorkloadStatus(ctx context.Context, r client.Reader, name string, kind mcpv1beta1.WorkloadKind, namespace string) (WorkloadStatus, error) {
+// getWorkload reads the native resource once. Fetch failures remain errors so
+// validation can report them through Accepted rather than a partial observation.
+func getWorkload(ctx context.Context, reader client.Reader, name string, kind mcpv1beta1.WorkloadKind, namespace string) (client.Object, error) {
+	var obj client.Object
 	switch kind {
 	case mcpv1beta1.WorkloadKindDeployment:
-		dep := &appsv1.Deployment{}
-		if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, dep); err != nil {
-			if apierrors.IsNotFound(err) {
-				return WorkloadStatus{Message: fmt.Sprintf("referenced Deployment %s not found", name)}, err
-			}
-			return WorkloadStatus{}, err
-		}
-		total := ptr.Deref(dep.Spec.Replicas, 1)
-		ws := WorkloadStatus{
-			Ready:           dep.Status.ReadyReplicas > 0 && dep.Status.ReadyReplicas >= total,
-			ReadyReplicas:   dep.Status.ReadyReplicas,
-			TotalReplicas:   total,
-			DesiredReplicas: dep.Spec.Replicas,
-		}
-		ws.Selector = dep.Spec.Selector
-		return ws, nil
-
+		obj = &appsv1.Deployment{}
 	case mcpv1beta1.WorkloadKindDaemonSet:
-		ds := &appsv1.DaemonSet{}
-		if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, ds); err != nil {
-			if apierrors.IsNotFound(err) {
-				return WorkloadStatus{Message: fmt.Sprintf("referenced DaemonSet %s not found", name)}, err
-			}
-			return WorkloadStatus{}, err
-		}
-		ws := WorkloadStatus{
-			Ready:         ds.Status.NumberReady > 0 && ds.Status.NumberReady >= ds.Status.DesiredNumberScheduled,
-			ReadyReplicas: ds.Status.NumberReady,
-			TotalReplicas: ds.Status.DesiredNumberScheduled,
-		}
-		ws.Selector = ds.Spec.Selector
-		if ds.Status.DesiredNumberScheduled == 0 {
-			ws.NoSchedulableNodes = true
-			ws.Message = fmt.Sprintf("DaemonSet %s has no nodes matching its scheduling constraints", name)
-		}
-		return ws, nil
-
+		obj = &appsv1.DaemonSet{}
 	case mcpv1beta1.WorkloadKindStatefulSet:
-		sts := &appsv1.StatefulSet{}
-		if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, sts); err != nil {
-			if apierrors.IsNotFound(err) {
-				return WorkloadStatus{Message: fmt.Sprintf("referenced StatefulSet %s not found", name)}, err
-			}
-			return WorkloadStatus{}, err
-		}
-		total := ptr.Deref(sts.Spec.Replicas, 1)
-		ws := WorkloadStatus{
-			Ready:           sts.Status.ReadyReplicas > 0 && sts.Status.ReadyReplicas >= total,
-			ReadyReplicas:   sts.Status.ReadyReplicas,
-			TotalReplicas:   total,
-			DesiredReplicas: sts.Spec.Replicas,
-		}
-		ws.Selector = sts.Spec.Selector
-		return ws, nil
-
+		obj = &appsv1.StatefulSet{}
 	default:
-		return WorkloadStatus{}, fmt.Errorf("unsupported workload kind: %s", kind)
+		return nil, &ValidationError{Reason: ReasonInvalid, Message: fmt.Sprintf("unsupported workloadRef kind: %s", kind)}
 	}
+	if err := reader.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, obj); err != nil {
+		return nil, fmt.Errorf("getting referenced %s %q: %w", kind, name, err)
+	}
+	return obj, nil
+}
+
+// workloadSelector returns the native pod selector without discarding expressions.
+func workloadSelector(obj client.Object) *metav1.LabelSelector {
+	switch w := obj.(type) {
+	case *appsv1.Deployment:
+		return w.Spec.Selector
+	case *appsv1.DaemonSet:
+		return w.Spec.Selector
+	case *appsv1.StatefulSet:
+		return w.Spec.Selector
+	default:
+		return nil
+	}
+}
+
+// observeWorkload derives a small common result directly from native status.
+// Each kind owns its availability policy and message; Deployment reuses the
+// same condition handling as operator-managed workloads.
+func (r *MCPServerReconciler) observeWorkload(ctx context.Context, server *mcpv1beta1.MCPServer, obj client.Object, acceptedCondition metav1.Condition) (workloadObservation, error) {
+	observation := workloadObservation{selector: workloadSelector(obj)}
+	switch w := obj.(type) {
+	case *appsv1.Deployment:
+		observation.replicas, observation.readyReplicas = ptr.Deref(w.Spec.Replicas, 1), w.Status.ReadyReplicas
+		observation.availability = r.reconcileAvailableCondition(ctx, w, acceptedCondition, server.Generation, server.Status.Conditions)
+	case *appsv1.DaemonSet:
+		observation.replicas, observation.readyReplicas = w.Status.DesiredNumberScheduled, w.Status.NumberReady
+		observation.availability = daemonSetAvailability(server, w)
+	case *appsv1.StatefulSet:
+		observation.replicas, observation.readyReplicas = ptr.Deref(w.Spec.Replicas, 1), w.Status.ReadyReplicas
+		observation.availability = statefulSetAvailability(server, w)
+	default:
+		return workloadObservation{}, fmt.Errorf("unsupported workload type: %T", obj)
+	}
+	return observation, nil
 }
 
 // resolveServicePort determines the port to use for the MCP endpoint when
@@ -180,37 +169,60 @@ func (r *MCPServerReconciler) reconcileServiceOrBYO(
 	return mcpServer.Spec.Config.Port, nil
 }
 
-// byoAvailableCondition derives the Available condition for a BYO workload from
-// its normalized status, mirroring reconcileAvailableCondition's semantics for
-// operator-managed Deployments.
-func byoAvailableCondition(
-	ws WorkloadStatus,
-	kind mcpv1beta1.WorkloadKind,
-	generation int64,
-	existingConditions []metav1.Condition,
-) metav1.Condition {
-	switch {
-	case ws.Ready:
-		return newAvailableCondition(metav1.ConditionTrue, ReasonAvailable,
-			fmt.Sprintf("BYO %s is ready (%d of %d instances healthy)", kind, ws.ReadyReplicas, ws.TotalReplicas),
-			generation, existingConditions)
-	case ws.DesiredReplicas != nil && *ws.DesiredReplicas == 0:
-		return newAvailableCondition(metav1.ConditionTrue, ReasonScaledToZero,
-			fmt.Sprintf("BYO %s is scaled to zero", kind), generation, existingConditions)
-	case ws.NoSchedulableNodes:
-		return newAvailableCondition(metav1.ConditionFalse, ReasonWorkloadUnavailable,
-			ws.Message, generation, existingConditions)
-	case ws.TotalReplicas == 0 && ws.ReadyReplicas == 0:
+// workloadProgressCondition distinguishes unobserved and stale status from a
+// current workload snapshot. Callers handle intentional scale-to-zero first.
+func workloadProgressCondition(server *mcpv1beta1.MCPServer, kind string, generation, observedGeneration int64) (metav1.Condition, bool) {
+	if observedGeneration == 0 {
 		return newAvailableCondition(metav1.ConditionUnknown, ReasonInitializing,
-			fmt.Sprintf("Waiting for BYO %s to report status", kind), generation, existingConditions)
-	default:
-		msg := fmt.Sprintf("BYO %s is not ready (%d of %d instances healthy)", kind, ws.ReadyReplicas, ws.TotalReplicas)
-		if ws.Message != "" {
-			msg = ws.Message
-		}
-		return newAvailableCondition(metav1.ConditionFalse, ReasonWorkloadUnavailable,
-			msg, generation, existingConditions)
+			fmt.Sprintf("Waiting for BYO %s to report status", kind), server.Generation, server.Status.Conditions), true
 	}
+	if observedGeneration < generation {
+		return newAvailableCondition(metav1.ConditionFalse, ReasonWorkloadUnavailable,
+			fmt.Sprintf("BYO %s is processing spec update", kind), server.Generation, server.Status.Conditions), true
+	}
+	return metav1.Condition{}, false
+}
+
+// daemonSetAvailability uses numberAvailable to respect minReadySeconds. Partial
+// availability permits verification while unavailable and unscheduled pods remain
+// visible in the message. DaemonSets cannot be intentionally scaled to zero.
+func daemonSetAvailability(server *mcpv1beta1.MCPServer, ds *appsv1.DaemonSet) metav1.Condition {
+	if condition, pending := workloadProgressCondition(server, "DaemonSet", ds.Generation, ds.Status.ObservedGeneration); pending {
+		return condition
+	}
+	status := ds.Status
+	if status.DesiredNumberScheduled == 0 {
+		return newAvailableCondition(metav1.ConditionFalse, ReasonWorkloadUnavailable,
+			fmt.Sprintf("DaemonSet %s has no nodes matching its scheduling constraints", ds.Name), server.Generation, server.Status.Conditions)
+	}
+	message := fmt.Sprintf("BYO DaemonSet: %d of %d instances available (%d ready); %d unavailable; %d of %d instances scheduled",
+		status.NumberAvailable, status.DesiredNumberScheduled, status.NumberReady, status.NumberUnavailable, status.CurrentNumberScheduled, status.DesiredNumberScheduled)
+	if status.NumberAvailable > 0 {
+		return newAvailableCondition(metav1.ConditionTrue, ReasonAvailable, message, server.Generation, server.Status.Conditions)
+	}
+	return newAvailableCondition(metav1.ConditionFalse, ReasonWorkloadUnavailable, message, server.Generation, server.Status.Conditions)
+}
+
+// statefulSetAvailability uses availableReplicas to respect minReadySeconds and
+// reports rollout progress separately from the presence of an available instance.
+func statefulSetAvailability(server *mcpv1beta1.MCPServer, sts *appsv1.StatefulSet) metav1.Condition {
+	desired := ptr.Deref(sts.Spec.Replicas, 1)
+	if desired == 0 {
+		return newAvailableCondition(metav1.ConditionTrue, ReasonScaledToZero,
+			"BYO StatefulSet is scaled to zero", server.Generation, server.Status.Conditions)
+	}
+	if condition, pending := workloadProgressCondition(server, "StatefulSet", sts.Generation, sts.Status.ObservedGeneration); pending {
+		return condition
+	}
+	status := sts.Status
+	message := fmt.Sprintf("BYO StatefulSet: %d of %d instances available (%d ready)", status.AvailableReplicas, desired, status.ReadyReplicas)
+	if status.UpdatedReplicas < desired {
+		message += "; rolling update in progress"
+	}
+	if status.AvailableReplicas > 0 {
+		return newAvailableCondition(metav1.ConditionTrue, ReasonAvailable, message, server.Generation, server.Status.Conditions)
+	}
+	return newAvailableCondition(metav1.ConditionFalse, ReasonWorkloadUnavailable, message, server.Generation, server.Status.Conditions)
 }
 
 // reconcileBYO handles the reconciliation path for BYO workloads. It skips
@@ -220,19 +232,21 @@ func (r *MCPServerReconciler) reconcileBYO(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
 	acceptedCondition metav1.Condition,
-	ws WorkloadStatus,
+	workload client.Object,
 ) (ctrl.Result, error) {
-	ref := mcpServer.Spec.WorkloadRef
-
-	availableCondition := byoAvailableCondition(ws, ref.Kind, mcpServer.Generation, mcpServer.Status.Conditions)
+	observation, err := r.observeWorkload(ctx, mcpServer, workload, acceptedCondition)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	availableCondition := observation.availability
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		availableCondition.Type, string(availableCondition.Status), availableCondition.Reason)
 	r.maybeEmitWorkloadUnavailableEvent(mcpServer, availableCondition)
 
-	status := workloadStatusConfiguration(mcpServer, ws.TotalReplicas, ws.ReadyReplicas)
+	status := workloadStatusConfiguration(mcpServer, observation.replicas, observation.readyReplicas)
 	var selector map[string]string
-	if ws.Selector != nil {
-		selector = ws.Selector.MatchLabels
+	if observation.selector != nil {
+		selector = observation.selector.MatchLabels
 	}
 	port, err := r.reconcileServiceOrBYO(ctx, mcpServer, selector)
 	if err != nil {
