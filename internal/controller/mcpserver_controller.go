@@ -87,7 +87,6 @@ const (
 const (
 	ReasonAvailable                = "Available"
 	ReasonConfigurationInvalid     = "ConfigurationInvalid"
-	ReasonDeploymentUnavailable    = "DeploymentUnavailable"
 	ReasonWorkloadUnavailable      = "WorkloadUnavailable"
 	ReasonServiceUnavailable       = "ServiceUnavailable"
 	ReasonNetworkPolicyUnavailable = "NetworkPolicyUnavailable"
@@ -424,7 +423,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		availableCondition.Type, string(availableCondition.Status), availableCondition.Reason)
 
-	r.maybeEmitDeploymentUnavailableEvent(mcpServer, availableCondition)
+	r.maybeEmitWorkloadUnavailableEvent(mcpServer, availableCondition)
 
 	// Build status
 	path := mcpServer.Spec.Config.Path
@@ -597,7 +596,7 @@ func (r *MCPServerReconciler) handleDeploymentReconcileError(
 
 	// Optimistic-lock conflicts are transient and self-resolve on the next
 	// reconcile. Requeue without touching status so the Available condition
-	// is not briefly flipped to DeploymentUnavailable, and requeue with a nil
+	// is not briefly flipped to WorkloadUnavailable, and requeue with a nil
 	// error so a benign conflict does not trip the reconcile error metric or
 	// log at ERROR, which would cause status thrashing and false monitoring
 	// alerts (issue #87).
@@ -614,7 +613,7 @@ func (r *MCPServerReconciler) handleDeploymentReconcileError(
 	availableCondition := newCondition(
 		ConditionTypeAvailable,
 		metav1.ConditionFalse,
-		ReasonDeploymentUnavailable,
+		ReasonWorkloadUnavailable,
 		fmt.Sprintf("Failed to reconcile Deployment: %v", err),
 		mcpServer.Generation,
 	)
@@ -624,8 +623,8 @@ func (r *MCPServerReconciler) handleDeploymentReconcileError(
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		availableCondition.Type, string(availableCondition.Status), availableCondition.Reason)
 
-	if !duplicateDeploymentUnavailable(mcpServer.Status.Conditions, availableCondition.Message) {
-		r.emitDeploymentReconcileFailed(mcpServer, availableCondition.Message)
+	if !duplicateWorkloadUnavailable(mcpServer.Status.Conditions, availableCondition.Message) {
+		r.emitWorkloadUnavailable(mcpServer, availableCondition.Message)
 	}
 
 	deployErrServiceName := mcpServer.Name
@@ -790,14 +789,14 @@ func (r *MCPServerReconciler) emitHandshakeAuthSkip(mcpServer *mcpv1beta1.MCPSer
 		mcpServer.Name, mcpURL)
 }
 
-func (r *MCPServerReconciler) maybeEmitDeploymentUnavailableEvent(
+func (r *MCPServerReconciler) maybeEmitWorkloadUnavailableEvent(
 	mcpServer *mcpv1beta1.MCPServer,
 	availableCondition metav1.Condition,
 ) {
 	if availableCondition.Status == metav1.ConditionFalse &&
-		availableCondition.Reason == ReasonDeploymentUnavailable &&
-		!duplicateDeploymentUnavailable(mcpServer.Status.Conditions, availableCondition.Message) {
-		r.emitDeploymentReconcileFailed(mcpServer, availableCondition.Message)
+		availableCondition.Reason == ReasonWorkloadUnavailable &&
+		!duplicateWorkloadUnavailable(mcpServer.Status.Conditions, availableCondition.Message) {
+		r.emitWorkloadUnavailable(mcpServer, availableCondition.Message)
 	}
 }
 
@@ -823,30 +822,11 @@ func withAddressWhenVerified(
 	return status
 }
 
-func (r *MCPServerReconciler) maybeEmitWorkloadUnavailableEvent(
-	mcpServer *mcpv1beta1.MCPServer,
-	availableCondition metav1.Condition,
-) {
-	if availableCondition.Status == metav1.ConditionFalse &&
-		availableCondition.Reason == ReasonWorkloadUnavailable &&
-		!duplicateWorkloadUnavailable(mcpServer.Status.Conditions, availableCondition.Message) {
-		r.emitWorkloadUnavailable(mcpServer, availableCondition.Message)
-	}
-}
-
 func (r *MCPServerReconciler) emitWorkloadUnavailable(mcpServer *mcpv1beta1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
 	}
 	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonWorkloadUnavailable, eventActionDeploymentReconcileFailed,
-		"MCPServer %s: %s", mcpServer.Name, message)
-}
-
-func (r *MCPServerReconciler) emitDeploymentReconcileFailed(mcpServer *mcpv1beta1.MCPServer, message string) {
-	if r.Recorder == nil {
-		return
-	}
-	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonDeploymentUnavailable, eventActionDeploymentReconcileFailed,
 		"MCPServer %s: %s", mcpServer.Name, message)
 }
 

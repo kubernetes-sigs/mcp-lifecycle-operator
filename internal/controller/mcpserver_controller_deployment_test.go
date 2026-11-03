@@ -429,7 +429,7 @@ var _ = Describe("MCPServer Controller - Deployment Reconciliation Failures", fu
 		}
 	})
 
-	It("should update status with DeploymentUnavailable when deployment creation fails", func() {
+	It("should update status with WorkloadUnavailable when deployment creation fails", func() {
 		By("Creating interceptor that returns error on Deployment Create")
 		wrappedClient, err := client.NewWithWatch(cfg, client.Options{Scheme: k8sClient.Scheme()})
 		Expect(err).NotTo(HaveOccurred())
@@ -456,7 +456,7 @@ var _ = Describe("MCPServer Controller - Deployment Reconciliation Failures", fu
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("simulated deployment creation failure"))
 
-		By("Verifying status is updated with DeploymentUnavailable")
+		By("Verifying status is updated with WorkloadUnavailable")
 		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
@@ -468,12 +468,12 @@ var _ = Describe("MCPServer Controller - Deployment Reconciliation Failures", fu
 		availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
 		Expect(availableCondition).NotTo(BeNil())
 		Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
-		Expect(availableCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
+		Expect(availableCondition.Reason).To(Equal(ReasonWorkloadUnavailable))
 		Expect(availableCondition.Message).To(ContainSubstring("Failed to reconcile Deployment"))
 		Expect(availableCondition.Message).To(ContainSubstring("simulated deployment creation failure"))
 	})
 
-	It("should update status with DeploymentUnavailable when deployment update fails", func() {
+	It("should update status with WorkloadUnavailable when deployment update fails", func() {
 		By("Initial reconcile to create resources")
 		initialReconciler := &MCPServerReconciler{
 			Client:    k8sClient,
@@ -524,7 +524,7 @@ var _ = Describe("MCPServer Controller - Deployment Reconciliation Failures", fu
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("simulated deployment update failure"))
 
-		By("Verifying status is updated with DeploymentUnavailable")
+		By("Verifying status is updated with WorkloadUnavailable")
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
@@ -535,7 +535,7 @@ var _ = Describe("MCPServer Controller - Deployment Reconciliation Failures", fu
 		availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
 		Expect(availableCondition).NotTo(BeNil())
 		Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
-		Expect(availableCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
+		Expect(availableCondition.Reason).To(Equal(ReasonWorkloadUnavailable))
 		Expect(availableCondition.Message).To(ContainSubstring("Failed to reconcile Deployment"))
 		Expect(availableCondition.Message).To(ContainSubstring("simulated deployment update failure"))
 	})
@@ -1703,7 +1703,7 @@ var _ = Describe("MCPServer Controller - Deployment Reconcile Events", func() {
 		var deploymentFailedEvent string
 		Eventually(func(g Gomega) {
 			for _, ev := range drainEvents(fr.Events) {
-				if strings.Contains(ev, corev1.EventTypeWarning) && strings.Contains(ev, ReasonDeploymentUnavailable) {
+				if strings.Contains(ev, corev1.EventTypeWarning) && strings.Contains(ev, ReasonWorkloadUnavailable) {
 					deploymentFailedEvent = ev
 					break
 				}
@@ -1737,7 +1737,7 @@ var _ = Describe("MCPServer Controller - Deployment Reconcile Events", func() {
 		var secondDeploymentFailedEvent string
 		Eventually(func(g Gomega) {
 			for _, ev := range drainEvents(fr.Events) {
-				if strings.Contains(ev, corev1.EventTypeWarning) && strings.Contains(ev, ReasonDeploymentUnavailable) {
+				if strings.Contains(ev, corev1.EventTypeWarning) && strings.Contains(ev, ReasonWorkloadUnavailable) {
 					secondDeploymentFailedEvent = ev
 					break
 				}

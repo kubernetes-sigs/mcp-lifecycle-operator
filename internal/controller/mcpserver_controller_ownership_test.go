@@ -415,7 +415,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
 			Expect(availableCondition).NotTo(BeNil())
 			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(availableCondition.Reason).To(Equal("DeploymentUnavailable"))
+			Expect(availableCondition.Reason).To(Equal("WorkloadUnavailable"))
 			Expect(availableCondition.Message).To(ContainSubstring("has no controller owner"))
 		})
 	})
@@ -595,7 +595,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
 			Expect(availableCondition).NotTo(BeNil())
 			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(availableCondition.Reason).To(Equal("DeploymentUnavailable"))
+			Expect(availableCondition.Reason).To(Equal("WorkloadUnavailable"))
 			Expect(availableCondition.Message).To(ContainSubstring("has no controller owner"))
 		})
 	})
@@ -807,7 +807,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 				return availableCondition.Reason
 			}).Should(Or(
 				Equal("Initializing"),          // Initial state after creation
-				Equal("DeploymentUnavailable"), // Deployment exists but not ready yet
+				Equal("WorkloadUnavailable"), // Deployment exists but not ready yet
 				Equal("Available"),             // Fully ready
 			), "MCPServer should be reconciling successfully after adopting orphaned deployment")
 
@@ -926,7 +926,7 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 				return availableCondition.Reason
 			}).Should(Or(
 				Equal("Initializing"),          // Initial state after creation
-				Equal("DeploymentUnavailable"), // Deployment exists but not ready yet
+				Equal("WorkloadUnavailable"), // Deployment exists but not ready yet
 				Equal("Available"),             // Fully ready
 			), "MCPServer should be reconciling successfully after adopting orphaned service")
 

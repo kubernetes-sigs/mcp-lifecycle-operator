@@ -797,7 +797,7 @@ var _ = Describe("MCPServer Controller", func() {
 			By("Verifying MCPServer status reflects current deployment state")
 			// This is the critical test that would have caught the bug:
 			// Without the fix, reconcileDeployment would return deployment with stale status,
-			// causing determineReadyCondition to incorrectly report DeploymentUnavailable
+			// causing determineReadyCondition to incorrectly report WorkloadUnavailable
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 			availableCondition = meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
 			Expect(availableCondition).NotTo(BeNil())
@@ -881,7 +881,7 @@ var _ = Describe("MCPServer Controller", func() {
 			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Available")
 			Expect(availableCondition).NotTo(BeNil())
 			Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(availableCondition.Reason).To(Equal(ReasonDeploymentUnavailable))
+			Expect(availableCondition.Reason).To(Equal(ReasonWorkloadUnavailable))
 
 			By("Verifying Replicas and ReadyReplicas reflect deployment state")
 			Expect(mcpServer.Status.Replicas).To(Equal(int32(1)))
@@ -892,7 +892,7 @@ var _ = Describe("MCPServer Controller", func() {
 			Eventually(func(g Gomega) {
 				for _, ev := range drainEvents(fr.Events) {
 					if strings.Contains(ev, corev1.EventTypeWarning) &&
-						strings.Contains(ev, ReasonDeploymentUnavailable) {
+						strings.Contains(ev, ReasonWorkloadUnavailable) {
 						deploymentUnavailableEvent = ev
 						break
 					}

@@ -62,7 +62,7 @@ func (r *MCPServerReconciler) reconcileAvailableCondition(
 	state := extractDeploymentState(deployment)
 
 	if deployment.Status.ObservedGeneration > 0 && deployment.Status.ObservedGeneration < deployment.Generation {
-		return newAvailableCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
+		return newAvailableCondition(metav1.ConditionFalse, ReasonWorkloadUnavailable,
 			"Deployment is processing spec update", generation, existingConditions)
 	}
 
@@ -85,11 +85,11 @@ func (r *MCPServerReconciler) reconcileAvailableCondition(
 			}
 		}
 
-		return newAvailableCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
+		return newAvailableCondition(metav1.ConditionFalse, ReasonWorkloadUnavailable,
 			podFailureMessage, generation, existingConditions)
 	}
 
-	return newAvailableCondition(metav1.ConditionFalse, ReasonDeploymentUnavailable,
+	return newAvailableCondition(metav1.ConditionFalse, ReasonWorkloadUnavailable,
 		"Waiting for instances to become healthy", generation, existingConditions)
 }
 
@@ -484,12 +484,6 @@ func duplicateHandshakeUnavailable(conditions []metav1.Condition, message string
 	prev := meta.FindStatusCondition(conditions, ConditionTypeVerified)
 	return prev != nil && prev.Status == metav1.ConditionFalse &&
 		prev.Reason == ReasonEndpointUnavailable && prev.Message == message
-}
-
-func duplicateDeploymentUnavailable(conditions []metav1.Condition, message string) bool {
-	prev := meta.FindStatusCondition(conditions, ConditionTypeAvailable)
-	return prev != nil && prev.Status == metav1.ConditionFalse &&
-		prev.Reason == ReasonDeploymentUnavailable && prev.Message == message
 }
 
 func duplicateWorkloadUnavailable(conditions []metav1.Condition, message string) bool {

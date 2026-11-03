@@ -779,8 +779,8 @@ var _ = Describe("MCPServer Controller - Optimistic Locking Conflicts", func() {
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 		after := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
 		Expect(after).NotTo(BeNil())
-		Expect(after.Reason).NotTo(Equal(ReasonDeploymentUnavailable),
-			"transient optimistic-lock conflict must not flip Available to DeploymentUnavailable")
+		Expect(after.Reason).NotTo(Equal(ReasonWorkloadUnavailable),
+			"transient optimistic-lock conflict must not flip Available to WorkloadUnavailable")
 		Expect(after.Status).NotTo(Equal(metav1.ConditionFalse))
 		Expect(after.Reason).To(Equal(baselineReason))
 		Expect(after.Message).To(Equal(baselineMessage))
