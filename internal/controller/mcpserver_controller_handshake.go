@@ -34,8 +34,8 @@ import (
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
-// reconcileHandshake performs the MCP handshake when the deployment is available,
-// skipping it when the endpoint was already verified for the current generation.
+// reconcileHandshake performs the MCP handshake when the workload is available,
+// skipping it when the URL, generation and CA bundle match successful verification.
 // Returns a Verified condition and the server info (if handshake succeeded).
 func (r *MCPServerReconciler) reconcileHandshake(
 	ctx context.Context,
@@ -70,6 +70,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 	alreadyVerified := existingVerified != nil &&
 		existingVerified.Status == metav1.ConditionTrue &&
 		mcpServer.Status.ObservedGeneration == mcpServer.Generation &&
+		mcpServer.Status.VerifiedEndpointURL == mcpURL &&
 		mcpServer.Status.ServerInfo != nil &&
 		previousHash == tlsCABundleHash
 
@@ -333,6 +334,7 @@ func isHTTPAuthError(err error) bool {
 // verifiedCondition.Message in place so the persisted status tells users that automatic retries have stopped.
 func (r *MCPServerReconciler) reconcileHandshakeEventsAndRetryCount(
 	mcpServer *mcpv1beta1.MCPServer,
+	mcpURL string,
 	verifiedCondition *metav1.Condition,
 ) int32 {
 	key := mcpServer.Namespace + "/" + mcpServer.Name
@@ -346,13 +348,14 @@ func (r *MCPServerReconciler) reconcileHandshakeEventsAndRetryCount(
 	if v, ok := r.handshakeRetries.Load(key); ok {
 		prev = v.(handshakeRetryState)
 	}
-	if prev.generation != mcpServer.Generation {
-		prev = handshakeRetryState{generation: mcpServer.Generation}
+	if prev.generation != mcpServer.Generation || prev.endpointURL != mcpURL {
+		prev = handshakeRetryState{}
 	}
 
 	next := handshakeRetryState{
-		generation: mcpServer.Generation,
-		count:      prev.count + 1,
+		generation:  mcpServer.Generation,
+		endpointURL: mcpURL,
+		count:       prev.count + 1,
 	}
 	r.handshakeRetries.Store(key, next)
 
@@ -366,7 +369,7 @@ func (r *MCPServerReconciler) reconcileHandshakeEventsAndRetryCount(
 	baseMessage := verifiedCondition.Message
 	if int(next.count) >= maxMCPHandshakeRetries {
 		verifiedCondition.Message = fmt.Sprintf(
-			"%s Automatic retries exhausted after %d attempts; not retrying until the spec or CA bundle changes.",
+			"%s Automatic retries exhausted after %d attempts; not retrying until the spec, endpoint URL or CA bundle changes.",
 			baseMessage, maxMCPHandshakeRetries)
 	}
 

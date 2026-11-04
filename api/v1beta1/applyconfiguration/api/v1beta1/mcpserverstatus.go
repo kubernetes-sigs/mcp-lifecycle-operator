@@ -49,6 +49,10 @@ type MCPServerStatusApplyConfiguration struct {
 	GatewayBinding *GatewayBindingStatusApplyConfiguration `json:"gatewayBinding,omitempty"`
 	// Address contains the address of the MCP server service.
 	Address *MCPServerAddressApplyConfiguration `json:"address,omitempty"`
+	// VerifiedEndpointURL is the internal Service URL for which Verified=True
+	// was established. Unlike Address, it is not replaced by a gateway URL.
+	// A changed or missing value requires endpoint verification again.
+	VerifiedEndpointURL *string `json:"verifiedEndpointURL,omitempty"`
 	// ServerInfo contains identity and capability information reported by the
 	// MCP server during the protocol handshake (initialize or server/discover).
 	// This field is populated only after a successful handshake.
@@ -141,6 +145,14 @@ func (b *MCPServerStatusApplyConfiguration) WithGatewayBinding(value *GatewayBin
 // If called multiple times, the Address field is set to the value of the last call.
 func (b *MCPServerStatusApplyConfiguration) WithAddress(value *MCPServerAddressApplyConfiguration) *MCPServerStatusApplyConfiguration {
 	b.Address = value
+	return b
+}
+
+// WithVerifiedEndpointURL sets the VerifiedEndpointURL field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the VerifiedEndpointURL field is set to the value of the last call.
+func (b *MCPServerStatusApplyConfiguration) WithVerifiedEndpointURL(value string) *MCPServerStatusApplyConfiguration {
+	b.VerifiedEndpointURL = &value
 	return b
 }
 

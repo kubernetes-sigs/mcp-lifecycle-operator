@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -30,9 +31,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
@@ -103,6 +106,10 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 		})
 
 		AfterEach(func() {
+			binding := &mcpv1alpha1.MCPGatewayBinding{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: gatewayBindingName(resourceName), Namespace: "default"}, binding); err == nil {
+				Expect(k8sClient.Delete(ctx, binding)).To(Succeed())
+			}
 			resource := &mcpv1beta1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -134,6 +141,122 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 
 			Expect(mcpServer.Status.ServiceName).To(Equal("my-mcp-svc"))
 		})
+
+		DescribeTable("reverifies changed Service URLs without changing MCPServer generation", func(withGateway bool) {
+			server := &mcpv1beta1.MCPServer{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
+			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
+			if withGateway {
+				server.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute"}
+				Expect(k8sClient.Update(ctx, server)).To(Succeed())
+				Expect(controllerReconciler.reconcileGatewayBinding(ctx, server)).To(Succeed())
+				binding := &mcpv1alpha1.MCPGatewayBinding{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gatewayBindingName(resourceName), Namespace: "default"}, binding)).To(Succeed())
+				binding.Status.URL = testGatewayURL
+				meta.SetStatusCondition(&binding.Status.Conditions, metav1.Condition{
+					Type: ConditionTypeRegistered, Status: metav1.ConditionTrue,
+					Reason: ReasonGatewayRegistered, ObservedGeneration: binding.Generation,
+				})
+				Expect(k8sClient.Status().Update(ctx, binding)).To(Succeed())
+			}
+			generation := server.Generation
+			var dialedURLs []string
+			failHandshake := false
+			dialer := func(_ context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+				dialedURLs = append(dialedURLs, url)
+				if failHandshake {
+					return nil, fmt.Errorf("endpoint unavailable")
+				}
+				return &mcpv1beta1.MCPServerInfo{Name: "test-server"}, nil
+			}
+			controllerReconciler.MCPDialer = dialer
+			reconcileServer := func() ctrl.Result {
+				result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
+				Expect(server.Generation).To(Equal(generation))
+				return result
+			}
+			setServicePort := func(port int32) {
+				svc := &corev1.Service{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "my-mcp-svc", Namespace: "default"}, svc)).To(Succeed())
+				svc.Spec.Ports[0].Port = port
+				Expect(k8sClient.Update(ctx, svc)).To(Succeed())
+			}
+			const initialURL = "http://my-mcp-svc.default.svc.cluster.local:9090/mcp"
+			const failedURL = "http://my-mcp-svc.default.svc.cluster.local:9091/mcp"
+			const recoveredURL = "http://my-mcp-svc.default.svc.cluster.local:9092/mcp"
+
+			By("verifying the internal URL while publishing the appropriate address")
+			reconcileServer()
+			Expect(dialedURLs).To(Equal([]string{initialURL}))
+			Expect(server.Status.VerifiedEndpointURL).To(Equal(initialURL))
+			Expect(server.Status.Address).NotTo(BeNil())
+			if withGateway {
+				Expect(server.Status.Address.URL).To(Equal(testGatewayURL))
+			} else {
+				Expect(server.Status.Address.URL).To(Equal(initialURL))
+			}
+
+			By("reusing persisted verification after restarting the reconciler")
+			controllerReconciler = newReconcilerForTest(k8sClient, k8sClient.Scheme())
+			controllerReconciler.MCPDialer = dialer
+			reconcileServer()
+			Expect(dialedURLs).To(HaveLen(1))
+
+			By("reverifying existing status that lacks the verified URL")
+			server.Status.VerifiedEndpointURL = ""
+			Expect(k8sClient.Status().Update(ctx, server)).To(Succeed())
+			reconcileServer()
+			Expect(dialedURLs).To(Equal([]string{initialURL, initialURL}))
+			Expect(server.Status.VerifiedEndpointURL).To(Equal(initialURL))
+
+			By("withdrawing verification and the address when the changed endpoint fails")
+			failHandshake = true
+			setServicePort(9091)
+			Expect(reconcileServer().RequeueAfter).To(BeNumerically(">", 0))
+			Expect(dialedURLs).To(HaveLen(3))
+			Expect(dialedURLs[2]).To(Equal(failedURL))
+			verified := meta.FindStatusCondition(server.Status.Conditions, ConditionTypeVerified)
+			Expect(verified).NotTo(BeNil())
+			Expect(verified.Status).To(Equal(metav1.ConditionFalse))
+			Expect(server.Status.VerifiedEndpointURL).To(BeEmpty())
+			Expect(server.Status.Address).To(BeNil())
+			Expect(server.Status.ServerInfo).To(BeNil())
+
+			By("exhausting retries for this endpoint")
+			for attempt := 1; attempt < maxMCPHandshakeRetries; attempt++ {
+				result := reconcileServer()
+				if attempt == maxMCPHandshakeRetries-1 {
+					Expect(result.RequeueAfter).To(BeZero())
+				}
+			}
+			Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeVerified).Message).
+				To(ContainSubstring("Automatic retries exhausted"))
+
+			By("giving another changed endpoint its own retry budget")
+			setServicePort(9092)
+			Expect(reconcileServer().RequeueAfter).To(BeNumerically(">", 0))
+			Expect(dialedURLs[len(dialedURLs)-1]).To(Equal(recoveredURL))
+			Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeVerified).Message).
+				NotTo(ContainSubstring("Automatic retries exhausted"))
+
+			By("publishing the address only after verification succeeds")
+			failHandshake = false
+			reconcileServer()
+			Expect(server.Status.VerifiedEndpointURL).To(Equal(recoveredURL))
+			Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeVerified).Status).
+				To(Equal(metav1.ConditionTrue))
+			Expect(server.Status.Address).NotTo(BeNil())
+			if withGateway {
+				Expect(server.Status.Address.URL).To(Equal(testGatewayURL))
+			} else {
+				Expect(server.Status.Address.URL).To(Equal(recoveredURL))
+			}
+			previousDialCount := len(dialedURLs)
+			reconcileServer()
+			Expect(dialedURLs).To(HaveLen(previousDialCount))
+		}, Entry("direct Service address", false), Entry("gateway address", true))
 	})
 
 	Context("When BYO Service has port named mcp", func() {
