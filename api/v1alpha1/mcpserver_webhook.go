@@ -18,12 +18,15 @@ package v1alpha1
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	v1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	webhookpolicy "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/webhook"
 )
 
@@ -38,6 +41,7 @@ import (
 // MCPServerCustomValidator validates MCPServer resources against admission policy.
 type MCPServerCustomValidator struct {
 	Policy *webhookpolicy.AdmissionPolicy
+	Reader client.Reader
 }
 
 var _ admission.Validator[*MCPServer] = &MCPServerCustomValidator{}
@@ -45,7 +49,10 @@ var _ admission.Validator[*MCPServer] = &MCPServerCustomValidator{}
 // SetupWebhookWithManager registers the validating webhook for MCPServer.
 func SetupWebhookWithManager(mgr ctrl.Manager, policy *webhookpolicy.AdmissionPolicy) error {
 	return ctrl.NewWebhookManagedBy(mgr, &MCPServer{}).
-		WithValidator(&MCPServerCustomValidator{Policy: policy}).
+		WithValidator(&MCPServerCustomValidator{
+			Policy: policy,
+			Reader: mgr.GetAPIReader(),
+		}).
 		Complete()
 }
 
@@ -56,7 +63,45 @@ func (v *MCPServerCustomValidator) ValidateCreate(ctx context.Context, mcpServer
 
 // ValidateUpdate validates an MCPServer on update.
 func (v *MCPServerCustomValidator) ValidateUpdate(ctx context.Context, _ *MCPServer, mcpServer *MCPServer) (admission.Warnings, error) {
-	return v.validate(ctx, mcpServer, "UPDATE")
+	warnings, err := v.validate(ctx, mcpServer, "UPDATE")
+	if err != nil {
+		return warnings, err
+	}
+	return append(warnings, v.alphaReferenceLossWarnings(ctx, mcpServer)...), nil
+}
+
+// alphaReferenceLossWarnings warns about lossy updates without changing admission decisions.
+func (v *MCPServerCustomValidator) alphaReferenceLossWarnings(ctx context.Context, mcpServer *MCPServer) admission.Warnings {
+	if v.Reader == nil {
+		return nil
+	}
+	req, err := admission.RequestFromContext(ctx)
+	if err != nil {
+		return nil
+	}
+	// Equivalent matching converts beta requests to alpha too. Only warn when
+	// the client actually used alpha, rather than when admission converted it.
+	kind := req.Kind
+	if req.RequestKind != nil {
+		kind = *req.RequestKind
+	}
+	if kind.Group != GroupVersion.Group || kind.Version != GroupVersion.Version || kind.Kind != MCPServerKind {
+		return nil
+	}
+
+	// The admission objects have already been converted to alpha and cannot
+	// show beta-only references. Read the stored beta object before this update.
+	stored := &v1beta1.MCPServer{}
+	if err := v.Reader.Get(ctx, client.ObjectKeyFromObject(mcpServer), stored); err != nil {
+		log.FromContext(ctx).Error(err, "Unable to check for BYO reference loss during v1alpha1 update",
+			"mcpserver", client.ObjectKeyFromObject(mcpServer))
+		return nil
+	}
+	if stored.Spec.WorkloadRef == nil && stored.Spec.ServiceRef == nil {
+		return nil
+	}
+	return admission.Warnings{fmt.Sprintf(
+		"Updating through %s may discard workloadRef or serviceRef; use %s instead", GroupVersion, v1beta1.GroupVersion)}
 }
 
 // ValidateDelete is a no-op for MCPServer.
