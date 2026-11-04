@@ -1,4 +1,4 @@
-# mcp-lifecycle-operator
+# mcp-lifecycle-operator.
 
 A Kubernetes operator that provides a declarative API to deploy, manage, and safely roll out MCP Servers, handling their full lifecycle with production-grade automation and ecosystem integrations.
 
