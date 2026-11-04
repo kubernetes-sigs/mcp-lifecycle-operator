@@ -20,7 +20,7 @@ This page is aimed at **platform and cluster operators** who tune the operator's
 | `TLS_CIPHER_SUITES` | serving + client | Comma-separated Go cipher-suite names (for example `TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256`). Only applied below TLS 1.3. |
 | `TLS_GROUPS` | serving + client | Comma-separated TLS 1.3 named groups (elliptic curves and hybrid key-exchange groups). See below. |
 
-Unset variables leave Go's defaults in place. Unknown or malformed values are **skipped with a log line** rather than failing startup, and the operator falls back to the default for that setting.
+Unset or empty variables leave Go's defaults in place. Unknown TLS versions and cipher suites are skipped with a log line. Unknown group names are also skipped, but a nonempty `TLS_GROUPS` value with no recognized groups causes startup to fail. This prevents an explicit group restriction from silently reverting to Go's defaults.
 
 !!! warning "TLS 1.3 manages cipher suites automatically"
     When `TLS_MIN_VERSION=VersionTLS13`, Go selects the TLS 1.3 cipher suites itself and any `TLS_CIPHER_SUITES` value is ignored. Cipher-suite pinning only affects TLS 1.0-1.2.
@@ -29,7 +29,7 @@ Unset variables leave Go's defaults in place. Unknown or malformed values are **
 
 TLS 1.3 decoupled key exchange from cipher suites: the named groups (elliptic curves and key-exchange groups, including the post-quantum hybrid `X25519MLKEM768`) are negotiated separately through the `supported_groups` / `key_share` extensions. `TLS_GROUPS` sets the operator's preference order for those groups; it is applied as `tls.Config.CurvePreferences` on both the serving endpoints and the MCP-server client connection.
 
-Names are matched **case-insensitively** and accept the Go canonical name plus the common IANA / OpenSSL aliases, so a value taken from a platform TLS policy needs no translation. Unrecognized names are skipped, and the accepted names are de-duplicated and re-emitted in canonical form.
+Names are matched **case-insensitively** and accept the Go canonical name plus the common IANA / OpenSSL aliases, so a value taken from a platform TLS policy needs no translation. Unrecognized names are skipped, and the accepted names are de-duplicated and re-emitted in canonical form. A mixed list uses only its recognized groups. A nonempty list containing only unknown names, whitespace, or separators causes startup to fail.
 
 | Canonical name | Accepted aliases | Notes |
 | --- | --- | --- |
@@ -37,7 +37,9 @@ Names are matched **case-insensitively** and accept the Go canonical name plus t
 | `CurveP256` | `P-256`, `secp256r1` | NIST curve. |
 | `CurveP384` | `P-384`, `secp384r1` | NIST curve. |
 | `CurveP521` | `P-521`, `secp521r1` | NIST curve. |
-| `X25519MLKEM768` | - | Post-quantum hybrid key exchange. See availability below. |
+| `X25519MLKEM768` | - | X25519 with ML-KEM-768. |
+| `SecP256r1MLKEM768` | - | P-256 with ML-KEM-768. |
+| `SecP384r1MLKEM1024` | - | P-384 with ML-KEM-1024. |
 
 Example - prefer the PQC hybrid, then X25519, then P-256:
 
@@ -45,14 +47,11 @@ Example - prefer the PQC hybrid, then X25519, then P-256:
 TLS_GROUPS=X25519MLKEM768,X25519,CurveP256
 ```
 
-### `X25519MLKEM768` availability
+### Group availability and Go upgrades
 
-`X25519MLKEM768` is a TLS 1.3-only hybrid that combines X25519 with the ML-KEM-768 post-quantum KEM. Two conditions must hold for it to be negotiated:
+The parser derives canonical names from the build toolchain's `crypto/tls.CurveID.String()` method and accepts the aliases listed above. The accepted names can change with Go upgrades. Discovering a new name does not guarantee compatibility with peers or operands built with an older toolchain. Numeric IDs and `CurveID(<number>)` strings are not accepted.
 
-- The operator binary must be built with the **Go 1.24** toolchain or newer, where `X25519MLKEM768` was added to the standard library and enabled by default.
-- Under a FIPS build that routes crypto through the system OpenSSL provider, ML-KEM availability additionally depends on that provider supporting the group.
-
-If either condition is not met, listing `X25519MLKEM768` is harmless - it is simply not offered, and the remaining groups in the list are used.
+Group recognition does not guarantee negotiation: the peer must support the group, hybrid groups require TLS 1.3, and runtime restrictions such as FIPS mode or a system crypto provider can further limit availability. These restrictions do not restore excluded groups.
 
 ### The client-path TLS 1.2 floor
 

@@ -65,7 +65,11 @@ func serverTLSConfigFromEnv(t *testing.T, groups string, cert tls.Certificate) *
 	t.Setenv(envTLSCipherSuites, "")
 	t.Setenv(envTLSGroups, groups)
 
-	fn := parseTLSSettings().tlsConfigFunc()
+	s, err := parseTLSSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := s.tlsConfigFunc()
 	if fn == nil {
 		t.Fatal("expected non-nil tlsConfigFunc for configured TLS groups")
 	}
@@ -107,7 +111,7 @@ func doHandshake(t *testing.T, serverCfg, clientCfg *tls.Config) (tls.Connection
 
 // TestTLSGroups_HandshakeNegotiatesConfiguredGroup proves that the group the
 // operator configures via TLS_GROUPS is the one actually negotiated on the
-// wire, including the post-quantum hybrid X25519MLKEM768. This is the
+// wire, including the post-quantum hybrids. This is the
 // end-to-end assertion the parsing-only unit tests cannot make.
 func TestTLSGroups_HandshakeNegotiatesConfiguredGroup(t *testing.T) {
 	cert := newSelfSignedCert(t)
@@ -118,8 +122,10 @@ func TestTLSGroups_HandshakeNegotiatesConfiguredGroup(t *testing.T) {
 		clientCurve tls.CurveID
 		want        tls.CurveID
 	}{
-		{"classical X25519", groupX25519, tls.X25519, tls.X25519},
-		{"post-quantum hybrid X25519MLKEM768", groupX25519MLKEM768, tls.X25519MLKEM768, tls.X25519MLKEM768},
+		{"classical X25519", "X25519", tls.X25519, tls.X25519},
+		{"post-quantum hybrid SecP256r1MLKEM768", "SecP256r1MLKEM768", tls.SecP256r1MLKEM768, tls.SecP256r1MLKEM768},
+		{"post-quantum hybrid SecP384r1MLKEM1024", "SecP384r1MLKEM1024", tls.SecP384r1MLKEM1024, tls.SecP384r1MLKEM1024},
+		{"post-quantum hybrid X25519MLKEM768", "X25519MLKEM768", tls.X25519MLKEM768, tls.X25519MLKEM768},
 	}
 
 	for _, tt := range tests {
@@ -148,14 +154,17 @@ func TestTLSGroups_HandshakeNegotiatesConfiguredGroup(t *testing.T) {
 func TestTLSGroups_HandshakeFailsOnGroupMismatch(t *testing.T) {
 	cert := newSelfSignedCert(t)
 
-	serverCfg := serverTLSConfigFromEnv(t, groupCurveP256, cert)
-	clientCfg := &tls.Config{
-		InsecureSkipVerify: true, //nolint:gosec // test-only in-memory client, self-signed cert
-		MinVersion:         tls.VersionTLS13,
-		CurvePreferences:   []tls.CurveID{tls.X25519},
-	}
-
-	if _, err := doHandshake(t, serverCfg, clientCfg); err == nil {
-		t.Fatal("expected handshake to fail when client and server share no TLS group")
+	for _, group := range []string{"CurveP256", "X25519MLKEM768", "SecP256r1MLKEM768", "SecP384r1MLKEM1024"} {
+		t.Run(group, func(t *testing.T) {
+			serverCfg := serverTLSConfigFromEnv(t, group, cert)
+			clientCfg := &tls.Config{
+				InsecureSkipVerify: true, //nolint:gosec // test-only in-memory client, self-signed cert
+				MinVersion:         tls.VersionTLS13,
+				CurvePreferences:   []tls.CurveID{tls.X25519},
+			}
+			if _, err := doHandshake(t, serverCfg, clientCfg); err == nil {
+				t.Fatal("expected handshake to fail when client and server share no TLS group")
+			}
+		})
 	}
 }

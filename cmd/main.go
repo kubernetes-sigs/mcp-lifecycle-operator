@@ -198,7 +198,11 @@ func main() {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
-	tlsCfg := parseTLSSettings()
+	tlsCfg, err := parseTLSSettings()
+	if err != nil {
+		setupLog.Error(err, "invalid TLS configuration")
+		os.Exit(1)
+	}
 	if tlsProfile := tlsCfg.tlsConfigFunc(); tlsProfile != nil {
 		tlsOpts = append(tlsOpts, tlsProfile)
 	}
