@@ -19,7 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // RuntimeConfigApplyConfiguration represents a declarative configuration of the RuntimeConfig type for use
@@ -33,6 +34,10 @@ import (
 // If not specified, default runtime settings will be applied.
 // See individual field documentation for specific defaults.
 type RuntimeConfigApplyConfiguration struct {
+	// Strategy controls rollout of the operator-managed Deployment.
+	// When omitted or removed, defaults to RollingUpdate with maxSurge and
+	// maxUnavailable both set to 25%. This does not provide session-aware draining.
+	Strategy *v1.DeploymentStrategy `json:"strategy,omitempty"`
 	// Replicas is the number of MCP server pod replicas to run.
 	// Defaults to 1 if not specified.
 	// Set to 0 to scale down the deployment.
@@ -60,7 +65,7 @@ type RuntimeConfigApplyConfiguration struct {
 	// limits:
 	// cpu: "500m"
 	// memory: "512Mi"
-	Resources *v1.ResourceRequirements `json:"resources,omitempty"`
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 	// Health defines health check configuration for the MCP server.
 	// If not specified, no health probes will be configured.
 	Health *HealthConfigApplyConfiguration `json:"health,omitempty"`
@@ -70,6 +75,14 @@ type RuntimeConfigApplyConfiguration struct {
 // apply.
 func RuntimeConfig() *RuntimeConfigApplyConfiguration {
 	return &RuntimeConfigApplyConfiguration{}
+}
+
+// WithStrategy sets the Strategy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Strategy field is set to the value of the last call.
+func (b *RuntimeConfigApplyConfiguration) WithStrategy(value v1.DeploymentStrategy) *RuntimeConfigApplyConfiguration {
+	b.Strategy = &value
+	return b
 }
 
 // WithReplicas sets the Replicas field in the declarative configuration to the given value
@@ -91,7 +104,7 @@ func (b *RuntimeConfigApplyConfiguration) WithSecurity(value *SecurityConfigAppl
 // WithResources sets the Resources field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Resources field is set to the value of the last call.
-func (b *RuntimeConfigApplyConfiguration) WithResources(value v1.ResourceRequirements) *RuntimeConfigApplyConfiguration {
+func (b *RuntimeConfigApplyConfiguration) WithResources(value corev1.ResourceRequirements) *RuntimeConfigApplyConfiguration {
 	b.Resources = &value
 	return b
 }

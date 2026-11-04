@@ -112,6 +112,7 @@ func (r *MCPServerReconciler) reconcileDeployment(
 	if needsUpdate {
 		logger.Info("Updating Deployment", keyName, existingDeployment.Name)
 		existingDeployment.Spec.Replicas = deployment.Spec.Replicas
+		existingDeployment.Spec.Strategy = deployment.Spec.Strategy
 		existingDeployment.Spec.Template.Labels = deployment.Spec.Template.Labels
 		existingDeployment.Spec.Template.Annotations = deployment.Spec.Template.Annotations
 		existingDeployment.Spec.Template.Spec = deployment.Spec.Template.Spec
@@ -167,6 +168,7 @@ func deploymentNeedsUpdate(mcpServer *mcpv1beta1.MCPServer, existing, desired *a
 		!equality.Semantic.DeepEqual(oldPodSpec.Containers[0].ReadinessProbe, newPodSpec.Containers[0].ReadinessProbe) ||
 		oldPodSpec.ServiceAccountName != newPodSpec.ServiceAccountName ||
 		!equality.Semantic.DeepEqual(existing.Spec.Replicas, desired.Spec.Replicas) ||
+		!equality.Semantic.DeepEqual(defaultDeploymentStrategy(&existing.Spec.Strategy), defaultDeploymentStrategy(&desired.Spec.Strategy)) ||
 		!equality.Semantic.DeepEqual(existing.Spec.Template.Labels, desired.Spec.Template.Labels) ||
 		!equality.Semantic.DeepEqual(existing.Spec.Template.Annotations, desired.Spec.Template.Annotations) ||
 		deploymentAnnotationsChanged(mcpServer, existing) ||
@@ -329,6 +331,7 @@ func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1beta1.MCPServer) 
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
+			Strategy: defaultDeploymentStrategy(mcpServer.Spec.Runtime.Strategy),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: managedWorkloadSelector(mcpServer.Name),
 			},
@@ -481,4 +484,31 @@ func withProbeDefaults(probe *corev1.Probe) *corev1.Probe {
 		out.TimeoutSeconds = 1
 	}
 	return &out
+}
+
+// defaultDeploymentStrategy applies Kubernetes Deployment strategy defaults to
+// a copy. Comparing fully defaulted values detects removals as well as changes,
+// without repeatedly updating fields filled in by the API server.
+func defaultDeploymentStrategy(strategy *appsv1.DeploymentStrategy) appsv1.DeploymentStrategy {
+	result := appsv1.DeploymentStrategy{}
+	if strategy != nil {
+		result = *strategy.DeepCopy()
+	}
+	if result.Type == "" {
+		result.Type = appsv1.RollingUpdateDeploymentStrategyType
+	}
+	if result.Type == appsv1.RollingUpdateDeploymentStrategyType {
+		if result.RollingUpdate == nil {
+			result.RollingUpdate = &appsv1.RollingUpdateDeployment{}
+		}
+		if result.RollingUpdate.MaxSurge == nil {
+			value := intstr.FromString("25%")
+			result.RollingUpdate.MaxSurge = &value
+		}
+		if result.RollingUpdate.MaxUnavailable == nil {
+			value := intstr.FromString("25%")
+			result.RollingUpdate.MaxUnavailable = &value
+		}
+	}
+	return result
 }

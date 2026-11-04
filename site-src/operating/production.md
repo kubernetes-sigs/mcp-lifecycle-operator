@@ -134,6 +134,37 @@ The operator's ClusterRole grants cluster-wide `get;list;watch` on `secrets` and
 - **Replicas & resources** - the operator ships with a single replica and modest requests/limits (`cpu: 10m` / `memory: 128Mi` requests, `cpu: 500m` / `memory: 512Mi` limits). Size these for the number of managed servers in your cluster and load-test before committing to limits; see [Performance testing](#performance-testing).
 - **Storage-version migrations** - when upgrading across API storage versions, drive the migration deliberately rather than relying on lazy conversion. See the **[Storage Version Migration page](storage-version-migration.md)**.
 
+### MCP server rollout strategy
+
+For operator-managed Deployments, use `spec.runtime.strategy` to configure
+`RollingUpdate` or `Recreate`. For example:
+
+```yaml
+spec:
+  runtime:
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 1
+        maxUnavailable: 0
+```
+
+`maxSurge` and `maxUnavailable` accept non-negative integers or percentage strings
+such as `"25%"`. The percentage for `maxUnavailable` cannot exceed `100%`, and
+the two values cannot both be zero. Unspecified rolling-update values default
+to `25%`; an unspecified type defaults to `RollingUpdate`.
+
+To terminate the old pods before creating replacements during a rollout, set
+`type: Recreate` and omit `rollingUpdate`. Removing `strategy` restores
+`RollingUpdate` with both values at `25%`. The operator reconciles strategy
+changes on the managed Deployment, including correcting manual changes.
+
+When `spec.workloadRef` is set, configure the rollout strategy directly on the
+referenced workload. Combining `workloadRef` with `runtime.strategy` is rejected.
+
+These settings control Kubernetes rollout behavior. They do not implement
+MCP session draining or guarantee uninterrupted sessions.
+
 ### Performance testing
 
 Sizing and scaling recommendations should be backed by load and stress testing (operator under many managed servers, CPU/memory under load). This is tracked upstream and is not yet part of this guide.

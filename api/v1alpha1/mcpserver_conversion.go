@@ -179,6 +179,7 @@ func convertStorageMountFrom(in v1beta1.StorageMount) StorageMount {
 func convertRuntimeConfigTo(in RuntimeConfig) v1beta1.RuntimeConfig {
 	return v1beta1.RuntimeConfig{
 		Replicas:  in.Replicas,
+		Strategy:  in.Strategy.DeepCopy(),
 		Security:  convertSecurityConfigTo(in.Security),
 		Resources: in.Resources,
 		Health:    convertHealthConfigTo(in.Health),
@@ -188,6 +189,7 @@ func convertRuntimeConfigTo(in RuntimeConfig) v1beta1.RuntimeConfig {
 func convertRuntimeConfigFrom(in v1beta1.RuntimeConfig) RuntimeConfig {
 	return RuntimeConfig{
 		Replicas:  in.Replicas,
+		Strategy:  in.Strategy.DeepCopy(),
 		Security:  convertSecurityConfigFrom(in.Security),
 		Resources: in.Resources,
 		Health:    convertHealthConfigFrom(in.Health),

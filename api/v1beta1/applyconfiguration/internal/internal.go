@@ -271,6 +271,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: security
       type:
         namedType: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.SecurityConfig
+    - name: strategy
+      type:
+        namedType: io.k8s.api.apps.v1.DeploymentStrategy
 - name: com.github.kubernetes-sigs.mcp-lifecycle-operator.api.v1beta1.SecretReference
   map:
     fields:
@@ -401,6 +404,26 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: name
       type:
         scalar: string
+- name: io.k8s.api.apps.v1.DeploymentStrategy
+  map:
+    fields:
+    - name: rollingUpdate
+      type:
+        namedType: io.k8s.api.apps.v1.RollingUpdateDeployment
+    - name: type
+      type:
+        namedType: io.k8s.api.apps.v1.DeploymentStrategyType
+- name: io.k8s.api.apps.v1.DeploymentStrategyType
+  scalar: string
+- name: io.k8s.api.apps.v1.RollingUpdateDeployment
+  map:
+    fields:
+    - name: maxSurge
+      type:
+        namedType: io.k8s.apimachinery.pkg.util.intstr.IntOrString
+    - name: maxUnavailable
+      type:
+        namedType: io.k8s.apimachinery.pkg.util.intstr.IntOrString
 - name: io.k8s.api.core.v1.AppArmorProfile
   map:
     fields:
