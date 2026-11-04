@@ -87,7 +87,7 @@ const (
 const (
 	ReasonAvailable                = "Available"
 	ReasonConfigurationInvalid     = "ConfigurationInvalid"
-	ReasonDeploymentUnavailable    = "DeploymentUnavailable"
+	ReasonWorkloadUnavailable      = "WorkloadUnavailable"
 	ReasonServiceUnavailable       = "ServiceUnavailable"
 	ReasonNetworkPolicyUnavailable = "NetworkPolicyUnavailable"
 	ReasonScaledToZero             = "ScaledToZero"
@@ -176,6 +176,10 @@ const (
 	configMapIndexKey = "spec.configMapRefs"
 	// secretIndexKey is the index key for finding MCPServers by Secret reference.
 	secretIndexKey = "spec.secretRefs"
+	// workloadRefIndexKey is the index key for finding MCPServers by workloadRef name.
+	workloadRefIndexKey = "spec.workloadRef"
+	// serviceRefIndexKey is the index key for finding MCPServers by serviceRef name.
+	serviceRefIndexKey = "spec.serviceRef"
 )
 
 // Custom metadata annotations
@@ -255,6 +259,8 @@ type handshakeRetryState struct {
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -302,11 +308,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	r.cleanupGatewayBindingIfRemoved(ctx, mcpServer)
 
 	pendingAcceptedEvent := !acceptedConditionIsTrue(mcpServer.Status.Conditions)
-	pendingServerReadyEvent := !serverIsFullyReady(mcpServer.Status.Conditions)
 
 	// Validate configuration
 	validationStart := time.Now()
-	if err := r.validateConfig(ctx, mcpServer); err != nil {
+	workload, err := r.validateConfigAndResolveWorkload(ctx, mcpServer)
+	if err != nil {
 		reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseValidation}).Observe(time.Since(validationStart).Seconds())
 
 		if validationErr, ok := errors.AsType[*ValidationError](err); ok {
@@ -339,80 +345,26 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		r.emitConfigurationAccepted(mcpServer)
 	}
 
+	// BYO workload path: skip Deployment/NetworkPolicy creation, read status from
+	// the referenced workload.
+	if mcpServer.Spec.WorkloadRef != nil {
+		return r.reconcileBYO(ctx, mcpServer, acceptedCondition, workload)
+	}
+
 	// Configuration is valid, proceed with deployment reconciliation
 	deploymentStart := time.Now()
 	existingDeployment, err := r.reconcileDeployment(ctx, mcpServer)
 	reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseDeployment}).Observe(time.Since(deploymentStart).Seconds())
 	if err != nil {
-		// Optimistic-lock conflicts are transient and self-resolve on the next
-		// reconcile. Requeue without touching status so the Available condition
-		// is not briefly flipped to DeploymentUnavailable, and requeue with a nil
-		// error so a benign conflict does not trip the reconcile error metric or
-		// log at ERROR, which would cause status thrashing and false monitoring
-		// alerts (issue #87).
-		if apierrors.IsConflict(err) {
-			logger.Info("Deployment update conflict, requeuing without status change",
-				keyName, mcpServer.Name, keyNamespace, mcpServer.Namespace)
-			return ctrl.Result{RequeueAfter: requeueDelayConflict}, nil
-		}
-		deploymentFailuresTotal.With(prometheus.Labels{
-			keyName:      mcpServer.Name,
-			keyNamespace: mcpServer.Namespace,
-			keyReason:    MetricReasonReconcileError,
-		}).Inc()
-		availableCondition := newCondition(
-			ConditionTypeAvailable,
-			metav1.ConditionFalse,
-			ReasonDeploymentUnavailable,
-			fmt.Sprintf("Failed to reconcile Deployment: %v", err),
-			mcpServer.Generation,
-		)
-		preserveLastTransitionTime(&availableCondition, mcpServer.Status.Conditions)
-		verifiedCondition := newNotVerifiedCondition(mcpServer.Generation, mcpServer.Status.Conditions)
-
-		recordCondition(mcpServer.Name, mcpServer.Namespace,
-			availableCondition.Type, string(availableCondition.Status), availableCondition.Reason)
-
-		if !duplicateDeploymentUnavailable(mcpServer.Status.Conditions, availableCondition.Message) {
-			r.emitDeploymentReconcileFailed(mcpServer, availableCondition.Message)
-		}
-
-		conditions := r.appendPersistentConditions(mcpServer, []*v1ac.ConditionApplyConfiguration{
-			conditionToAC(acceptedCondition),
-			conditionToAC(availableCondition),
-			conditionToAC(verifiedCondition),
-		}, nil)
-
-		status := acv1beta1.MCPServerStatus().
-			WithObservedGeneration(mcpServer.Generation).
-			WithServiceName(mcpServer.Name).
-			WithReplicas(mcpServer.Status.Replicas).
-			WithReadyReplicas(mcpServer.Status.ReadyReplicas).
-			WithConditions(conditions...)
-
-		if mcpServer.Status.GatewayBinding != nil {
-			status.WithGatewayBinding(
-				acv1beta1.GatewayBindingStatus().
-					WithName(mcpServer.Status.GatewayBinding.Name).
-					WithProvider(mcpServer.Status.GatewayBinding.Provider),
-			)
-		}
-
-		if statusErr := r.applyStatus(ctx, mcpServer, status); statusErr != nil {
-			logger.Error(statusErr, "Failed to update MCPServer status")
-			return ctrl.Result{}, statusErr
-		}
-		if IsOwnershipConflict(err) {
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, err
+		return r.handleDeploymentReconcileError(ctx, mcpServer, acceptedCondition, err)
 	}
 
-	// Reconcile Service
-	serviceStart := time.Now()
-	if err := r.reconcileService(ctx, mcpServer); err != nil {
-		reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
-		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
+	status := workloadStatusConfiguration(mcpServer, ptr.Deref(existingDeployment.Spec.Replicas, 1), existingDeployment.Status.ReadyReplicas)
+
+	// Reconcile Service - skip creation when using BYO serviceRef.
+	endpoint, svcErr := r.reconcileServiceOrBYO(ctx, mcpServer, managedWorkloadSelector(mcpServer.Name))
+	if svcErr != nil {
+		return r.handleResourceFailure(ctx, mcpServer, status, acceptedCondition, svcErr, resourceFailureParams{
 			counter:     serviceFailuresTotal,
 			reason:      ReasonServiceUnavailable,
 			resource:    "Service",
@@ -421,14 +373,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		})
 	}
 
-	reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
-
 	// Reconcile NetworkPolicy
 	networkPolicyStart := time.Now()
 	netpol, err := r.ensureNetworkPolicy(ctx, mcpServer)
 	if err != nil {
 		reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseNetworkPolicy}).Observe(time.Since(networkPolicyStart).Seconds())
-		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
+		return r.handleResourceFailure(ctx, mcpServer, status, acceptedCondition, err, resourceFailureParams{
 			counter:     networkPolicyFailuresTotal,
 			reason:      ReasonNetworkPolicyUnavailable,
 			resource:    "NetworkPolicy",
@@ -447,21 +397,6 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		networkPolicyCondition.Type, string(networkPolicyCondition.Status), networkPolicyCondition.Reason)
 
-	// Reconcile MCPGatewayBinding
-	gatewayBindingStart := time.Now()
-	if err := r.reconcileGatewayBinding(ctx, mcpServer); err != nil {
-		reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseGatewayBinding}).Observe(time.Since(gatewayBindingStart).Seconds())
-		return r.handleResourceFailure(ctx, mcpServer, existingDeployment, acceptedCondition, err, resourceFailureParams{
-			counter:              gatewayBindingFailuresTotal,
-			reason:               ReasonGatewayNotRegistered,
-			resource:             "MCPGatewayBinding",
-			isDuplicate:          duplicateGatewayBindingUnavailable,
-			emitEvent:            r.emitGatewayBindingReconcileFailed,
-			networkPolicyPosture: &networkPolicyCondition,
-		})
-	}
-	reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseGatewayBinding}).Observe(time.Since(gatewayBindingStart).Seconds())
-
 	// Determine Available condition based on deployment status
 	availableCondition := r.reconcileAvailableCondition(
 		ctx,
@@ -475,106 +410,9 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	recordCondition(mcpServer.Name, mcpServer.Namespace,
 		availableCondition.Type, string(availableCondition.Status), availableCondition.Reason)
 
-	r.maybeEmitDeploymentUnavailableEvent(mcpServer, availableCondition)
+	r.maybeEmitWorkloadUnavailableEvent(mcpServer, availableCondition)
 
-	// Build status
-	path := mcpServer.Spec.Config.Path
-	if path == "" {
-		path = DefaultMCPPath
-	}
-
-	mcpURL := fmt.Sprintf("%s://%s.%s.svc.cluster.local:%d%s",
-		urlScheme(mcpServer), mcpServer.Name, mcpServer.Namespace, mcpServer.Spec.Config.Port, path)
-
-	// Compute current TLS CA bundle hash so the handshake is re-verified
-	// when the CA bundle Secret content changes (which does not bump generation).
-	var tlsCABundleHash string
-	if mcpServer.Spec.Transport != nil && mcpServer.Spec.Transport.TLS != nil {
-		tlsCABundleHash = computeTLSCABundleHash(ctx, r.APIReader, mcpServer.Namespace, mcpServer.Spec.Transport.TLS)
-	}
-
-	// If the workload is available, verify the MCP endpoint.
-	verifiedCondition, serverInfo := r.reconcileHandshake(ctx, mcpServer, mcpURL, availableCondition, tlsCABundleHash)
-
-	// Record Verified condition metric
-	recordCondition(mcpServer.Name, mcpServer.Namespace,
-		verifiedCondition.Type, string(verifiedCondition.Status), verifiedCondition.Reason)
-
-	handshakeRetryCount := r.reconcileHandshakeEventsAndRetryCount(mcpServer, &verifiedCondition)
-
-	// Resolve gateway status: condition + binding status + address override.
-	// Must run before the ready-event check so availableCondition reflects
-	// any GatewayNotRegistered override.
-	gwStatus := r.reconcileGatewayCondition(ctx, mcpServer)
-	var gwErr error
-	if gwStatus != nil {
-		availableCondition, mcpURL = r.applyGatewayStatus(mcpServer, gwStatus, availableCondition, mcpURL)
-		gwErr = gwStatus.err
-	}
-
-	// Normal Event once per transition to fully ready (Available + Verified).
-	if pendingServerReadyEvent &&
-		availableCondition.Status == metav1.ConditionTrue &&
-		verifiedCondition.Status == metav1.ConditionTrue {
-		r.emitServerReady(mcpServer)
-	}
-
-	status := acv1beta1.MCPServerStatus().
-		WithObservedGeneration(mcpServer.Generation).
-		WithDeploymentName(existingDeployment.Name).
-		WithServiceName(mcpServer.Name).
-		WithReplicas(ptr.Deref(existingDeployment.Spec.Replicas, 1)).
-		WithReadyReplicas(existingDeployment.Status.ReadyReplicas)
-
-	applyGatewayStatusToAC(status, gwStatus, acceptedCondition, availableCondition, verifiedCondition)
-
-	// Surface the NetworkPolicy posture (computed right after the NetworkPolicy was
-	// reconciled above) as an informational, administrator-visible condition,
-	// appended to the same apply so it does not prune the other conditions.
-	status.WithConditions(conditionToAC(networkPolicyCondition))
-
-	// Surface whether the validating admission webhook is enforcing the configured
-	// admission policies. Informational and administrator-visible; never gates
-	// readiness. Appended to the same apply so it survives server-side apply.
-	status.WithConditions(conditionToAC(
-		r.policyEnforcedCondition(mcpServer.Generation, mcpServer.Status.Conditions)))
-
-	status = withAddressWhenVerified(status, verifiedCondition, mcpURL)
-
-	capDiff := capabilityChangeMessage(mcpServer, serverInfo)
-
-	if serverInfo != nil {
-		status = status.WithServerInfo(serverInfoToAC(serverInfo))
-	}
-
-	if err := r.applyStatus(ctx, mcpServer, status); err != nil {
-		logger.Error(err, "Failed to apply MCPServer status")
-		return ctrl.Result{}, err
-	}
-
-	r.updateTLSCABundleHash(mcpServer, tlsCABundleHash, verifiedCondition)
-
-	if capDiff != "" {
-		capabilityChangesTotal.WithLabelValues(mcpServer.Name, mcpServer.Namespace).Inc()
-		r.emitCapabilityChangeDetected(mcpServer, capDiff)
-		auditCapabilityChange(ctx, mcpServer, capDiff)
-	}
-
-	logger.Info("Successfully reconciled MCPServer",
-		"accepted", acceptedCondition.Status,
-		"available", availableCondition.Status,
-		"verified", verifiedCondition.Status)
-
-	// Deployment progress is driven by the Deployment and Pod watches rather than a
-	// timed requeue; pod-level failures surface via podDiagnosticsChangedPredicate.
-
-	// If MCP endpoint is not yet reachable, requeue with exponential backoff.
-	// retryCount is 1-based (already incremented); handshakeRequeue adjusts internally.
-	if result, done := handshakeRequeue(ctx, mcpServer, verifiedCondition, int(handshakeRetryCount)); done {
-		return result, nil
-	}
-
-	return ctrl.Result{}, gwErr
+	return r.reconcileEndpoint(ctx, mcpServer, acceptedCondition, availableCondition, status, endpoint, &networkPolicyCondition)
 }
 
 func serverInfoToAC(info *mcpv1beta1.MCPServerInfo) *acv1beta1.MCPServerInfoApplyConfiguration {
@@ -628,6 +466,78 @@ func (r *MCPServerReconciler) shouldSkipReconciliation(ctx context.Context, mcpS
 	return false, nil
 }
 
+// handleDeploymentReconcileError builds and applies the failure status when the
+// Deployment reconcile step returns an error, and maps the error to the correct
+// requeue behaviour. Extracted from Reconcile to keep its cyclomatic complexity
+// in check.
+func (r *MCPServerReconciler) handleDeploymentReconcileError(
+	ctx context.Context,
+	mcpServer *mcpv1beta1.MCPServer,
+	acceptedCondition metav1.Condition,
+	err error,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	// Optimistic-lock conflicts are transient and self-resolve on the next
+	// reconcile. Requeue without touching status so the Available condition
+	// is not briefly flipped to WorkloadUnavailable, and requeue with a nil
+	// error so a benign conflict does not trip the reconcile error metric or
+	// log at ERROR, which would cause status thrashing and false monitoring
+	// alerts (issue #87).
+	if apierrors.IsConflict(err) {
+		logger.Info("Deployment update conflict, requeuing without status change",
+			keyName, mcpServer.Name, keyNamespace, mcpServer.Namespace)
+		return ctrl.Result{RequeueAfter: requeueDelayConflict}, nil
+	}
+	deploymentFailuresTotal.With(prometheus.Labels{
+		keyName:      mcpServer.Name,
+		keyNamespace: mcpServer.Namespace,
+		keyReason:    MetricReasonReconcileError,
+	}).Inc()
+	availableCondition := newCondition(
+		ConditionTypeAvailable,
+		metav1.ConditionFalse,
+		ReasonWorkloadUnavailable,
+		fmt.Sprintf("Failed to reconcile Deployment: %v", err),
+		mcpServer.Generation,
+	)
+	preserveLastTransitionTime(&availableCondition, mcpServer.Status.Conditions)
+	verifiedCondition := newNotVerifiedCondition(mcpServer.Generation, mcpServer.Status.Conditions)
+
+	recordCondition(mcpServer.Name, mcpServer.Namespace,
+		availableCondition.Type, string(availableCondition.Status), availableCondition.Reason)
+
+	if !duplicateWorkloadUnavailable(mcpServer.Status.Conditions, availableCondition.Message) {
+		r.emitWorkloadUnavailable(mcpServer, availableCondition.Message)
+	}
+
+	conditions := r.appendPersistentConditions(mcpServer, []*v1ac.ConditionApplyConfiguration{
+		conditionToAC(acceptedCondition),
+		conditionToAC(availableCondition),
+		conditionToAC(verifiedCondition),
+	}, nil)
+
+	status := workloadStatusConfiguration(mcpServer, mcpServer.Status.Replicas, mcpServer.Status.ReadyReplicas).
+		WithConditions(conditions...)
+
+	if mcpServer.Status.GatewayBinding != nil {
+		status.WithGatewayBinding(
+			acv1beta1.GatewayBindingStatus().
+				WithName(mcpServer.Status.GatewayBinding.Name).
+				WithProvider(mcpServer.Status.GatewayBinding.Provider),
+		)
+	}
+
+	if statusErr := r.applyStatus(ctx, mcpServer, status); statusErr != nil {
+		logger.Error(statusErr, "Failed to update MCPServer status")
+		return ctrl.Result{}, statusErr
+	}
+	if IsOwnershipConflict(err) {
+		return ctrl.Result{}, nil
+	}
+	return ctrl.Result{}, err
+}
+
 func (r *MCPServerReconciler) reconcilePermanentValidationError(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
@@ -671,11 +581,7 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 		conditionToAC(verifiedCondition),
 	}, nil)
 
-	status := acv1beta1.MCPServerStatus().
-		WithObservedGeneration(mcpServer.Generation).
-		WithServiceName(mcpServer.Name).
-		WithReplicas(mcpServer.Status.Replicas).
-		WithReadyReplicas(mcpServer.Status.ReadyReplicas).
+	status := workloadStatusConfiguration(mcpServer, mcpServer.Status.Replicas, mcpServer.Status.ReadyReplicas).
 		WithConditions(conditions...)
 
 	if mcpServer.Status.GatewayBinding != nil {
@@ -754,14 +660,14 @@ func (r *MCPServerReconciler) emitHandshakeAuthSkip(mcpServer *mcpv1beta1.MCPSer
 		mcpServer.Name, mcpURL)
 }
 
-func (r *MCPServerReconciler) maybeEmitDeploymentUnavailableEvent(
+func (r *MCPServerReconciler) maybeEmitWorkloadUnavailableEvent(
 	mcpServer *mcpv1beta1.MCPServer,
 	availableCondition metav1.Condition,
 ) {
 	if availableCondition.Status == metav1.ConditionFalse &&
-		availableCondition.Reason == ReasonDeploymentUnavailable &&
-		!duplicateDeploymentUnavailable(mcpServer.Status.Conditions, availableCondition.Message) {
-		r.emitDeploymentReconcileFailed(mcpServer, availableCondition.Message)
+		availableCondition.Reason == ReasonWorkloadUnavailable &&
+		!duplicateWorkloadUnavailable(mcpServer.Status.Conditions, availableCondition.Message) {
+		r.emitWorkloadUnavailable(mcpServer, availableCondition.Message)
 	}
 }
 
@@ -787,11 +693,11 @@ func withAddressWhenVerified(
 	return status
 }
 
-func (r *MCPServerReconciler) emitDeploymentReconcileFailed(mcpServer *mcpv1beta1.MCPServer, message string) {
+func (r *MCPServerReconciler) emitWorkloadUnavailable(mcpServer *mcpv1beta1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
 	}
-	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonDeploymentUnavailable, eventActionDeploymentReconcileFailed,
+	r.Recorder.Eventf(mcpServer, nil, corev1.EventTypeWarning, ReasonWorkloadUnavailable, eventActionDeploymentReconcileFailed,
 		"MCPServer %s: %s", mcpServer.Name, message)
 }
 
@@ -819,7 +725,7 @@ type resourceFailureParams struct {
 func (r *MCPServerReconciler) handleResourceFailure(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
-	existingDeployment *appsv1.Deployment,
+	status *acv1beta1.MCPServerStatusApplyConfiguration,
 	acceptedCondition metav1.Condition,
 	reconcileErr error,
 	params resourceFailureParams,
@@ -866,13 +772,7 @@ func (r *MCPServerReconciler) handleResourceFailure(
 		conditionToAC(verifiedCondition),
 	}, params.networkPolicyPosture)
 
-	status := acv1beta1.MCPServerStatus().
-		WithObservedGeneration(mcpServer.Generation).
-		WithDeploymentName(existingDeployment.Name).
-		WithServiceName(mcpServer.Name).
-		WithReplicas(ptr.Deref(existingDeployment.Spec.Replicas, 1)).
-		WithReadyReplicas(existingDeployment.Status.ReadyReplicas).
-		WithConditions(conditions...)
+	status.WithConditions(conditions...)
 
 	if mcpServer.Status.GatewayBinding != nil {
 		status.WithGatewayBinding(
@@ -1013,6 +913,26 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to setup Secret index: %w", err)
 	}
 
+	// Register workloadRef index for BYO workload lookups
+	if err := mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&mcpv1beta1.MCPServer{},
+		workloadRefIndexKey,
+		extractWorkloadRefNames,
+	); err != nil {
+		return fmt.Errorf("failed to setup workloadRef index: %w", err)
+	}
+
+	// Register serviceRef index for BYO Service lookups
+	if err := mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&mcpv1beta1.MCPServer{},
+		serviceRefIndexKey,
+		extractServiceRefNames,
+	); err != nil {
+		return fmt.Errorf("failed to setup serviceRef index: %w", err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1beta1.MCPServer{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
@@ -1036,6 +956,26 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		WatchesMetadata(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForSecret),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		WatchesMetadata(
+			&appsv1.Deployment{},
+			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForWorkload),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		WatchesMetadata(
+			&appsv1.DaemonSet{},
+			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForWorkload),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		WatchesMetadata(
+			&appsv1.StatefulSet{},
+			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForWorkload),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
+		WatchesMetadata(
+			&corev1.Service{},
+			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForBYOService),
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
 		).
 		Named("mcpserver").

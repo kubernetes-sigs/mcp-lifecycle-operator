@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
@@ -31,6 +32,7 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 func acceptedCondition() metav1.Condition {
@@ -830,4 +832,76 @@ func sectionNamePtr(s string) *gatewayv1.SectionName {
 func namespacePtr(s string) *gatewayv1.Namespace {
 	ns := gatewayv1.Namespace(s)
 	return &ns
+}
+
+func TestFindBindingsForService(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := mcpv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	binding := func(name, namespace, provider, service string) client.Object {
+		return &mcpv1alpha1.MCPGatewayBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Annotations: map[string]string{AnnotationServiceRef: service}},
+			Spec:       mcpv1alpha1.MCPGatewayBindingSpec{Provider: provider},
+		}
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		binding("matching", "tenant", "httproute", "tenant/backend"),
+		binding("other-provider", "tenant", "kuadrant", "tenant/backend"),
+		binding("other-service", "tenant", "httproute", "tenant/other"),
+		binding("other-namespace", "other", "httproute", "tenant/backend"),
+	).Build()
+	// WatchesMetadata delivers this type, not a typed Service.
+	service := &metav1.PartialObjectMetadata{ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "tenant"}}
+	requests := FindBindingsForService(context.Background(), c, "httproute", service)
+	if len(requests) != 1 || requests[0].Name != "matching" || requests[0].Namespace != "tenant" {
+		t.Fatalf("expected only matching tenant/provider binding, got %v", requests)
+	}
+}
+
+// A missing backend must remain discoverable by the Service watch so creation
+// can recover the binding without an MCPServer spec change.
+func TestResolveAndRecordBackendServiceMissingDependency(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := mcpv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	binding := &mcpv1alpha1.MCPGatewayBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "binding", Namespace: "default"},
+		Spec:       mcpv1alpha1.MCPGatewayBindingSpec{Provider: "httproute"},
+	}
+	server := &mcpv1beta1.MCPServer{
+		ObjectMeta: metav1.ObjectMeta{Name: "server", Namespace: "default"},
+		Spec:       mcpv1beta1.MCPServerSpec{ServiceRef: &mcpv1beta1.ServiceReference{Name: "backend"}},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).Build()
+	endpoint, err := ResolveAndRecordBackendService(ctx, c, c, binding, server)
+	if err == nil {
+		t.Fatal("expected resolution to fail for missing Service")
+	}
+	if endpoint.Name != "backend" {
+		t.Fatalf("lost Service identity: %+v", endpoint)
+	}
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "default"},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "mcp", Port: 9090}}},
+	}
+	requests := FindBindingsForService(ctx, c, "httproute", svc)
+	if len(requests) != 1 || requests[0].NamespacedName != client.ObjectKeyFromObject(binding) {
+		t.Fatalf("missing Service dependency was not persisted: %v", requests)
+	}
+	if err := c.Create(ctx, svc); err != nil {
+		t.Fatal(err)
+	}
+	endpoint, err = ResolveAndRecordBackendService(ctx, c, c, binding, server)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if endpoint.Name != "backend" || endpoint.Port != 9090 {
+		t.Fatalf("unexpected endpoint: %+v", endpoint)
+	}
 }

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 
@@ -43,30 +44,47 @@ func (e *ValidationError) Error() string {
 	return e.Message
 }
 
-// validateConfig validates the MCPServer configuration.
-// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
-func (r *MCPServerReconciler) validateConfig(
+// validateConfigAndResolveWorkload validates configuration and resolves the BYO workload.
+// Returns the validated BYO workload snapshot, if any. Configuration errors are
+// ValidationErrors; transient API failures are returned for retry.
+func (r *MCPServerReconciler) validateConfigAndResolveWorkload(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
-) error {
-	// Validate storage mounts
-	for i, storage := range mcpServer.Spec.Config.Storage {
-		if err := r.validateStorageMount(ctx, mcpServer, storage, i); err != nil {
-			return err
+) (workload client.Object, err error) {
+	if mcpServer.Spec.WorkloadRef != nil {
+		workload, err = r.validateWorkloadRef(ctx, mcpServer)
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	// Validate envFrom references
-	for i, envFrom := range mcpServer.Spec.Config.EnvFrom {
-		if err := r.validateEnvFrom(ctx, mcpServer, envFrom, i); err != nil {
-			return err
+	if mcpServer.Spec.ServiceRef != nil {
+		if err := r.validateServiceRef(ctx, mcpServer); err != nil {
+			return nil, err
 		}
 	}
 
-	// Validate env valueFrom references
-	for i, env := range mcpServer.Spec.Config.Env {
-		if err := r.validateEnvValueFrom(ctx, mcpServer, env, i); err != nil {
-			return err
+	// Skip operator-managed config validation when BYO workload is set.
+	if mcpServer.Spec.WorkloadRef == nil {
+		// Validate storage mounts
+		for i, storage := range mcpServer.Spec.Config.Storage {
+			if err := r.validateStorageMount(ctx, mcpServer, storage, i); err != nil {
+				return nil, err
+			}
+		}
+
+		// Validate envFrom references
+		for i, envFrom := range mcpServer.Spec.Config.EnvFrom {
+			if err := r.validateEnvFrom(ctx, mcpServer, envFrom, i); err != nil {
+				return nil, err
+			}
+		}
+
+		// Validate env valueFrom references
+		for i, env := range mcpServer.Spec.Config.Env {
+			if err := r.validateEnvValueFrom(ctx, mcpServer, env, i); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -74,22 +92,22 @@ func (r *MCPServerReconciler) validateConfig(
 	if mcpServer.Spec.Network != nil {
 		for i, peer := range mcpServer.Spec.Network.IngressFrom {
 			if err := validateNetworkPolicyPeer(peer, "network.ingressFrom", i); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		for i, peer := range mcpServer.Spec.Network.EgressTo {
 			if err := validateNetworkPolicyPeer(peer, "network.egressTo", i); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		for i, port := range mcpServer.Spec.Network.EgressPorts {
 			if err := validateNetworkPolicyPort(port, "network.egressPorts", i); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		if mcpServer.Spec.Network.DNSEgressPeer != nil {
 			if err := validateNetworkPolicyPeerAtPath(*mcpServer.Spec.Network.DNSEgressPeer, "network.dnsEgressPeer"); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
@@ -100,7 +118,7 @@ func (r *MCPServerReconciler) validateConfig(
 		mcpServer.Spec.Transport.TLS.Enabled {
 		tlsCfg := mcpServer.Spec.Transport.TLS
 		if tlsCfg.InsecureSkipVerify && tlsCfg.CABundleSecret != nil {
-			return &ValidationError{
+			return nil, &ValidationError{
 				Reason:  ReasonInvalid,
 				Message: "insecureSkipVerify and caBundleSecret are mutually exclusive",
 			}
@@ -111,13 +129,13 @@ func (r *MCPServerReconciler) validateConfig(
 				mcpServer.Namespace,
 				tlsCfg.CABundleSecret.Name,
 			); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 
 	// All validation passed
-	return nil
+	return workload, nil
 }
 
 // validateReferencedConfigMap returns a permanent ValidationError on NotFound/BadRequest,
@@ -175,7 +193,7 @@ func (r *MCPServerReconciler) validateCABundleSecret(
 }
 
 // validateStorageMount validates a single storage mount configuration.
-// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
+// Configuration errors are ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateStorageMount(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
@@ -243,7 +261,7 @@ func (r *MCPServerReconciler) validateStorageMount(
 }
 
 // validateEnvFrom validates a single envFrom configuration.
-// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
+// Configuration errors are ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateEnvFrom(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
@@ -270,7 +288,7 @@ func (r *MCPServerReconciler) validateEnvFrom(
 }
 
 // validateEnvValueFrom validates a single env var's valueFrom configuration.
-// Returns ValidationError for permanent configuration errors, wrapped error for transient errors, or nil for success.
+// Configuration errors are ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateEnvValueFrom(
 	ctx context.Context,
 	mcpServer *mcpv1beta1.MCPServer,
@@ -318,6 +336,48 @@ func classifyAPIError(resourceDesc string, namespace string, err error) error {
 		}
 	}
 	return fmt.Errorf("transient error validating %s: %w", resourceDesc, err)
+}
+
+// validateWorkloadRef reads and validates a BYO workload once, returning the same
+// snapshot used for its Service selector and availability during reconciliation.
+func (r *MCPServerReconciler) validateWorkloadRef(
+	ctx context.Context,
+	mcpServer *mcpv1beta1.MCPServer,
+) (client.Object, error) {
+	ref := mcpServer.Spec.WorkloadRef
+	desc := fmt.Sprintf("referenced %s %q", ref.Kind, ref.Name)
+	workload, err := getWorkload(ctx, r.APIReader, ref.Name, ref.Kind, mcpServer.Namespace)
+	if err != nil {
+		if validationErr, ok := errors.AsType[*ValidationError](err); ok {
+			return nil, validationErr
+		}
+		return nil, classifyAPIError(desc, mcpServer.Namespace, err)
+	}
+	// A managed Service must represent the complete workload selector. Dropping
+	// expressions would broaden it and could route MCP traffic to unrelated pods.
+	if mcpServer.Spec.ServiceRef == nil {
+		selector := workloadSelector(workload)
+		if selector == nil || len(selector.MatchLabels) == 0 {
+			return nil, &ValidationError{Reason: ReasonInvalid, Message: fmt.Sprintf("%s has no matchLabels in its selector; set serviceRef to provide a Service with a suitable selector", desc)}
+		}
+		if len(selector.MatchExpressions) > 0 {
+			return nil, &ValidationError{Reason: ReasonInvalid, Message: fmt.Sprintf("%s uses matchExpressions in its selector; set serviceRef to avoid routing traffic to pods outside the workload", desc)}
+		}
+	}
+	return workload, nil
+}
+
+// validateServiceRef checks that the referenced BYO Service exists.
+func (r *MCPServerReconciler) validateServiceRef(
+	ctx context.Context,
+	mcpServer *mcpv1beta1.MCPServer,
+) error {
+	ref := mcpServer.Spec.ServiceRef
+	svc := &corev1.Service{}
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: mcpServer.Namespace}, svc); err != nil {
+		return classifyAPIError(fmt.Sprintf("referenced Service %q", ref.Name), mcpServer.Namespace, err)
+	}
+	return nil
 }
 
 // validateNetworkPolicyPort validates a single NetworkPolicyPort entry.

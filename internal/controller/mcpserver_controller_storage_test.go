@@ -1061,7 +1061,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
@@ -1101,7 +1101,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
@@ -1145,7 +1145,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
@@ -1189,7 +1189,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeTrue())
@@ -1235,7 +1235,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -1276,7 +1276,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -1310,7 +1310,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -1368,7 +1368,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			// Should NOT be a ValidationError - should be a transient error
 			var validationErr *ValidationError
@@ -1428,7 +1428,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			// Should NOT be a ValidationError - should be a transient error
 			var validationErr *ValidationError
@@ -1485,7 +1485,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeFalse())
@@ -1546,7 +1546,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			var validationErr *ValidationError
 			Expect(stderrors.As(err, &validationErr)).To(BeFalse())
@@ -1607,7 +1607,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			// Forbidden is transient - RBAC changes don't trigger reconciliation
 			var validationErr *ValidationError
@@ -1668,7 +1668,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			// Unauthorized is transient - RBAC changes don't trigger reconciliation
 			var validationErr *ValidationError
@@ -1729,7 +1729,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).To(HaveOccurred())
 			// BadRequest is a permanent ValidationError
 			var validationErr *ValidationError
@@ -1772,7 +1772,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 				},
 			}
 
-			err := reconciler.validateConfig(ctx, mcpServer)
+			_, err := reconciler.validateConfigAndResolveWorkload(ctx, mcpServer)
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})

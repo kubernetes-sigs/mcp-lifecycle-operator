@@ -177,9 +177,8 @@ const (
 // resources that register MCP servers with the Kuadrant MCP Gateway.
 type Reconciler struct {
 	client.Client
-	// APIReader is an uncached reader used for ConfigMap content reads, so the
-	// controller does not start a full ConfigMap informer that would cache every
-	// ConfigMap's data. ConfigMaps are watched metadata-only.
+	// APIReader reads ConfigMap contents and backend Services without starting
+	// full informers. Both resource types are watched metadata-only.
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
 
@@ -195,7 +194,7 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings/finalizers,verbs=update
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpgatewaybindings/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch
-// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=configmaps;services,verbs=get;list;watch
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch
 // +kubebuilder:rbac:groups=mcp.kuadrant.io,resources=mcpserverregistrations,verbs=get;list;watch;create;update;delete
@@ -455,7 +454,10 @@ func (r *Reconciler) reconcileHTTPRoute(
 	pathType := gatewayv1.PathMatchPathPrefix
 	gwNS := gatewayv1.Namespace(gwNamespace)
 	sn := gatewayv1.SectionName(sectionName)
-	port := mcpServer.Spec.Config.Port
+	endpoint, err := providers.ResolveAndRecordBackendService(ctx, r.Client, r.APIReader, binding, mcpServer)
+	if err != nil {
+		return err
+	}
 
 	httpRoute := &gatewayv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
@@ -491,8 +493,8 @@ func (r *Reconciler) reconcileHTTPRoute(
 								BackendObjectReference: gatewayv1.BackendObjectReference{
 									Group: ptr.To(gatewayv1.Group("")),
 									Kind:  ptr.To(gatewayv1.Kind("Service")),
-									Name:  gatewayv1.ObjectName(mcpServer.Name),
-									Port:  &port,
+									Name:  gatewayv1.ObjectName(endpoint.Name),
+									Port:  &endpoint.Port,
 								},
 								Weight: ptr.To(int32(1)), //nolint:modernize // value is 1, not zero
 							},
@@ -508,7 +510,7 @@ func (r *Reconciler) reconcileHTTPRoute(
 	}
 
 	existing := &gatewayv1.HTTPRoute{}
-	err := r.Get(ctx, client.ObjectKey{Name: httpRoute.Name, Namespace: httpRoute.Namespace}, existing)
+	err = r.Get(ctx, client.ObjectKey{Name: httpRoute.Name, Namespace: httpRoute.Namespace}, existing)
 	if apierrors.IsNotFound(err) {
 		logger.Info("Creating HTTPRoute", "name", httpRoute.Name)
 		if createErr := r.Create(ctx, httpRoute); createErr != nil {
@@ -859,6 +861,13 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&mcpv1alpha1.MCPGatewayBinding{}, builder.WithPredicates(providers.MatchesProvider(ProviderName))).
 		Owns(&gatewayv1.HTTPRoute{}).
 		Owns(&kuadrantapi.MCPServerRegistration{}).
+		WatchesMetadata(
+			&corev1.Service{},
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
+				return providers.FindBindingsForService(ctx, r.Client, ProviderName, obj)
+			}),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
 		WatchesMetadata(
 			&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.findBindingsForConfigMap),

@@ -53,7 +53,7 @@ func TestImagePullFailure(t *testing.T) {
 			r := cfg.Client().Resources()
 
 			f.WaitForMCPServerConditionMessageContains(ctx, t, r, server,
-				"Available", metav1.ConditionFalse, "DeploymentUnavailable", "Image pull failed",
+				"Available", metav1.ConditionFalse, "WorkloadUnavailable", "Image pull failed",
 				3*time.Minute)
 
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
@@ -118,7 +118,7 @@ func TestContainerCrashLoop(t *testing.T) {
 			r := cfg.Client().Resources()
 
 			f.WaitForMCPServerConditionMessageContains(ctx, t, r, server,
-				"Available", metav1.ConditionFalse, "DeploymentUnavailable", "Container crashing",
+				"Available", metav1.ConditionFalse, "WorkloadUnavailable", "Container crashing",
 				4*time.Minute)
 
 			if err := r.Get(ctx, server.Name, server.Namespace, server); err != nil {
@@ -453,7 +453,7 @@ func TestRecoveryFromImagePullFailure(t *testing.T) {
 			r := cfg.Client().Resources()
 
 			f.WaitForMCPServerConditionMessageContains(ctx, t, r, server,
-				"Available", metav1.ConditionFalse, "DeploymentUnavailable", "Image pull failed",
+				"Available", metav1.ConditionFalse, "WorkloadUnavailable", "Image pull failed",
 				3*time.Minute)
 			t.Log("confirmed Available=False with image pull failure")
 

@@ -27,10 +27,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
+	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 )
 
@@ -248,14 +251,12 @@ func UpdateBindingStatus(
 	return sw.Update(ctx, binding)
 }
 
-// Annotation keys used to record, on each MCPGatewayBinding, the identity of the
-// Gateway (and, for the kuadrant provider, the MCPGatewayExtension) that the
-// binding's ConfigMap currently resolves to. Watch mappers select the affected
-// bindings by matching these annotations, so a Gateway or MCPGatewayExtension
-// event no longer has to read every eligible binding's ConfigMap to rediscover
-// the relationship. The ConfigMap contents themselves remain uncached.
+// Annotation keys record each binding's resolved Service, Gateway, and Kuadrant
+// extension dependencies. Watch mappers select affected bindings from cached
+// annotations without rereading each binding's uncached ConfigMap.
 const (
 	AnnotationGatewayRef   = "mcp.x-k8s.io/gateway-ref"
+	AnnotationServiceRef   = "mcp.x-k8s.io/service-ref"
 	AnnotationExtensionRef = "mcp.x-k8s.io/extension-ref"
 )
 
@@ -292,4 +293,36 @@ func EnsureBindingAnnotations(
 	}
 	maps.Copy(binding.Annotations, desired)
 	return c.Patch(ctx, binding, patch)
+}
+
+// ResolveAndRecordBackendService records the backend Service dependency as well as its
+// resolved port. Recording the name even when the Service is missing lets its
+// creation enqueue the binding without waiting for an unrelated resource change.
+func ResolveAndRecordBackendService(ctx context.Context, c client.Client, reader client.Reader, binding *mcpv1alpha1.MCPGatewayBinding, server *mcpv1beta1.MCPServer) (mcpcontroller.ServiceEndpoint, error) {
+	endpoint, resolveErr := mcpcontroller.ResolveServiceEndpoint(ctx, reader, server)
+	if err := EnsureBindingAnnotations(ctx, c, binding, map[string]string{
+		AnnotationServiceRef: RefKey(server.Namespace, endpoint.Name),
+	}); err != nil {
+		return mcpcontroller.ServiceEndpoint{}, err
+	}
+	return endpoint, resolveErr
+}
+
+// FindBindingsForService maps a metadata-only Service event to bindings of this
+// provider using their recorded dependency. It uses only the cached binding list.
+func FindBindingsForService(ctx context.Context, c client.Client, provider string, service client.Object) []ctrl.Request {
+	bindings := &mcpv1alpha1.MCPGatewayBindingList{}
+	if err := c.List(ctx, bindings, client.InNamespace(service.GetNamespace())); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to list gateway bindings for Service", "service", client.ObjectKeyFromObject(service))
+		return nil
+	}
+	ref := RefKey(service.GetNamespace(), service.GetName())
+	var requests []ctrl.Request
+	for i := range bindings.Items {
+		binding := &bindings.Items[i]
+		if binding.Spec.Provider == provider && binding.Annotations[AnnotationServiceRef] == ref {
+			requests = append(requests, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(binding)})
+		}
+	}
+	return requests
 }

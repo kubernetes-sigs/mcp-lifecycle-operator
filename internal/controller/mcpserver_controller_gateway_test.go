@@ -798,7 +798,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			readyCondition := metav1.Condition{
 				Type:               ConditionTypeAvailable,
 				Status:             metav1.ConditionFalse,
-				Reason:             ReasonDeploymentUnavailable,
+				Reason:             ReasonWorkloadUnavailable,
 				Message:            "Deployment not available",
 				ObservedGeneration: 1,
 				LastTransitionTime: metav1.Now(),
@@ -819,7 +819,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			result, _ := reconciler.applyGatewayStatus(mcpServer, gwStatus, readyCondition, "http://svc:8080/mcp")
 
 			Expect(result.Status).To(Equal(metav1.ConditionFalse))
-			Expect(result.Reason).To(Equal(ReasonDeploymentUnavailable))
+			Expect(result.Reason).To(Equal(ReasonWorkloadUnavailable))
 		})
 
 		It("should override Ready when not already False", func() {

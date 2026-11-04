@@ -20,6 +20,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,11 +30,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	controllerconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -333,6 +336,129 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			_ = k8sClient.Delete(ctx, obj)
 		}
 	})
+
+	It("should update the backend on a Service event without an MCPServer spec change", func() {
+		server := newTestMCPServer("service-watch-mcp")
+		server.Spec.ServiceRef = &mcpv1beta1.ServiceReference{Name: "watched-backend"}
+		Expect(k8sClient.Create(ctx, server)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, server)).To(Succeed()) })
+		generation := server.Generation
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "watched-backend", Namespace: testNamespace},
+			Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 8080}}},
+		}
+		Expect(k8sClient.Create(ctx, svc)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, svc)).To(Succeed()) })
+
+		createConfigMap(map[string]string{
+			configKeyGatewayName:      testGatewayName,
+			configKeyGatewayNamespace: testGatewayNS,
+			configKeyPublicHostname:   "watch.example.com",
+		})
+		createBinding(ProviderName)
+
+		key := client.ObjectKey{Name: bindingName, Namespace: testNamespace}
+		binding := &mcpv1alpha1.MCPGatewayBinding{}
+		Expect(k8sClient.Get(ctx, key, binding)).To(Succeed())
+		binding.Spec.MCPServerRef = server.Name
+		Expect(k8sClient.Update(ctx, binding)).To(Succeed())
+
+		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+			Scheme:     k8sClient.Scheme(),
+			Metrics:    metricsserver.Options{BindAddress: "0"},
+			Controller: controllerconfig.Controller{SkipNameValidation: new(true)},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		r := &Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Scheme: mgr.GetScheme()}
+		Expect(r.SetupWithManager(mgr)).To(Succeed())
+		managerCtx, stop := context.WithCancel(ctx)
+		done := make(chan error, 1)
+		go func() { done <- mgr.Start(managerCtx) }()
+		defer func() {
+			stop()
+			Eventually(done, 10*time.Second).Should(Receive(Succeed()))
+		}()
+
+		route := &gatewayv1.HTTPRoute{}
+		backendPort := func() (int32, error) {
+			if err := k8sClient.Get(ctx, key, route); err != nil {
+				return 0, err
+			}
+			return *route.Spec.Rules[0].BackendRefs[0].Port, nil
+		}
+		Eventually(backendPort, 5*time.Second, 20*time.Millisecond).Should(Equal(int32(8080)))
+		setHTTPRouteAccepted(ctx, route)
+
+		Eventually(func() bool {
+			binding := &mcpv1alpha1.MCPGatewayBinding{}
+			if err := k8sClient.Get(ctx, key, binding); err != nil {
+				return false
+			}
+			condition := meta.FindStatusCondition(binding.Status.Conditions, mcpcontroller.ConditionTypeRegistered)
+			return condition != nil && condition.Status == metav1.ConditionTrue
+		}, 5*time.Second, 20*time.Millisecond).Should(BeTrue())
+		// Let startup events settle so an unrelated queued reconcile cannot hide
+		// a missing Service watch. Pending registration requeues only after 10s.
+		Expect(k8sClient.Get(ctx, key, route)).To(Succeed())
+		resourceVersion := route.ResourceVersion
+		Consistently(func() (string, error) {
+			err := k8sClient.Get(ctx, key, route)
+			return route.ResourceVersion, err
+		}, 300*time.Millisecond, 20*time.Millisecond).Should(Equal(resourceVersion))
+
+		// Retain the old port: the existing route stays valid, so a Gateway's
+		// route-status update is not needed to trigger backend reconciliation.
+		svc.Spec.Ports = append(svc.Spec.Ports, corev1.ServicePort{Name: "mcp", Port: 9090})
+		Expect(k8sClient.Update(ctx, svc)).To(Succeed())
+		Eventually(backendPort, 3*time.Second, 20*time.Millisecond).Should(Equal(int32(9090)))
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(server), server)).To(Succeed())
+		Expect(server.Generation).To(Equal(generation))
+	})
+
+	DescribeTable("BYO Service route backend", func(mode string) {
+		server := newTestMCPServer(mcpServerName)
+		server.Spec.ServiceRef = &mcpv1beta1.ServiceReference{Name: "external-mcp"}
+		expectedPort := int32(9090)
+		if mode != "managed" {
+			server.Spec.Source = mcpv1beta1.Source{}
+			server.Spec.WorkloadRef = &mcpv1beta1.WorkloadReference{Name: "external-workload", Kind: mcpv1beta1.WorkloadKindDeployment}
+			if mode == "inferred" {
+				server.Spec.Config.Port = 0
+			} else {
+				expectedPort = 8080
+			}
+		}
+		Expect(k8sClient.Create(ctx, server)).To(Succeed())
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "external-mcp", Namespace: testNamespace},
+			Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{
+				{Name: "metrics", Port: 2112},
+				{Name: "mcp", Port: 9090, TargetPort: intstr.FromInt32(8080)},
+				{Name: "alternate", Port: 8080},
+			}},
+		}
+		Expect(k8sClient.Create(ctx, svc)).To(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, svc)).To(Succeed()) })
+
+		createConfigMap(map[string]string{
+			configKeyGatewayName:      testGatewayName,
+			configKeyGatewayNamespace: testGatewayNS,
+		})
+		createBinding(ProviderName)
+
+		r := newReconciler()
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace}})
+		Expect(err).NotTo(HaveOccurred())
+		route := &gatewayv1.HTTPRoute{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
+		backend := route.Spec.Rules[0].BackendRefs[0]
+		Expect(string(backend.Name)).To(Equal(svc.Name))
+		Expect(*backend.Port).To(Equal(expectedPort))
+	},
+		Entry("managed container port differs from Service port", "managed"),
+		Entry("BYO workload with inferred mcp port", "inferred"),
+		Entry("BYO workload with explicit Service port", "explicit"),
+	)
 
 	It("should create an HTTPRoute from a binding with httproute provider", func() {
 		createMCPServer()

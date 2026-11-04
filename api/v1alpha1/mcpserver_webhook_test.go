@@ -23,10 +23,15 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	v1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	webhookpolicy "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/webhook"
 )
 
@@ -50,6 +55,79 @@ func newMCPServer(imageRef string) *MCPServer {
 			},
 			Config: ServerConfig{Port: 8080},
 		},
+	}
+}
+
+func TestValidateUpdate_AlphaReferenceLossWarning(t *testing.T) {
+	alphaKind := metav1.GroupVersionKind{Group: GroupVersion.Group, Version: GroupVersion.Version, Kind: MCPServerKind}
+	betaKind := metav1.GroupVersionKind{Group: v1beta1.GroupVersion.Group, Version: v1beta1.GroupVersion.Version, Kind: MCPServerKind}
+	for _, tc := range []struct {
+		name        string
+		serviceRef  bool
+		workloadRef bool
+		requestKind *metav1.GroupVersionKind
+		dryRun      bool
+		missing     bool
+		denied      bool
+		create      bool
+		wantWarning bool
+	}{
+		{name: "alpha service reference", serviceRef: true, requestKind: &alphaKind, wantWarning: true},
+		{name: "alpha workload reference", workloadRef: true, requestKind: &alphaKind, wantWarning: true},
+		{name: "original kind omitted", serviceRef: true, wantWarning: true},
+		{name: "beta converted for equivalent admission", serviceRef: true, requestKind: &betaKind},
+		{name: "alpha without beta references", requestKind: &alphaKind},
+		{name: "dry run also warns", serviceRef: true, requestKind: &alphaKind, dryRun: true, wantWarning: true},
+		{name: "read failure does not block admission", serviceRef: true, requestKind: &alphaKind, missing: true},
+		{name: "policy rejects update", serviceRef: true, requestKind: &alphaKind, denied: true},
+		{name: "create", serviceRef: true, requestKind: &alphaKind, create: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			require.NoError(t, v1beta1.AddToScheme(scheme))
+			server := newMCPServer("docker.io/any:latest")
+			stored := &v1beta1.MCPServer{ObjectMeta: server.ObjectMeta}
+			if tc.serviceRef {
+				stored.Spec.ServiceRef = &v1beta1.ServiceReference{Name: "external"}
+			}
+			if tc.workloadRef {
+				stored.Spec.WorkloadRef = &v1beta1.WorkloadReference{Name: "external", Kind: v1beta1.WorkloadKindDeployment}
+			}
+			builder := fake.NewClientBuilder().WithScheme(scheme)
+			if !tc.missing {
+				builder.WithObjects(stored)
+			}
+			validator := &MCPServerCustomValidator{Reader: builder.Build()}
+			if tc.denied {
+				validator.Policy = &webhookpolicy.AdmissionPolicy{ImageAllowlist: []string{"ghcr.io/"}}
+			}
+			operation := admissionv1.Update
+			if tc.create {
+				operation = admissionv1.Create
+			}
+			ctx := admission.NewContextWithRequest(testContext(), admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+				Kind: alphaKind, RequestKind: tc.requestKind, Operation: operation, DryRun: new(tc.dryRun),
+			}})
+			var err error
+			var warnings admission.Warnings
+			if tc.create {
+				warnings, err = validator.ValidateCreate(ctx, server)
+			} else {
+				warnings, err = validator.ValidateUpdate(ctx, server.DeepCopy(), server)
+			}
+			if tc.denied {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			if tc.wantWarning {
+				assert.Equal(t, admission.Warnings{
+					"Updating through mcp.x-k8s.io/v1alpha1 may discard workloadRef or serviceRef; use mcp.x-k8s.io/v1beta1 instead",
+				}, warnings)
+			} else {
+				assert.Empty(t, warnings)
+			}
+		})
 	}
 }
 

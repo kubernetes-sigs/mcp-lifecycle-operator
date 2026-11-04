@@ -267,7 +267,7 @@ var _ = Describe("MCPServer Metrics", func() {
 
 		// Available=False condition recorded
 		Expect(testutil.ToFloat64(conditionInfo.WithLabelValues(
-			depFailName, namespace, "Available", "False", "DeploymentUnavailable",
+			depFailName, namespace, "Available", "False", "WorkloadUnavailable",
 		))).To(Equal(1.0))
 	})
 
