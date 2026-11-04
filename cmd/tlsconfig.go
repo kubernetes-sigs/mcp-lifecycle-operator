@@ -2,6 +2,8 @@ package main
 
 import (
 	"crypto/tls"
+	"fmt"
+	"maps"
 	"os"
 	"strings"
 
@@ -13,16 +15,6 @@ const (
 	envTLSMinVersion   = "TLS_MIN_VERSION"
 	envTLSCipherSuites = "TLS_CIPHER_SUITES"
 	envTLSGroups       = "TLS_GROUPS"
-)
-
-// Canonical TLS 1.3 group names, used both as the value re-emitted in the
-// TLS_GROUPS env var and as the keys/values in tlsGroupLookup.
-const (
-	groupX25519         = "X25519"
-	groupCurveP256      = "CurveP256"
-	groupCurveP384      = "CurveP384"
-	groupCurveP521      = "CurveP521"
-	groupX25519MLKEM768 = "X25519MLKEM768"
 )
 
 // tlsSettings holds validated TLS configuration parsed from the environment.
@@ -39,8 +31,9 @@ type tlsSettings struct {
 
 // parseTLSSettings reads TLS_MIN_VERSION, TLS_CIPHER_SUITES and TLS_GROUPS
 // from the environment, validates them, and returns a tlsSettings with only
-// the values that passed validation.
-func parseTLSSettings() tlsSettings {
+// the values that passed validation. A nonempty TLS_GROUPS value must contain
+// at least one group recognized by the Go toolchain used to build the operator.
+func parseTLSSettings() (tlsSettings, error) {
 	log := ctrl.Log.WithName("setup")
 
 	var s tlsSettings
@@ -64,10 +57,11 @@ func parseTLSSettings() tlsSettings {
 
 	if raw := os.Getenv(envTLSGroups); raw != "" {
 		ids, names := parseTLSGroups(raw, log)
-		if len(ids) > 0 {
-			s.groupIDs = ids
-			s.groupsStr = strings.Join(names, ",")
+		if len(ids) == 0 {
+			return tlsSettings{}, fmt.Errorf("%s contains no supported TLS groups: %q", envTLSGroups, raw)
 		}
+		s.groupIDs = ids
+		s.groupsStr = strings.Join(names, ",")
 	}
 
 	if s.minVersionCode >= tls.VersionTLS13 && len(s.cipherSuiteIDs) > 0 {
@@ -81,7 +75,7 @@ func parseTLSSettings() tlsSettings {
 			"groupCount", len(s.groupIDs))
 	}
 
-	return s
+	return s, nil
 }
 
 // envVars returns the validated TLS settings as Kubernetes EnvVar entries
@@ -165,27 +159,28 @@ func parseCipherSuites(s string, log interface{ Info(string, ...any) }) ([]uint1
 	return suites, names
 }
 
-// tlsGroupLookup maps accepted TLS 1.3 named-group identifiers to their
-// crypto/tls CurveID. Keys are matched case-insensitively and cover the Go
-// canonical names plus the common IANA / OpenSSL aliases so the value can be
-// sourced from a platform TLS policy without translation. The canonical name
-// (used when re-emitting the value as an env var) is the Go constant name.
-var tlsGroupLookup = map[string]struct {
-	id        tls.CurveID
-	canonical string
-}{
-	"x25519":         {tls.X25519, groupX25519},
-	"curvep256":      {tls.CurveP256, groupCurveP256},
-	"p-256":          {tls.CurveP256, groupCurveP256},
-	"secp256r1":      {tls.CurveP256, groupCurveP256},
-	"curvep384":      {tls.CurveP384, groupCurveP384},
-	"p-384":          {tls.CurveP384, groupCurveP384},
-	"secp384r1":      {tls.CurveP384, groupCurveP384},
-	"curvep521":      {tls.CurveP521, groupCurveP521},
-	"p-521":          {tls.CurveP521, groupCurveP521},
-	"secp521r1":      {tls.CurveP521, groupCurveP521},
-	"x25519mlkem768": {tls.X25519MLKEM768, groupX25519MLKEM768},
-}
+// tlsGroupLookup derives canonical names from crypto/tls instead of maintaining a
+// second list of supported groups. CurveID is a uint16; String returns a Go name
+// for known IDs and "CurveID(<number>)" otherwise. Scan the complete range once
+// so rebuilding with a newer Go toolchain also recognizes its new named groups.
+// Recognition does not override crypto/tls restrictions such as FIPS mode.
+var tlsGroupLookup = func() map[string]tls.CurveID {
+	lookup := make(map[string]tls.CurveID)
+	for id := range 1 << 16 {
+		group := tls.CurveID(id)
+		name := group.String()
+		if !strings.HasPrefix(name, "CurveID(") {
+			lookup[strings.ToLower(name)] = group
+		}
+	}
+	// Preserve the common IANA / OpenSSL aliases for the NIST curves.
+	maps.Copy(lookup, map[string]tls.CurveID{
+		"p-256": tls.CurveP256, "secp256r1": tls.CurveP256,
+		"p-384": tls.CurveP384, "secp384r1": tls.CurveP384,
+		"p-521": tls.CurveP521, "secp521r1": tls.CurveP521,
+	})
+	return lookup
+}()
 
 // parseTLSGroups parses a comma-separated list of TLS 1.3 named groups
 // (elliptic curves and hybrid key-exchange groups) into CurveIDs suitable for
@@ -208,12 +203,12 @@ func parseTLSGroups(s string, log interface{ Info(string, ...any) }) ([]tls.Curv
 			continue
 		}
 		if g, ok := tlsGroupLookup[strings.ToLower(name)]; ok {
-			if seen[g.id] {
+			if seen[g] {
 				continue
 			}
-			seen[g.id] = true
-			groups = append(groups, g.id)
-			names = append(names, g.canonical)
+			seen[g] = true
+			groups = append(groups, g)
+			names = append(names, g.String())
 		} else {
 			log.Info("Skipping unknown TLS group", "group", name)
 		}

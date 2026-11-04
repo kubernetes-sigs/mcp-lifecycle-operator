@@ -1,8 +1,16 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 type noopLogger struct{}
@@ -92,7 +100,7 @@ func TestParseTLSGroups(t *testing.T) {
 		if len(ids) != 2 || ids[0] != tls.X25519 || ids[1] != tls.CurveP384 {
 			t.Fatalf("ids = %v, want [X25519 CurveP384]", ids)
 		}
-		if len(names) != 2 || names[0] != groupX25519 || names[1] != groupCurveP384 {
+		if len(names) != 2 || names[0] != "X25519" || names[1] != "CurveP384" {
 			t.Errorf("names = %v, want [X25519 CurveP384]", names)
 		}
 	})
@@ -108,7 +116,7 @@ func TestParseTLSGroups(t *testing.T) {
 				t.Errorf("ids[%d] = %d, want %d", i, ids[i], want[i])
 			}
 		}
-		if len(names) != 3 || names[0] != groupCurveP256 || names[1] != groupCurveP521 || names[2] != groupX25519 {
+		if len(names) != 3 || names[0] != "CurveP256" || names[1] != "CurveP521" || names[2] != "X25519" {
 			t.Errorf("names = %v, want [CurveP256 CurveP521 X25519]", names)
 		}
 	})
@@ -118,7 +126,7 @@ func TestParseTLSGroups(t *testing.T) {
 		if len(ids) != 1 || ids[0] != tls.X25519MLKEM768 {
 			t.Fatalf("ids = %v, want [X25519MLKEM768]", ids)
 		}
-		if len(names) != 1 || names[0] != groupX25519MLKEM768 {
+		if len(names) != 1 || names[0] != "X25519MLKEM768" {
 			t.Errorf("names = %v, want [X25519MLKEM768]", names)
 		}
 	})
@@ -128,7 +136,7 @@ func TestParseTLSGroups(t *testing.T) {
 		if len(ids) != 1 || ids[0] != tls.X25519 {
 			t.Fatalf("ids = %v, want [X25519]", ids)
 		}
-		if len(names) != 1 || names[0] != groupX25519 {
+		if len(names) != 1 || names[0] != "X25519" {
 			t.Errorf("names = %v, want [X25519]", names)
 		}
 	})
@@ -156,7 +164,10 @@ func TestParseTLSSettings_Unset(t *testing.T) {
 	t.Setenv(envTLSCipherSuites, "")
 	t.Setenv(envTLSGroups, "")
 
-	s := parseTLSSettings()
+	s, err := parseTLSSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if fn := s.tlsConfigFunc(); fn != nil {
 		t.Error("expected nil tlsConfigFunc when env vars are unset")
 	}
@@ -170,7 +181,10 @@ func TestParseTLSSettings_AppliesGroups(t *testing.T) {
 	t.Setenv(envTLSCipherSuites, "")
 	t.Setenv(envTLSGroups, "X25519MLKEM768,X25519")
 
-	s := parseTLSSettings()
+	s, err := parseTLSSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	fn := s.tlsConfigFunc()
 	if fn == nil {
@@ -198,7 +212,10 @@ func TestParseTLSSettings_GroupsUnsetLeavesCurvePreferences(t *testing.T) {
 	t.Setenv(envTLSCipherSuites, "")
 	t.Setenv(envTLSGroups, "")
 
-	s := parseTLSSettings()
+	s, err := parseTLSSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
 	fn := s.tlsConfigFunc()
 	if fn == nil {
 		t.Fatal("expected non-nil TLS config function")
@@ -214,7 +231,10 @@ func TestParseTLSSettings_AppliesConfig(t *testing.T) {
 	t.Setenv(envTLSMinVersion, "VersionTLS12")
 	t.Setenv(envTLSCipherSuites, "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
 
-	s := parseTLSSettings()
+	s, err := parseTLSSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	fn := s.tlsConfigFunc()
 	if fn == nil {
@@ -240,7 +260,10 @@ func TestTLSSettings_EnvVars(t *testing.T) {
 		t.Setenv(envTLSMinVersion, "VersionTLS12")
 		t.Setenv(envTLSCipherSuites, "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384")
 
-		s := parseTLSSettings()
+		s, err := parseTLSSettings()
+		if err != nil {
+			t.Fatal(err)
+		}
 		envVars := s.envVars()
 		if len(envVars) != 2 {
 			t.Fatalf("expected 2 env vars, got %d", len(envVars))
@@ -256,7 +279,10 @@ func TestTLSSettings_EnvVars(t *testing.T) {
 	t.Run("returns only valid vars", func(t *testing.T) {
 		t.Setenv(envTLSMinVersion, "VersionTLS13")
 
-		s := parseTLSSettings()
+		s, err := parseTLSSettings()
+		if err != nil {
+			t.Fatal(err)
+		}
 		envVars := s.envVars()
 		if len(envVars) != 1 {
 			t.Fatalf("expected 1 env var, got %d", len(envVars))
@@ -267,7 +293,10 @@ func TestTLSSettings_EnvVars(t *testing.T) {
 	})
 
 	t.Run("returns nil when neither var is set", func(t *testing.T) {
-		s := parseTLSSettings()
+		s, err := parseTLSSettings()
+		if err != nil {
+			t.Fatal(err)
+		}
 		envVars := s.envVars()
 		if envVars != nil {
 			t.Errorf("expected nil, got %v", envVars)
@@ -277,7 +306,10 @@ func TestTLSSettings_EnvVars(t *testing.T) {
 	t.Run("excludes invalid min version", func(t *testing.T) {
 		t.Setenv(envTLSMinVersion, "garbage")
 
-		s := parseTLSSettings()
+		s, err := parseTLSSettings()
+		if err != nil {
+			t.Fatal(err)
+		}
 		envVars := s.envVars()
 		if envVars != nil {
 			t.Errorf("expected nil for invalid min version, got %v", envVars)
@@ -287,7 +319,10 @@ func TestTLSSettings_EnvVars(t *testing.T) {
 	t.Run("excludes unknown cipher suites from value", func(t *testing.T) {
 		t.Setenv(envTLSCipherSuites, "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,UNKNOWN_CIPHER")
 
-		s := parseTLSSettings()
+		s, err := parseTLSSettings()
+		if err != nil {
+			t.Fatal(err)
+		}
 		envVars := s.envVars()
 		if len(envVars) != 1 {
 			t.Fatalf("expected 1 env var, got %d", len(envVars))
@@ -300,7 +335,10 @@ func TestTLSSettings_EnvVars(t *testing.T) {
 	t.Run("excludes all-invalid cipher suites", func(t *testing.T) {
 		t.Setenv(envTLSCipherSuites, "UNKNOWN_CIPHER,ALSO_UNKNOWN")
 
-		s := parseTLSSettings()
+		s, err := parseTLSSettings()
+		if err != nil {
+			t.Fatal(err)
+		}
 		envVars := s.envVars()
 		if envVars != nil {
 			t.Errorf("expected nil when all cipher suites are invalid, got %v", envVars)
@@ -312,7 +350,10 @@ func TestParseTLSSettings_TLS13_SkipsCipherSuites(t *testing.T) {
 	t.Setenv(envTLSMinVersion, "VersionTLS13")
 	t.Setenv(envTLSCipherSuites, "TLS_AES_128_GCM_SHA256,TLS_AES_256_GCM_SHA384")
 
-	s := parseTLSSettings()
+	s, err := parseTLSSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
 	fn := s.tlsConfigFunc()
 	if fn == nil {
 		t.Fatal("expected non-nil TLS config function")
@@ -326,5 +367,128 @@ func TestParseTLSSettings_TLS13_SkipsCipherSuites(t *testing.T) {
 	}
 	if cfg.CipherSuites != nil {
 		t.Errorf("CipherSuites should be nil for TLS 1.3, got %v", cfg.CipherSuites)
+	}
+}
+
+func TestParseTLSGroups_HybridsAndAliases(t *testing.T) {
+	for _, tt := range []struct {
+		input     string
+		id        tls.CurveID
+		canonical string
+	}{
+		{" x25519mlkem768,X25519MLKEM768", tls.X25519MLKEM768, "X25519MLKEM768"},
+		{" secp256r1mlkem768,SecP256r1MLKEM768", tls.SecP256r1MLKEM768, "SecP256r1MLKEM768"},
+		{" secp384r1mlkem1024,SecP384r1MLKEM1024", tls.SecP384r1MLKEM1024, "SecP384r1MLKEM1024"},
+		{"P-256", tls.CurveP256, "CurveP256"},
+		{"secp256r1", tls.CurveP256, "CurveP256"},
+		{"P-384", tls.CurveP384, "CurveP384"},
+		{"secp384r1", tls.CurveP384, "CurveP384"},
+		{"P-521", tls.CurveP521, "CurveP521"},
+		{"secp521r1", tls.CurveP521, "CurveP521"},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			ids, names := parseTLSGroups(tt.input, noopLogger{})
+			if !reflect.DeepEqual(ids, []tls.CurveID{tt.id}) || !reflect.DeepEqual(names, []string{tt.canonical}) {
+				t.Fatalf("got %v, %v; want [%v], [%s]", ids, names, tt.id, tt.canonical)
+			}
+		})
+	}
+}
+
+func TestParseTLSSettings_GroupValidation(t *testing.T) {
+	t.Setenv(envTLSMinVersion, "VersionTLS13")
+	t.Setenv(envTLSCipherSuites, "")
+	for _, tt := range []struct {
+		name, raw string
+		unset     bool
+		wantError bool
+		wantIDs   []tls.CurveID
+		wantNames string
+	}{
+		{name: "omitted", unset: true},
+		{name: "empty"},
+		{name: "whitespace", raw: " \t", wantError: true},
+		{name: "separators", raw: ", ,", wantError: true},
+		{name: "unknown", raw: "x448,bogus", wantError: true},
+		{name: "numeric IDs", raw: "4587,CurveID(65535)", wantError: true},
+		{name: "mixed", raw: "bogus, secp256r1, SECP256R1MLKEM768,CurveP256, ,x448,SecP384r1MLKEM1024",
+			wantIDs:   []tls.CurveID{tls.CurveP256, tls.SecP256r1MLKEM768, tls.SecP384r1MLKEM1024},
+			wantNames: "CurveP256,SecP256r1MLKEM768,SecP384r1MLKEM1024"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(envTLSGroups, tt.raw)
+			if tt.unset {
+				if err := os.Unsetenv(envTLSGroups); err != nil {
+					t.Fatal(err)
+				}
+			}
+			s, err := parseTLSSettings()
+			if tt.wantError {
+				if err == nil || !strings.Contains(err.Error(), envTLSGroups) {
+					t.Fatalf("expected TLS_GROUPS validation error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg := &tls.Config{}
+			s.tlsConfigFunc()(cfg)
+			if !reflect.DeepEqual(cfg.CurvePreferences, tt.wantIDs) {
+				t.Fatalf("CurvePreferences = %v, want %v", cfg.CurvePreferences, tt.wantIDs)
+			}
+			if s.groupsStr != tt.wantNames {
+				t.Fatalf("groupsStr = %q, want %q", s.groupsStr, tt.wantNames)
+			}
+			var propagated string
+			for _, env := range s.envVars() {
+				if env.Name == envTLSGroups {
+					propagated = env.Value
+				}
+			}
+			if propagated != tt.wantNames {
+				t.Fatalf("propagated TLS_GROUPS = %q, want %q", propagated, tt.wantNames)
+			}
+			if propagated != "" {
+				t.Setenv(envTLSGroups, propagated)
+				reparsed, err := parseTLSSettings()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(reparsed.groupIDs, tt.wantIDs) {
+					t.Fatalf("reparsed groups = %v, want %v", reparsed.groupIDs, tt.wantIDs)
+				}
+			}
+		})
+	}
+}
+
+// Exercise main in a subprocess because invalid configuration must exit before
+// creating the manager or contacting Kubernetes.
+func TestTLSGroups_InvalidConfigurationExits(t *testing.T) {
+	const helperEnv = "MCP_TEST_INVALID_TLS_GROUPS"
+	if os.Getenv(helperEnv) == "1" {
+		main()
+		return
+	}
+	t.Setenv(helperEnv, "1")
+	t.Setenv(envTLSGroups, "x448,bogus")
+	t.Setenv(envTLSMinVersion, "VersionTLS13")
+	t.Setenv(envTLSCipherSuites, "")
+	t.Setenv("KUBECONFIG", filepath.Join(t.TempDir(), "missing-kubeconfig"))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(ctx, binary, "-test.run=^TestTLSGroups_InvalidConfigurationExits$")
+	output, err := cmd.CombinedOutput()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatalf("expected exit code 1, got %v; output:\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "invalid TLS configuration") || !strings.Contains(string(output), "TLS_GROUPS contains no supported TLS groups") {
+		t.Fatalf("expected TLS_GROUPS startup error, got:\n%s", output)
 	}
 }
