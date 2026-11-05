@@ -97,6 +97,7 @@ func main() {
 	var networkPolicyDefaultPosture string
 	var httprouteAllowedGatewayNamespaces string
 	var kuadrantAllowedExtensionNamespaces string
+	var clusterDomain string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -162,6 +163,9 @@ func main() {
 			"restricting it prevents routing config from being read out of an attacker-planted namespace. "+
 			"Falls back to KUADRANT_ALLOWED_EXTENSION_NAMESPACES env var if not set. "+
 			"Empty means no restriction (any namespace named in a binding's ConfigMap is trusted).")
+	flag.StringVar(&clusterDomain, "cluster-domain", controller.DefaultClusterDomain,
+		"Kubernetes DNS cluster domain used for MCP Service handshakes and status addresses.")
+
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -312,6 +316,7 @@ func main() {
 		Scheme:                      mgr.GetScheme(),
 		Recorder:                    mgr.GetEventRecorder("mcpserver-controller"),
 		APIReader:                   mgr.GetAPIReader(),
+		ClusterDomain:               clusterDomain,
 		TLSProfile:                  tlsCfg.tlsConfigFunc(),
 		NetworkPolicyDefaultPosture: defaultPosture,
 		// Operator identity for the restricted-posture self ingress peer, so the
