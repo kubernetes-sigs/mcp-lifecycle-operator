@@ -57,6 +57,15 @@ func RunGatewayConformanceSuite(t *testing.T, testenv env.Environment, prov Prov
 	t.Run("recovery", func(t *testing.T) {
 		runRecovery(t, testenv, prov)
 	})
+	for _, tc := range []byoConfiguration{
+		{name: "BYO workload", externalWorkload: true},
+		{name: "BYO workload and Service", externalWorkload: true, externalService: true},
+		{name: "BYO Service", externalService: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runBYO(t, testenv, prov, tc)
+		})
+	}
 }
 
 func runBindingLifecycle(t *testing.T, testenv env.Environment, prov Provider) {
