@@ -224,6 +224,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: serviceName
       type:
         scalar: string
+    - name: verifiedEndpointURL
+      type:
+        scalar: string
     - name: workloadName
       type:
         scalar: string

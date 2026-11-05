@@ -677,6 +677,12 @@ type MCPServerStatus struct {
 	// +optional
 	Address *MCPServerAddress `json:"address,omitempty"`
 
+	// VerifiedEndpointURL is the internal Service URL for which Verified=True
+	// was established. Unlike Address, it is not replaced by a gateway URL.
+	// A changed or missing value requires endpoint verification again.
+	// +optional
+	VerifiedEndpointURL string `json:"verifiedEndpointURL,omitempty"`
+
 	// ServerInfo contains identity and capability information reported by the
 	// MCP server during the protocol handshake (initialize or server/discover).
 	// This field is populated only after a successful handshake.

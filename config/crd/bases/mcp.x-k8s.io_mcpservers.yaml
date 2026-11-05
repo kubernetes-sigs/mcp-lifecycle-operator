@@ -4795,6 +4795,12 @@ spec:
                   For operator-managed mode this is the created Service; for BYO this
                   is the serviceRef name, or the MCPServer name when serviceRef is unset.
                 type: string
+              verifiedEndpointURL:
+                description: |-
+                  VerifiedEndpointURL is the internal Service URL for which Verified=True
+                  was established. Unlike Address, it is not replaced by a gateway URL.
+                  A changed or missing value requires endpoint verification again.
+                type: string
               workloadName:
                 description: |-
                   WorkloadName identifies the workload backing this MCPServer.

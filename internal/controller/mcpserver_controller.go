@@ -251,8 +251,9 @@ type MCPServerReconciler struct {
 }
 
 type handshakeRetryState struct {
-	generation int64
-	count      int32
+	generation  int64
+	endpointURL string
+	count       int32
 }
 
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcpservers,verbs=get;list;watch;update;patch
