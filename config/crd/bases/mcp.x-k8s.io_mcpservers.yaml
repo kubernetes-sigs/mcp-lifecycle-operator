@@ -2373,19 +2373,22 @@ spec:
     name: v1beta1
     schema:
       openAPIV3Schema:
-        description: "MCPServer runs a Model Context Protocol (MCP) server in Kubernetes.\n\nMCPServer
-          creates and manages a Deployment, Service, and NetworkPolicy to run an MCP
-          server from a\ncontainer image. The MCP server exposes tools, resources,
-          and prompts that AI applications\ncan use via the Model Context Protocol.\n\nExample:\n\n\tapiVersion:
-          mcp.x-k8s.io/v1beta1\n\tkind: MCPServer\n\tmetadata:\n\t  name: example\n\tspec:\n\t
-          \ source:\n\t    type: ContainerImage\n\t    containerImage:\n\t      ref:
-          example-mcp-image\n\t  config:\n\t    port: 8080\n\nThe controller manages
-          Deployment, Service, and NetworkPolicy resources with the same name as the
-          MCPServer,\nusing ownerReferences to establish ownership. The controller
-          will reject updates to resources\nowned by other controllers or resources
-          with no controller owner (to prevent silent overwrites\nof manually-created
-          resources), but will adopt orphaned resources from a deleted MCPServer\nwith
-          the same name to enable seamless recreation."
+        description: "MCPServer runs a Model Context Protocol (MCP) server in Kubernetes.\n\nBy
+          default, MCPServer creates and manages a Deployment, Service, and NetworkPolicy\nto
+          run an MCP server from a container image. WorkloadRef and ServiceRef can\ninstead
+          reference existing resources managed outside the operator. The MCP\nserver
+          exposes tools, resources, and prompts that AI applications can use via\nthe
+          Model Context Protocol.\n\nExample:\n\n\tapiVersion: mcp.x-k8s.io/v1beta1\n\tkind:
+          MCPServer\n\tmetadata:\n\t  name: example\n\tspec:\n\t  source:\n\t    type:
+          ContainerImage\n\t    containerImage:\n\t      ref: example-mcp-image\n\t
+          \ config:\n\t    port: 8080\n\nIn managed mode, the controller manages Deployment,
+          Service, and NetworkPolicy resources with the same name as the MCPServer,\nusing
+          ownerReferences to establish ownership. The controller will reject updates
+          to resources\nowned by other controllers or resources with no controller
+          owner (to prevent silent overwrites\nof manually-created resources), but
+          will adopt orphaned resources from a deleted MCPServer\nwith the same name
+          to enable seamless recreation. Referenced workloads and\nServices remain
+          under their existing management and are not adopted or deleted."
         properties:
           apiVersion:
             description: |-

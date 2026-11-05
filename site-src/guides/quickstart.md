@@ -102,7 +102,7 @@ kubectl get pods -l mcp-server=kubernetes-mcp-server
 Expected output from `kubectl get mcpservers`:
 
 ```
-NAME                    ACCEPTED   AVAILABLE   VERIFIED   IMAGE                                             PORT   ADDRESS                                                         AGE
+NAME                    ACCEPTED   AVAILABLE   VERIFIED   WORKLOAD                                          PORT   ADDRESS                                                         AGE
 kubernetes-mcp-server   True       True        True       quay.io/containers/kubernetes_mcp_server:latest    8080   http://kubernetes-mcp-server.default.svc.cluster.local:8080/mcp   1m
 ```
 
@@ -263,6 +263,7 @@ make uninstall
 
 ## Next Steps
 
+- To connect resources managed outside the operator, see [Use an Existing Workload or Service](byo.md).
 - Explore more examples:
   - [kubernetes-mcp-server examples](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples/kubernetes-mcp-server) - Basic, ConfigMap, and RBAC examples
   - [All examples](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples)

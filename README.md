@@ -13,7 +13,8 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 - [TLS Configuration](https://mcp-lifecycle-operator.sigs.k8s.io/operating/tls/) - Min version, cipher suites, and TLS 1.3 named groups
 - [Storage Version Migration](https://mcp-lifecycle-operator.sigs.k8s.io/operating/storage-version-migration/) - Rewrite stored objects to v1beta1 before removing v1alpha1
 - [API Reference](https://mcp-lifecycle-operator.sigs.k8s.io/reference/) - Full MCPServer API documentation
-- [Complete MCPServer example](./config/samples/mcp_v1beta1_mcpserver_complete.yaml) - YAML showing all available fields
+- [Complete managed MCPServer example](./config/samples/mcp_v1beta1_mcpserver_complete.yaml) - YAML showing managed-mode configuration
+- [Use an Existing Workload or Service](https://mcp-lifecycle-operator.sigs.k8s.io/main/guides/byo/) - Reference resources managed outside the operator
 - [Contributing](https://mcp-lifecycle-operator.sigs.k8s.io/contributing/) - How to contribute to the project
 
 ## Prerequisites
@@ -120,11 +121,11 @@ kubectl get pods -l mcp-server=test-server
 
 Expected output from `kubectl get mcpservers`:
 ```
-NAME          READY   ACCEPTED   IMAGE                                                  PORT   ADDRESS                                               AGE
-test-server   True    True       quay.io/containers/kubernetes_mcp_server:latest         8080   http://test-server.default.svc.cluster.local:8080/mcp   1m
+NAME          ACCEPTED   AVAILABLE   VERIFIED   WORKLOAD                                          PORT   ADDRESS                                               AGE
+test-server   True       True        True       quay.io/containers/kubernetes_mcp_server:latest    8080   http://test-server.default.svc.cluster.local:8080/mcp   1m
 ```
 
-The `ADDRESS` column shows the cluster-internal URL that can be used by other workloads to connect to the MCP server.
+The `ADDRESS` column shows the Service URL that other workloads can use to connect to the MCP server. When gateway integration supplies an external URL, it appears here instead.
 
 The status includes conditions and the service address for easy discovery:
 
@@ -138,7 +139,7 @@ status:
     - type: Accepted
       status: "True"
       reason: Valid
-    - type: Ready
+    - type: Available
       status: "True"
       reason: Available
 ```

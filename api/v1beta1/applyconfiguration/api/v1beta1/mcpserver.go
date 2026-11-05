@@ -32,9 +32,11 @@ import (
 //
 // MCPServer runs a Model Context Protocol (MCP) server in Kubernetes.
 //
-// MCPServer creates and manages a Deployment, Service, and NetworkPolicy to run an MCP server from a
-// container image. The MCP server exposes tools, resources, and prompts that AI applications
-// can use via the Model Context Protocol.
+// By default, MCPServer creates and manages a Deployment, Service, and NetworkPolicy
+// to run an MCP server from a container image. WorkloadRef and ServiceRef can
+// instead reference existing resources managed outside the operator. The MCP
+// server exposes tools, resources, and prompts that AI applications can use via
+// the Model Context Protocol.
 //
 // Example:
 //
@@ -50,11 +52,12 @@ import (
 // config:
 // port: 8080
 //
-// The controller manages Deployment, Service, and NetworkPolicy resources with the same name as the MCPServer,
+// In managed mode, the controller manages Deployment, Service, and NetworkPolicy resources with the same name as the MCPServer,
 // using ownerReferences to establish ownership. The controller will reject updates to resources
 // owned by other controllers or resources with no controller owner (to prevent silent overwrites
 // of manually-created resources), but will adopt orphaned resources from a deleted MCPServer
-// with the same name to enable seamless recreation.
+// with the same name to enable seamless recreation. Referenced workloads and
+// Services remain under their existing management and are not adopted or deleted.
 type MCPServerApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration `json:",inline"`
 	// metadata is a standard object metadata
