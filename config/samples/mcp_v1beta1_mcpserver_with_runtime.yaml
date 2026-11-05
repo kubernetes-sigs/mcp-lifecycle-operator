@@ -13,6 +13,16 @@ spec:
   runtime:
     replicas: 1
 
+    # Applies only to operator-managed Deployments, not workloadRef.
+    # Omit to use Kubernetes defaults (RollingUpdate with 25% surge/unavailable).
+    # Use type: Recreate without rollingUpdate to replace all pods at once.
+    # This does not provide session-aware draining or guarantee zero downtime.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 1
+        maxUnavailable: 0
+
     # Resource limits and requests
     resources:
       requests:

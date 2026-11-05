@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -762,6 +763,48 @@ func TestConversionRoundTrip_ReadyConditionReasons(t *testing.T) {
 			}
 			if got.Message != tt.condition.Message {
 				t.Errorf("Ready.Message = %q, want %q", got.Message, tt.condition.Message)
+			}
+		})
+	}
+}
+
+func TestConversionRoundTrip_DeploymentStrategy(t *testing.T) {
+	for name, strategy := range map[string]*appsv1.DeploymentStrategy{
+		"omitted":  nil,
+		"defaults": {},
+		"recreate": {Type: appsv1.RecreateDeploymentStrategyType},
+		"rolling": {Type: appsv1.RollingUpdateDeploymentStrategyType, RollingUpdate: &appsv1.RollingUpdateDeployment{
+			MaxSurge: new(intstr.FromString("50%")), MaxUnavailable: new(intstr.FromInt32(0)),
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			original := &MCPServer{Spec: MCPServerSpec{Runtime: RuntimeConfig{Strategy: strategy}}}
+			hub := &v1beta1.MCPServer{}
+			if err := original.ConvertTo(hub); err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(strategy, hub.Spec.Runtime.Strategy); diff != "" {
+				t.Fatal(diff)
+			}
+			roundTrip := &MCPServer{}
+			if err := roundTrip.ConvertFrom(hub); err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(strategy, roundTrip.Spec.Runtime.Strategy); diff != "" {
+				t.Fatal(diff)
+			}
+			if strategy != nil {
+				want := strategy.DeepCopy()
+				hub.Spec.Runtime.Strategy.Type = appsv1.DeploymentStrategyType("changed")
+				if hub.Spec.Runtime.Strategy.RollingUpdate != nil {
+					*hub.Spec.Runtime.Strategy.RollingUpdate.MaxSurge = intstr.FromInt32(99)
+				}
+				if diff := cmp.Diff(want, original.Spec.Runtime.Strategy); diff != "" {
+					t.Fatalf("ConvertTo shares strategy data: %s", diff)
+				}
+				if diff := cmp.Diff(want, roundTrip.Spec.Runtime.Strategy); diff != "" {
+					t.Fatalf("ConvertFrom shares strategy data: %s", diff)
+				}
 			}
 		})
 	}

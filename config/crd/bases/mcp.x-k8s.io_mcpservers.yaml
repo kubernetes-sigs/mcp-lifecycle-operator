@@ -2011,6 +2011,77 @@ spec:
                             start and end with an alphanumeric character.'
                           rule: self == '' || !format.dns1123Subdomain().validate(self).hasValue()
                     type: object
+                  strategy:
+                    description: |-
+                      Strategy controls rollout of the operator-managed Deployment.
+                      When omitted or removed, defaults to RollingUpdate with maxSurge and
+                      maxUnavailable both set to 25%. This does not provide session-aware draining.
+                    properties:
+                      rollingUpdate:
+                        description: |-
+                          Rolling update config params. Present only if DeploymentStrategyType =
+                          RollingUpdate.
+                        properties:
+                          maxSurge:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            description: |-
+                              The maximum number of pods that can be scheduled above the desired number of
+                              pods.
+                              Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%).
+                              This can not be 0 if MaxUnavailable is 0.
+                              Absolute number is calculated from percentage by rounding up.
+                              Defaults to 25%.
+                              Example: when this is set to 30%, the new ReplicaSet can be scaled up immediately when
+                              the rolling update starts, such that the total number of old and new pods do not exceed
+                              130% of desired pods. Once old pods have been killed,
+                              new ReplicaSet can be scaled up further, ensuring that total number of pods running
+                              at any time during the update is at most 130% of desired pods.
+                            x-kubernetes-int-or-string: true
+                          maxUnavailable:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            description: |-
+                              The maximum number of pods that can be unavailable during the update.
+                              Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%).
+                              Absolute number is calculated from percentage by rounding down.
+                              This can not be 0 if MaxSurge is 0.
+                              Defaults to 25%.
+                              Example: when this is set to 30%, the old ReplicaSet can be scaled down to 70% of desired pods
+                              immediately when the rolling update starts. Once new pods are ready, old ReplicaSet
+                              can be scaled down further, followed by scaling up the new ReplicaSet, ensuring
+                              that the total number of pods available at all times during the update is at
+                              least 70% of desired pods.
+                            x-kubernetes-int-or-string: true
+                        type: object
+                      type:
+                        description: Type of deployment. Can be "Recreate" or "RollingUpdate".
+                          Default is RollingUpdate.
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: strategy.type must be RollingUpdate or Recreate
+                      rule: '!has(self.type) || self.type in ['''', ''RollingUpdate'',
+                        ''Recreate'']'
+                    - message: rollingUpdate must not be set for Recreate
+                      rule: '!has(self.type) || self.type != ''Recreate'' || !has(self.rollingUpdate)'
+                    - message: maxSurge must be a non-negative integer or percentage
+                      rule: '!has(self.rollingUpdate) || !has(self.rollingUpdate.maxSurge)
+                        || (type(self.rollingUpdate.maxSurge) == int ? self.rollingUpdate.maxSurge
+                        >= 0 : self.rollingUpdate.maxSurge.matches(''^[0-9]+%$''))'
+                    - message: maxUnavailable must be a non-negative integer or percentage
+                        between 0% and 100%
+                      rule: '!has(self.rollingUpdate) || !has(self.rollingUpdate.maxUnavailable)
+                        || (type(self.rollingUpdate.maxUnavailable) == int ? self.rollingUpdate.maxUnavailable
+                        >= 0 : self.rollingUpdate.maxUnavailable.matches(''^(100|[0-9]{1,2})%$''))'
+                    - message: maxSurge and maxUnavailable must not both be zero
+                      rule: '!has(self.rollingUpdate) || !has(self.rollingUpdate.maxSurge)
+                        || !has(self.rollingUpdate.maxUnavailable) || (type(self.rollingUpdate.maxSurge)
+                        == int ? self.rollingUpdate.maxSurge != 0 : !self.rollingUpdate.maxSurge.matches(''^0+%$''))
+                        || (type(self.rollingUpdate.maxUnavailable) == int ? self.rollingUpdate.maxUnavailable
+                        != 0 : !self.rollingUpdate.maxUnavailable.matches(''^0+%$''))'
                 type: object
               source:
                 description: |-
@@ -4373,6 +4444,78 @@ spec:
                             start and end with an alphanumeric character.'
                           rule: self == '' || !format.dns1123Subdomain().validate(self).hasValue()
                     type: object
+                  strategy:
+                    description: |-
+                      Strategy controls rollout of the operator-managed Deployment.
+                      When omitted or removed, defaults to RollingUpdate with maxSurge and
+                      maxUnavailable both set to 25%. This does not provide session-aware draining.
+                      With workloadRef, configure the strategy on the referenced workload instead.
+                    properties:
+                      rollingUpdate:
+                        description: |-
+                          Rolling update config params. Present only if DeploymentStrategyType =
+                          RollingUpdate.
+                        properties:
+                          maxSurge:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            description: |-
+                              The maximum number of pods that can be scheduled above the desired number of
+                              pods.
+                              Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%).
+                              This can not be 0 if MaxUnavailable is 0.
+                              Absolute number is calculated from percentage by rounding up.
+                              Defaults to 25%.
+                              Example: when this is set to 30%, the new ReplicaSet can be scaled up immediately when
+                              the rolling update starts, such that the total number of old and new pods do not exceed
+                              130% of desired pods. Once old pods have been killed,
+                              new ReplicaSet can be scaled up further, ensuring that total number of pods running
+                              at any time during the update is at most 130% of desired pods.
+                            x-kubernetes-int-or-string: true
+                          maxUnavailable:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            description: |-
+                              The maximum number of pods that can be unavailable during the update.
+                              Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%).
+                              Absolute number is calculated from percentage by rounding down.
+                              This can not be 0 if MaxSurge is 0.
+                              Defaults to 25%.
+                              Example: when this is set to 30%, the old ReplicaSet can be scaled down to 70% of desired pods
+                              immediately when the rolling update starts. Once new pods are ready, old ReplicaSet
+                              can be scaled down further, followed by scaling up the new ReplicaSet, ensuring
+                              that the total number of pods available at all times during the update is at
+                              least 70% of desired pods.
+                            x-kubernetes-int-or-string: true
+                        type: object
+                      type:
+                        description: Type of deployment. Can be "Recreate" or "RollingUpdate".
+                          Default is RollingUpdate.
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: strategy.type must be RollingUpdate or Recreate
+                      rule: '!has(self.type) || self.type in ['''', ''RollingUpdate'',
+                        ''Recreate'']'
+                    - message: rollingUpdate must not be set for Recreate
+                      rule: '!has(self.type) || self.type != ''Recreate'' || !has(self.rollingUpdate)'
+                    - message: maxSurge must be a non-negative integer or percentage
+                      rule: '!has(self.rollingUpdate) || !has(self.rollingUpdate.maxSurge)
+                        || (type(self.rollingUpdate.maxSurge) == int ? self.rollingUpdate.maxSurge
+                        >= 0 : self.rollingUpdate.maxSurge.matches(''^[0-9]+%$''))'
+                    - message: maxUnavailable must be a non-negative integer or percentage
+                        between 0% and 100%
+                      rule: '!has(self.rollingUpdate) || !has(self.rollingUpdate.maxUnavailable)
+                        || (type(self.rollingUpdate.maxUnavailable) == int ? self.rollingUpdate.maxUnavailable
+                        >= 0 : self.rollingUpdate.maxUnavailable.matches(''^(100|[0-9]{1,2})%$''))'
+                    - message: maxSurge and maxUnavailable must not both be zero
+                      rule: '!has(self.rollingUpdate) || !has(self.rollingUpdate.maxSurge)
+                        || !has(self.rollingUpdate.maxUnavailable) || (type(self.rollingUpdate.maxSurge)
+                        == int ? self.rollingUpdate.maxSurge != 0 : !self.rollingUpdate.maxSurge.matches(''^0+%$''))
+                        || (type(self.rollingUpdate.maxUnavailable) == int ? self.rollingUpdate.maxUnavailable
+                        != 0 : !self.rollingUpdate.maxUnavailable.matches(''^0+%$''))'
                 type: object
               serviceRef:
                 description: |-
@@ -4580,6 +4723,8 @@ spec:
               rule: '!has(self.workloadRef) || !has(self.config) || !has(self.config.arguments)'
             - message: runtime.replicas must not be set when workloadRef is set
               rule: '!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.replicas)'
+            - message: runtime.strategy must not be set when workloadRef is set
+              rule: '!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.strategy)'
             - message: runtime.resources must not be set when workloadRef is set
               rule: '!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.resources)'
             - message: runtime.security must not be set when workloadRef is set
