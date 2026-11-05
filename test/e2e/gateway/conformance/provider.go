@@ -34,8 +34,8 @@ type Provider interface {
 	Name() string
 
 	// Setup runs per-test prerequisites that depend on the dynamic test namespace.
-	// Example: kuadrant registers its API scheme and creates a ReferenceGrant
-	// from the test namespace to the gateway namespace.
+	// Providers can register additional API schemes and create ReferenceGrants
+	// from the test namespace to the gateway namespace here.
 	// Called once per conformance test, before ConfigData.
 	Setup(ctx context.Context, t *testing.T, cfg *envconf.Config, ns string)
 
