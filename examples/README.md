@@ -27,6 +27,8 @@ See [agentic-networking/README.md](./agentic-networking/README.md) for details.
 
 ## Quick Start
 
+The examples below use the default managed mode. When another tool or team manages the workload or Service, the [BYO example](./byo/README.md) shows how to reference those resources.
+
 ```bash
 # Install CRDs
 make install
