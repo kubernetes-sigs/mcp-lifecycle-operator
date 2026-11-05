@@ -220,8 +220,8 @@ func EnsureMultiListenerGateway(ctx context.Context, t *testing.T, cfg *envconf.
 	return gatewayAddress
 }
 
-// AssertMCPReachable performs a full MCP handshake through the gateway,
-// proving the server is reachable via the data plane. It connects to the
+// AssertMCPReachable verifies MCP initialization through the gateway. A broker
+// may answer without reaching a backend. It connects to the
 // gateway's LoadBalancer address with the route hostname as the Host header.
 func AssertMCPReachable(ctx context.Context, t *testing.T, gatewayAddress, routeHostname, path string) {
 	t.Helper()
