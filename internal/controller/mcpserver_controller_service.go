@@ -229,7 +229,19 @@ func (r *MCPServerReconciler) reconcileServiceOrBYO(
 	selector map[string]string,
 ) (ServiceEndpoint, error) {
 	if mcpServer.Spec.ServiceRef != nil {
-		return ResolveServiceEndpoint(ctx, r.APIReader, mcpServer)
+		endpoint, err := ResolveServiceEndpoint(ctx, r.APIReader, mcpServer)
+		if err != nil {
+			return endpoint, err
+		}
+		// A serviceRef may be added to an MCPServer that already has an
+		// operator-managed Service. Endpoint resolution above has switched to the
+		// external Service, so the previously managed Service must be cleaned up or
+		// it lingers unreconciled and goes stale. Cleanup is guarded so the
+		// operator never deletes a Service it does not own or still relies on.
+		if err := r.cleanupManagedServiceForBYO(ctx, mcpServer); err != nil {
+			return endpoint, err
+		}
+		return endpoint, nil
 	}
 
 	serviceStart := time.Now()
@@ -239,4 +251,92 @@ func (r *MCPServerReconciler) reconcileServiceOrBYO(
 	}
 	reconcileDuration.With(prometheus.Labels{keyPhase: ReconcilePhaseService}).Observe(time.Since(serviceStart).Seconds())
 	return ServiceEndpoint{Name: serviceNameFor(mcpServer), Port: mcpServer.Spec.Config.Port}, nil
+}
+
+// cleanupManagedServiceForBYO deletes a previously operator-managed Service after
+// an external serviceRef is added to the MCPServer. serviceRef is not immutable, so
+// a user may point an MCPServer at an external Service while an operator-managed
+// Service (named after the MCPServer) still exists. Once endpoint resolution
+// switches to the external Service the managed Service is no longer reconciled and
+// goes stale (a later container port change leaves it pointing at an obsolete
+// port). This performs a safe cleanup guarded so the operator never removes a
+// Service it does not own or still relies on:
+//
+//  1. The external serviceRef Service is resolved and must exist before anything is
+//     deleted. A missing reference fails safe and leaves the managed Service in
+//     place, surfaced through the normal Service-failure status/event path.
+//  2. The managed Service is deleted only when its controller owner reference UID
+//     matches this MCPServer's UID. Services owned by anything else, or with no
+//     controller owner (user-owned), are preserved.
+//  3. A self-referencing serviceRef (serviceRef.name == MCPServer name) points at
+//     the very Service the operator would manage, so it is preserved.
+//  4. Deletion uses UID + resourceVersion preconditions so a Service replaced
+//     between the read and the delete is not removed.
+//
+// The function is idempotent: when no managed Service exists there is nothing to do.
+func (r *MCPServerReconciler) cleanupManagedServiceForBYO(
+	ctx context.Context,
+	mcpServer *mcpv1beta1.MCPServer,
+) error {
+	logger := log.FromContext(ctx)
+
+	// Guard 3: a self-referencing serviceRef names the operator-managed Service
+	// itself; the external and managed Service are the same object, never delete it.
+	if mcpServer.Spec.ServiceRef != nil && mcpServer.Spec.ServiceRef.Name == mcpServer.Name {
+		return nil
+	}
+
+	// The operator-managed Service is always named after the MCPServer. Look it up
+	// first so the steady state (serviceRef already set, nothing to clean up) and a
+	// not-yet-created external Service never hit the external resolution below.
+	managedSvc := &corev1.Service{}
+	if err := r.Get(ctx, client.ObjectKey{Name: mcpServer.Name, Namespace: mcpServer.Namespace}, managedSvc); err != nil {
+		if apierrors.IsNotFound(err) {
+			// Nothing to clean up: the managed Service never existed or is already gone.
+			return nil
+		}
+		return err
+	}
+
+	// Guard 2: only delete a Service this exact MCPServer controls. Compare the
+	// controller owner reference UID; preserve Services owned by anything else or
+	// with no controller owner (user-owned).
+	owner := metav1.GetControllerOf(managedSvc)
+	if owner == nil || owner.UID != mcpServer.UID {
+		logger.Info("Preserving Service not owned by this MCPServer after serviceRef was added",
+			keyName, managedSvc.Name, keyNamespace, managedSvc.Namespace)
+		return nil
+	}
+
+	// Guard 1: resolve and validate the external Service before deleting the owned
+	// managed Service. A missing reference fails safe and leaves the managed Service
+	// in place, surfaced through the normal Service-failure status/event path.
+	externalName := serviceNameFor(mcpServer)
+	externalSvc := &corev1.Service{}
+	if err := r.APIReader.Get(ctx, client.ObjectKey{Name: externalName, Namespace: mcpServer.Namespace}, externalSvc); err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("referenced Service %s not found", externalName)
+		}
+		return err
+	}
+
+	// Guard 4: UID + resourceVersion deletion preconditions so a Service that was
+	// replaced between the read above and the delete is not removed.
+	preconditions := client.Preconditions{
+		UID:             &managedSvc.UID,
+		ResourceVersion: &managedSvc.ResourceVersion,
+	}
+	if err := r.Delete(ctx, managedSvc, preconditions); err != nil {
+		if apierrors.IsNotFound(err) || apierrors.IsConflict(err) {
+			// Already deleted or replaced concurrently; nothing further to do.
+			return nil
+		}
+		logger.Error(err, "Failed to delete stale managed Service after serviceRef was added",
+			keyName, managedSvc.Name)
+		return err
+	}
+
+	logger.Info("Deleted stale operator-managed Service after serviceRef was added",
+		keyName, managedSvc.Name, keyNamespace, managedSvc.Namespace)
+	return nil
 }
