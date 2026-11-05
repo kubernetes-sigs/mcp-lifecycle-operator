@@ -1,0 +1,6 @@
+nav:
+  - index.md
+  - Quickstart: quickstart.md
+  - Gateway Integration: gateway.md
+  - Kuadrant MCP Gateway Architecture: kuadrant-architecture.md
+  - Use an Existing Workload or Service: byo.md

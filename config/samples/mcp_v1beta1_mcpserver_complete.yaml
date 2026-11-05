@@ -1,4 +1,5 @@
-# Complete MCPServer example showing all available fields.
+# Complete MCPServer example showing managed-mode configuration.
+# For existing workloads or Services, see examples/byo/.
 # Most fields are optional - see the API reference for details:
 # https://mcp-lifecycle-operator.sigs.k8s.io/reference/
 apiVersion: mcp.x-k8s.io/v1beta1

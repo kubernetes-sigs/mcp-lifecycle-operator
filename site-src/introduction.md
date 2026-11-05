@@ -10,6 +10,8 @@ The MCP Lifecycle Operator is a Kubernetes operator that automates the deploymen
 
 The core resource provided by this operator is `MCPServer`. It represents a deployed MCP server instance with the following key capabilities:
 
+In the default **managed mode** described below, the operator creates and maintains the Deployment, Service, and NetworkPolicy. If another tool or team manages a workload or Service, you can [reference those existing resources](guides/byo.md).
+
 #### Source Configuration
 
 Define where your MCP server container image comes from:
@@ -44,7 +46,7 @@ Configure the server's networking, arguments, environment variables, and storage
 ```yaml
 spec:
   config:
-    port: 8080              # Server port (required)
+    port: 8080              # Container port (required in managed mode)
     path: /mcp              # HTTP path (default: /mcp)
     arguments:              # Command-line arguments
       - --config
@@ -124,6 +126,8 @@ spec:
 
 The `stateless` field indicates whether the MCP server maintains session state. When `true`, the generated Service uses `SessionAffinity: None`, allowing requests to be freely load-balanced across replicas. When `false` or unset (the default), the Service uses `SessionAffinity: ClientIP` so a given client's requests are routed to the same pod.
 
+When using `serviceRef`, configure session affinity on that Service instead; `mcp.stateless` must be omitted.
+
 ## Status and Discovery
 
 The operator automatically manages the server lifecycle and provides status information:
@@ -148,9 +152,11 @@ status:
 
 `Accepted` indicates valid configuration, `Available` indicates a ready workload, and `Verified` indicates that the MCP endpoint passed verification. Inspect each condition's reason and message for details.
 
-The `address.url` field provides the cluster-internal URL that other workloads can use to connect to the MCP server.
+The `address.url` field provides the verified Service URL, or the external gateway URL when gateway integration supplies one. For referenced workloads, status uses `workloadName` and `workloadSummary` instead of `deploymentName`; see [availability and discovery](guides/byo.md#availability-and-discovery).
 
 ## Architecture
+
+The following diagram shows the default managed mode:
 
 ```mermaid
 graph TB
@@ -168,7 +174,7 @@ graph TB
     Operator -->|Updates| Status[Status with Address]
 ```
 
-The operator watches for `MCPServer` resources and automatically:
+In managed mode, the operator watches for `MCPServer` resources and automatically:
 
 1. Creates a Deployment to run the MCP server containers
 2. Creates a Service for network access
@@ -178,11 +184,13 @@ The operator watches for `MCPServer` resources and automatically:
 6. Reports status and connection information
 7. Cleans up resources on deletion
 
+With `workloadRef`, the operator observes the existing workload instead of creating a Deployment or NetworkPolicy. With `serviceRef`, it uses the existing Service instead of managing one. Referenced resources remain under their existing management and are not deleted with the MCPServer.
+
 ## Next Steps
 
 - **Get Started**: Follow the [Quickstart Guide](guides/quickstart.md)
 - **Examples**: Check out the [examples directory](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples)
 - **API Reference**: See the [API documentation](reference/index.md) for all available fields
-- **Complete Example**: See the [complete MCPServer sample](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/blob/main/config/samples/mcp_v1beta1_mcpserver_complete.yaml) for a YAML with every field
+- **Managed Example**: See the [complete managed MCPServer sample](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/blob/main/config/samples/mcp_v1beta1_mcpserver_complete.yaml)
 - **Contributing**: Read the [Contributing Guide](contributing/index.md) to get involved
 - **Community**: Join [SIG Apps](https://github.com/kubernetes/community/blob/main/sig-apps/README.md) meetings and discussions

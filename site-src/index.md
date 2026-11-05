@@ -46,6 +46,8 @@ kubectl apply -f https://github.com/kubernetes-sigs/mcp-lifecycle-operator/relea
 
 Learn more about the operator in the [Introduction](introduction.md), or jump straight to the [Getting Started Guide](guides/quickstart.md) to deploy your first MCP server. You can also explore the [examples](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples).
 
+The quickstart uses the default managed mode, where the operator creates the workload and Service. To connect resources managed elsewhere, see [Use an Existing Workload or Service](guides/byo.md).
+
 ## Community
 
 This project is part of [Kubernetes SIG Apps](https://github.com/kubernetes/community/blob/main/sig-apps/README.md).

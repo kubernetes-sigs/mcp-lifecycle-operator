@@ -7,6 +7,7 @@ Welcome to the MCP Lifecycle Operator guides! These guides will help you get sta
 - **[Quickstart](quickstart.md)** - Deploy your first MCP server in minutes
 - **[Gateway Integration](gateway.md)** - Expose MCP servers through external gateways
 - **[Kuadrant MCP Gateway Architecture](kuadrant-architecture.md)** - Understand setup, resource management, and request routing
+- **[Use an Existing Workload or Service](byo.md)** - Reference resources managed outside the operator
 
 ## Examples
 
@@ -15,6 +16,7 @@ Check out the [examples directory](https://github.com/kubernetes-sigs/mcp-lifecy
 - **[Kubernetes MCP Server](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples/kubernetes-mcp-server)** - Deploy the Kubernetes MCP Server with ConfigMap configurations
 - **[Everything MCP Server](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples/everything-mcp-server)** - Deploy the Everything MCP Server
 - **[Gateway Integration](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples/gateway-integration)** - Expose an MCP server through a gateway
+- **[Existing Workload and Service](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples/byo)** - Observe existing resources and verify their MCP endpoint
 
 ## Additional Resources
 

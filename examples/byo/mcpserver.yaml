@@ -1,0 +1,51 @@
+# These workload and Service resources stand in for resources managed outside
+# the operator. MCPServer references them without taking ownership.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: existing-mcp
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: existing-mcp
+  template:
+    metadata:
+      labels:
+        app: existing-mcp
+    spec:
+      containers:
+        - name: server
+          image: quay.io/containers/kubernetes_mcp_server:latest
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: existing-mcp
+  namespace: default
+spec:
+  selector:
+    app: existing-mcp
+  ports:
+    - name: mcp
+      port: 80
+      targetPort: http
+---
+apiVersion: mcp.x-k8s.io/v1beta1
+kind: MCPServer
+metadata:
+  name: byo-mcp-server
+  namespace: default
+spec:
+  workloadRef:
+    kind: Deployment
+    name: existing-mcp
+  serviceRef:
+    name: existing-mcp
