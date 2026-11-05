@@ -17,9 +17,10 @@ limitations under the License.
 package controller
 
 import (
+	"testing"
+
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"testing"
 )
 
 func TestMCPServiceURLUsesConfiguredClusterDomain(t *testing.T) {
