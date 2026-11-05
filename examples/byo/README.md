@@ -24,7 +24,7 @@ Deleting the MCPServer leaves the referenced Deployment and Service intact:
 
 ```bash
 kubectl delete mcpserver byo-mcp-server -n default
-kubectl get deployment,service existing-mcp -n default
+kubectl get deployment/existing-mcp service/existing-mcp -n default
 ```
 
 Remove the resources created by this example when finished:
