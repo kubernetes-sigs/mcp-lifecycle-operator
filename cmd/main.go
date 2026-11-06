@@ -164,7 +164,7 @@ func main() {
 			"Falls back to KUADRANT_ALLOWED_EXTENSION_NAMESPACES env var if not set. "+
 			"Empty means no restriction (any namespace named in a binding's ConfigMap is trusted).")
 	flag.StringVar(&clusterDomain, "cluster-domain", controller.DefaultClusterDomain,
-		"Kubernetes DNS cluster domain used for MCP Service handshakes and status addresses.")
+		"Kubernetes DNS cluster domain used for MCP Service handshakes and status addresses; must be a DNS subdomain.")
 
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
@@ -173,6 +173,12 @@ func main() {
 	atomicLevel := extractAtomicLevel(&opts)
 	opts.Level = &atomicLevel
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	clusterDomain, err := parseClusterDomain(clusterDomain)
+	if err != nil {
+		setupLog.Error(err, "invalid --cluster-domain value")
+		os.Exit(1)
+	}
 
 	defaultPosture, err := controller.ParseDefaultPosture(networkPolicyDefaultPosture)
 	if err != nil {

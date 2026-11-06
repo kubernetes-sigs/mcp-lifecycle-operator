@@ -96,6 +96,8 @@ The operator uses `cluster.local` by default when constructing the in-cluster MC
 --cluster-domain=cozy.local
 ```
 
+The value must be a DNS subdomain, without a URL scheme, credentials, port, path, query, or fragment. The manager rejects invalid values at startup before connecting to Kubernetes. Surrounding whitespace, letter case, and a single trailing DNS root dot are normalized; an empty value uses `cluster.local`.
+
 The same value is used for handshake verification and for the published `status.address.url` when no gateway address overrides it. If a registered gateway supplies an address, that gateway address is published instead. Configure it on the manager Deployment before creating MCPServers on a custom-domain cluster.
 
 In production, pin these to your organization's crypto policy (or let a platform TLS profile such as an OpenShift `TLSSecurityProfile` supply them) instead of relying on Go defaults. The outbound client path enforces a TLS 1.2 floor that a permissive profile cannot lower.
