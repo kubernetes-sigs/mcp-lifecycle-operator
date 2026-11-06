@@ -214,7 +214,7 @@ func runRemoval(t *testing.T, testenv env.Environment, prov Provider) {
 func runHTTPReachability(t *testing.T, testenv env.Environment, prov Provider) {
 	const configMapName = "gw-reachability-config"
 
-	var gwAddr string
+	var gwAddr, podName string
 
 	feature := features.New("Gateway conformance: HTTP reachability").
 		WithLabel(category.Label, category.Networking).
@@ -226,6 +226,7 @@ func runHTTPReachability(t *testing.T, testenv env.Environment, prov Provider) {
 			gwAddr = prov.GatewayAddress(ctx, t, cfg)
 			configData := prov.ConfigData()
 			f.CreateGatewayConfigMap(ctx, t, cfg, configMapName, ns, configData)
+			createBackendPodReader(ctx, t, cfg.Client().Resources(), ns)
 			ctx = f.SetupMCPServer(ctx, t, cfg, "conformance-http", true,
 				f.WithGateway(prov.Name(), configMapName),
 				f.WithPath("/mcp"),
@@ -235,9 +236,10 @@ func runHTTPReachability(t *testing.T, testenv env.Environment, prov Provider) {
 			r := cfg.Client().Resources()
 			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
 			f.WaitForMCPServerCondition(ctx, t, r, server, "GatewayRegistered", metav1.ConditionTrue)
+			podName = backendPodName(ctx, t, cfg.Client().Resources(ns), map[string]string{managedPodLabel: server.Name})
 			return ctx
 		}).
-		Assess("MCP handshake through gateway", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("backend tool call succeeds through gateway", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 
@@ -253,7 +255,7 @@ func runHTTPReachability(t *testing.T, testenv env.Environment, prov Provider) {
 				t.Fatalf("failed to parse status.address.url %q: %v", server.Status.Address.URL, err)
 			}
 
-			f.AssertMCPReachable(ctx, t, gwAddr, parsed.Hostname(), parsed.Path)
+			assertBackendPodListed(ctx, t, gwAddr, parsed.Hostname(), parsed.Path, server.Namespace, podName)
 
 			return ctx
 		}).
@@ -268,7 +270,7 @@ func runHTTPReachability(t *testing.T, testenv env.Environment, prov Provider) {
 func runHostnameSeparation(t *testing.T, testenv env.Environment, prov Provider) {
 	const configMapName = "gw-hostname-sep-config"
 
-	var gwAddr string
+	var gwAddr, podName string
 
 	feature := features.New("Gateway conformance: hostname separation").
 		WithLabel(category.Label, category.Networking).
@@ -282,6 +284,7 @@ func runHostnameSeparation(t *testing.T, testenv env.Environment, prov Provider)
 			configData["route-hostname"] = "internal.mcp.local"
 			configData["public-hostname"] = "public.example.com"
 			f.CreateGatewayConfigMap(ctx, t, cfg, configMapName, ns, configData)
+			createBackendPodReader(ctx, t, cfg.Client().Resources(), ns)
 			ctx = f.SetupMCPServer(ctx, t, cfg, "hostname-sep", true,
 				f.WithGateway(prov.Name(), configMapName),
 				f.WithPath("/mcp"),
@@ -290,6 +293,7 @@ func runHostnameSeparation(t *testing.T, testenv env.Environment, prov Provider)
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 			f.WaitForMCPServerGatewayAddress(ctx, t, r, server)
+			podName = backendPodName(ctx, t, cfg.Client().Resources(ns), map[string]string{managedPodLabel: server.Name})
 			return ctx
 		}).
 		Assess("status URL does not use route-hostname", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -326,8 +330,9 @@ func runHostnameSeparation(t *testing.T, testenv env.Environment, prov Provider)
 			t.Log("HTTPRoute correctly uses route-hostname: internal.mcp.local")
 			return ctx
 		}).
-		Assess("MCP server is reachable via route hostname", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			f.AssertMCPReachable(ctx, t, gwAddr, "internal.mcp.local", "/mcp")
+		Assess("backend tool call succeeds via route hostname", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			server := f.ServerFromContext(ctx)
+			assertBackendPodListed(ctx, t, gwAddr, "internal.mcp.local", "/mcp", server.Namespace, podName)
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
