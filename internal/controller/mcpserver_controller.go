@@ -58,6 +58,10 @@ const (
 	// kubebuilder default on ServerConfig.Path.
 	DefaultMCPPath = "/mcp"
 
+	// DefaultClusterDomain is the Kubernetes cluster DNS domain used when no
+	// explicit --cluster-domain value is configured.
+	DefaultClusterDomain = "cluster.local"
+
 	// mcpClientName is the client name sent during MCP handshake.
 	mcpClientName = "mcp-lifecycle-operator"
 )
@@ -197,6 +201,9 @@ type MCPServerReconciler struct {
 	Recorder  events.EventRecorder
 	MCPDialer func(ctx context.Context, url string, transport *http.Transport) (*mcpv1beta1.MCPServerInfo, error) // nil = use real MCP handshake
 	APIReader client.Reader
+	// ClusterDomain is the DNS domain used for in-cluster Service names. When
+	// empty, DefaultClusterDomain is used for backwards compatibility.
+	ClusterDomain string
 	// TLSEnvVars holds TLS-related environment variables to propagate to every
 	// MCP server container. Populated at startup when PROPAGATE_TLS_ENV_VARS is set.
 	TLSEnvVars []corev1.EnvVar

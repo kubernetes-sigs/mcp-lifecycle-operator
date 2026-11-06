@@ -25,7 +25,7 @@ package v1beta1
 type MCPServerAddressApplyConfiguration struct {
 	// URL is the address of the MCP server.
 	// When no gateway is configured, this is the cluster-internal service address
-	// (e.g. <scheme>://<servicename>.<namespace>.svc.cluster.local:<port>/<path>).
+	// (e.g. <scheme>://<servicename>.<namespace>.svc.<cluster-domain>:<port>/<path>).
 	// The scheme is "https" when TLS is enabled, "http" otherwise.
 	// When a gateway provider is active, this is the external gateway address.
 	URL *string `json:"url,omitempty"`

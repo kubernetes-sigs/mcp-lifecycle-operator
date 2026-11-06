@@ -122,10 +122,10 @@ kubectl get pods -l mcp-server=test-server
 Expected output from `kubectl get mcpservers`:
 ```
 NAME          ACCEPTED   AVAILABLE   VERIFIED   WORKLOAD                                          PORT   ADDRESS                                               AGE
-test-server   True       True        True       quay.io/containers/kubernetes_mcp_server:latest    8080   http://test-server.default.svc.cluster.local:8080/mcp   1m
+test-server   True       True        True       quay.io/containers/kubernetes_mcp_server:latest    8080   http://test-server.default.svc.<cluster-domain>:8080/mcp   1m
 ```
 
-The `ADDRESS` column shows the Service URL that other workloads can use to connect to the MCP server. When gateway integration supplies an external URL, it appears here instead.
+The `ADDRESS` column shows the Service URL that other workloads can use to connect to the MCP server. These examples use Kubernetes' default `cluster.local` DNS domain; start the manager with `--cluster-domain=<your-domain>` when the cluster uses a different domain. When gateway integration supplies an external URL, it appears here instead.
 
 The status includes conditions and the service address for easy discovery:
 
@@ -134,7 +134,7 @@ status:
   deploymentName: test-server
   serviceName: test-server
   address:
-    url: http://test-server.default.svc.cluster.local:8080/mcp
+    url: http://test-server.default.svc.<cluster-domain>:8080/mcp
   conditions:
     - type: Accepted
       status: "True"
