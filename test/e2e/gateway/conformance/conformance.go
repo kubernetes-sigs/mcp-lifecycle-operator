@@ -32,6 +32,7 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scope"
@@ -214,7 +215,7 @@ func runRemoval(t *testing.T, testenv env.Environment, prov Provider) {
 func runHTTPReachability(t *testing.T, testenv env.Environment, prov Provider) {
 	const configMapName = "gw-reachability-config"
 
-	var gwAddr, podName string
+	var gwAddr string
 
 	feature := features.New("Gateway conformance: HTTP reachability").
 		WithLabel(category.Label, category.Networking).
@@ -236,7 +237,6 @@ func runHTTPReachability(t *testing.T, testenv env.Environment, prov Provider) {
 			r := cfg.Client().Resources()
 			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
 			f.WaitForMCPServerCondition(ctx, t, r, server, "GatewayRegistered", metav1.ConditionTrue)
-			podName = backendPodName(ctx, t, cfg.Client().Resources(ns), map[string]string{managedPodLabel: server.Name})
 			return ctx
 		}).
 		Assess("backend tool call succeeds through gateway", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -255,7 +255,8 @@ func runHTTPReachability(t *testing.T, testenv env.Environment, prov Provider) {
 				t.Fatalf("failed to parse status.address.url %q: %v", server.Status.Address.URL, err)
 			}
 
-			assertBackendPodListed(ctx, t, gwAddr, parsed.Hostname(), parsed.Path, server.Namespace, podName)
+			assertBackendPodListed(ctx, t, gwAddr, parsed.Hostname(), parsed.Path, server.Namespace, cfg.Client().Resources(),
+				map[string]string{mcpcontroller.LabelKeyMCPServer: server.Name})
 
 			return ctx
 		}).
@@ -270,7 +271,7 @@ func runHTTPReachability(t *testing.T, testenv env.Environment, prov Provider) {
 func runHostnameSeparation(t *testing.T, testenv env.Environment, prov Provider) {
 	const configMapName = "gw-hostname-sep-config"
 
-	var gwAddr, podName string
+	var gwAddr string
 
 	feature := features.New("Gateway conformance: hostname separation").
 		WithLabel(category.Label, category.Networking).
@@ -293,7 +294,6 @@ func runHostnameSeparation(t *testing.T, testenv env.Environment, prov Provider)
 			server := f.ServerFromContext(ctx)
 			r := cfg.Client().Resources()
 			f.WaitForMCPServerGatewayAddress(ctx, t, r, server)
-			podName = backendPodName(ctx, t, cfg.Client().Resources(ns), map[string]string{managedPodLabel: server.Name})
 			return ctx
 		}).
 		Assess("status URL does not use route-hostname", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -332,7 +332,8 @@ func runHostnameSeparation(t *testing.T, testenv env.Environment, prov Provider)
 		}).
 		Assess("backend tool call succeeds via route hostname", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			server := f.ServerFromContext(ctx)
-			assertBackendPodListed(ctx, t, gwAddr, "internal.mcp.local", "/mcp", server.Namespace, podName)
+			assertBackendPodListed(ctx, t, gwAddr, "internal.mcp.local", "/mcp", server.Namespace, cfg.Client().Resources(),
+				map[string]string{mcpcontroller.LabelKeyMCPServer: server.Name})
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {

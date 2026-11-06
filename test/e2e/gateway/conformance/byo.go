@@ -42,6 +42,7 @@ import (
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scenario"
@@ -58,7 +59,8 @@ type byoConfiguration struct {
 func runBYO(t *testing.T, testenv env.Environment, prov Provider, tc byoConfiguration) {
 	const serverName = "conformance-byo"
 	const configName = "gw-byo-config"
-	var gatewayAddress, serviceName, podName string
+	var gatewayAddress, serviceName string
+	var selector map[string]string
 	var servicePort int32
 	var deployment *appsv1.Deployment
 	var service *corev1.Service
@@ -80,7 +82,7 @@ func runBYO(t *testing.T, testenv env.Environment, prov Provider, tc byoConfigur
 			createBackendPodReader(ctx, t, r, ns)
 
 			serviceName, servicePort = serverName, 8080
-			selector := map[string]string{managedPodLabel: serverName}
+			selector = map[string]string{mcpcontroller.LabelKeyMCPServer: serverName}
 			opts := []f.MCPServerOption{f.WithGateway(prov.Name(), configName), f.WithPath("/mcp")}
 			if tc.externalWorkload {
 				deployment = createBYODeployment(ctx, t, r, ns)
@@ -102,7 +104,6 @@ func runBYO(t *testing.T, testenv env.Environment, prov Provider, tc byoConfigur
 			f.WaitForMCPServerReconciledAndReady(ctx, t, r, server)
 			f.WaitForMCPServerGatewayAddress(ctx, t, r, server)
 			f.WaitForEndpointsReady(ctx, t, cfg, ns, serviceName)
-			podName = backendPodName(ctx, t, cfg.Client().Resources(ns), selector)
 			return ctx
 		}).
 		Assess("binding is registered and route targets the resolved Service port", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
@@ -128,7 +129,7 @@ func runBYO(t *testing.T, testenv env.Environment, prov Provider, tc byoConfigur
 			if err != nil {
 				t.Fatalf("invalid gateway URL: %v", err)
 			}
-			assertBackendPodListed(ctx, t, gatewayAddress, address.Hostname(), address.Path, server.Namespace, podName)
+			assertBackendPodListed(ctx, t, gatewayAddress, address.Hostname(), address.Path, server.Namespace, cfg.Client().Resources(), selector)
 			return ctx
 		}).
 		Assess("referenced resources survive MCPServer deletion", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
