@@ -1,0 +1,31 @@
+{{- if .Values.rbacHelpers.enable }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ include "mcp-lifecycle-operator.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: {{ include "mcp-lifecycle-operator.resourceName" (dict "suffix" "mcpserver-editor-role" "context" $) }}
+rules:
+- apiGroups:
+  - mcp.x-k8s.io
+  resources:
+  - mcpservers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - mcp.x-k8s.io
+  resources:
+  - mcpservers/status
+  verbs:
+  - get
+{{- end }}

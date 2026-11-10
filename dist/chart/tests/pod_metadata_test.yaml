@@ -1,0 +1,60 @@
+suite: test pod metadata
+templates:
+  - manager/manager.yaml
+tests:
+  - it: should have default pod annotations
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["kubectl.kubernetes.io/default-container"]
+          value: manager
+
+  - it: should merge custom pod annotations
+    set:
+      manager.podAnnotations:
+        custom.annotation/one: "value1"
+        custom.annotation/two: "value2"
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["kubectl.kubernetes.io/default-container"]
+          value: manager
+      - equal:
+          path: spec.template.metadata.annotations["custom.annotation/one"]
+          value: "value1"
+      - equal:
+          path: spec.template.metadata.annotations["custom.annotation/two"]
+          value: "value2"
+
+  - it: should have default pod labels
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/name"]
+          value: mcp-lifecycle-operator
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/instance"]
+          value: RELEASE-NAME
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/managed-by"]
+          value: Helm
+      - equal:
+          path: spec.template.metadata.labels["control-plane"]
+          value: controller-manager
+
+  - it: should merge custom pod labels
+    set:
+      manager.podLabels:
+        custom.label/one: "value1"
+        custom.label/two: "value2"
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/name"]
+          value: mcp-lifecycle-operator
+      - equal:
+          path: spec.template.metadata.labels["control-plane"]
+          value: controller-manager
+      - equal:
+          path: spec.template.metadata.labels["custom.label/one"]
+          value: "value1"
+      - equal:
+          path: spec.template.metadata.labels["custom.label/two"]
+          value: "value2"
+

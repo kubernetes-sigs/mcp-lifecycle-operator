@@ -1,0 +1,82 @@
+suite: test default values
+templates:
+  - manager/manager.yaml
+  - rbac/controller-manager.yaml
+  - rbac/manager-role.yaml
+  - rbac/manager-rolebinding.yaml
+  - rbac/leader-election-role.yaml
+  - rbac/leader-election-rolebinding.yaml
+  - metrics/controller-manager-metrics-service.yaml
+  - crd/mcpservers.mcp.x-k8s.io.yaml
+tests:
+  - it: should render deployment with default values
+    template: manager/manager.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Deployment
+
+  - it: should render service account with default values
+    template: rbac/controller-manager.yaml
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-mcp-lifecycle-operator-controller-manager
+
+  - it: should render manager ClusterRole with default values
+    template: rbac/manager-role.yaml
+    asserts:
+      - isKind:
+          of: ClusterRole
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-mcp-lifecycle-operator-manager-role
+
+  - it: should render manager ClusterRoleBinding with default values
+    template: rbac/manager-rolebinding.yaml
+    asserts:
+      - isKind:
+          of: ClusterRoleBinding
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-mcp-lifecycle-operator-manager-rolebinding
+
+  - it: should render leader election Role with default values
+    template: rbac/leader-election-role.yaml
+    asserts:
+      - isKind:
+          of: Role
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-mcp-lifecycle-operator-leader-election-role
+
+  - it: should render leader election RoleBinding with default values
+    template: rbac/leader-election-rolebinding.yaml
+    asserts:
+      - isKind:
+          of: RoleBinding
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-mcp-lifecycle-operator-leader-election-rolebinding
+
+  - it: should render metrics service with default values
+    template: metrics/controller-manager-metrics-service.yaml
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-mcp-lifecycle-o-controller-manager-metrics-service
+
+  - it: should render CRD with default values
+    template: crd/mcpservers.mcp.x-k8s.io.yaml
+    asserts:
+      - isKind:
+          of: CustomResourceDefinition
+      - equal:
+          path: metadata.name
+          value: mcpservers.mcp.x-k8s.io
+
