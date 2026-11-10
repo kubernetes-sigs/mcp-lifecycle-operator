@@ -20,6 +20,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -300,4 +301,219 @@ func TestNetworkPolicyEgressRestrictionApplied(t *testing.T) {
 		Feature()
 
 	testenv.Test(t, feature)
+}
+
+// TestNetworkPolicyEgressEnforcement proves that the CNI actually enforces an
+// egress NetworkPolicy - it drops traffic to destinations the policy excludes
+// and permits traffic to destinations it admits - using two real
+// operator-managed MCP servers: a subject and a target. Unlike
+// TestNetworkPolicyEgressRestrictionApplied above (which only confirms the
+// generated policy object and that inbound verification still works), this test
+// observes egress enforcement directly, from inside the subject pod.
+//
+// The subject's mcp-server image is a minimal binary with no shell, so the probe
+// runs in a busybox ephemeral container injected into the subject pod (sharing
+// its network namespace). The probe is a TCP reachability check with a short
+// connect timeout against the target's real listening Service, so "allowed"
+// genuinely means the connection was established and "blocked" surfaces as a
+// timeout (non-zero exit), not a connection refused. ExecProbeInPod returns the
+// command exit code separately from harness/transport errors, so the assertions
+// distinguish a NetworkPolicy drop (err == nil, non-zero exit) from a broken
+// probe (err != nil) rather than treating any failure as "blocked".
+//
+// Posture confound: under the restricted default posture the target's own
+// ingress is deny-by-default and would block the probe regardless of the
+// subject's egress. The target is therefore given an explicit ingressFrom that
+// admits the subject's namespace, so the probe is valid under BOTH the open and
+// restricted postures and the subject's egress remains the sole variable. (The
+// operator's own verification probe to the target is then blocked, so the target
+// only reaches Available, not Verified - which is all this test needs: a running,
+// reachable listener.)
+//
+// Like TestNetworkPolicyIngressRestrictionEnforced, this relies on the e2e CNI
+// (kindnet) preserving pod/namespace identity for east-west traffic with no SNAT
+// rewrite, so the destination's namespace label is what the egress rule matches.
+func TestNetworkPolicyEgressEnforcement(t *testing.T) {
+	t.Parallel()
+
+	tcp := corev1.ProtocolTCP
+	// The operator-managed Service exposes the mcp-server on its configured port,
+	// which defaults to 8080 (see NewMCPServer). Probe that real port so exit 0
+	// means a listener accepted the connection.
+	const serverPort = 8080
+	port8080 := intstr.FromInt32(serverPort)
+
+	// A namespace label that no namespace carries, used for the blocked case so
+	// the subject's egress rule selects no destination and the target becomes
+	// unreachable.
+	const unreachableNamespace = "no-such-namespace-egress-enforcement"
+
+	// Shared across the feature's Setup/Assess/Teardown closures. The target
+	// lives in the per-test managed namespace (via SetupMCPServer, so it is in
+	// context and torn down by TeardownMCPServer); the subject lives in a second
+	// namespace created here, mirroring TestSamePortDifferentNamespaces.
+	var (
+		subject   *mcpv1beta1.MCPServer
+		subjectNs string
+	)
+
+	feature := features.New("Egress NetworkPolicy drops disallowed and permits allowed traffic between managed servers").
+		WithLabel(category.Label, category.Networking).
+		WithLabel(speed.Label, speed.Slow).
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			r := cfg.Client().Resources()
+
+			// The subject's namespace must exist before the target is created,
+			// because the target's ingressFrom selects it by name.
+			subjectNs = envconf.RandomName("e2e-egress-subject", 24)
+			subjectNsObj := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: subjectNs}}
+			if err := r.Create(ctx, subjectNsObj); err != nil {
+				t.Fatalf("failed to create subject namespace: %v", err)
+			}
+			t.Logf("created subject namespace %s", subjectNs)
+
+			// Target in the managed namespace. Its ingress admits only the
+			// subject namespace so the probe is valid under both postures.
+			ctx = f.SetupMCPServer(ctx, t, cfg, "egress-target", true,
+				f.WithNetwork(&mcpv1beta1.NetworkConfig{
+					IngressFrom: []networkingv1.NetworkPolicyPeer{
+						{
+							NamespaceSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{corev1.LabelMetadataName: subjectNs},
+							},
+						},
+					},
+				}),
+			)
+			target := f.ServerFromContext(ctx)
+
+			// A real listener with ready endpoints, so a successful probe proves
+			// connectivity rather than racing pod startup.
+			f.WaitForEndpointsReady(ctx, t, cfg, target.Namespace, target.Name)
+
+			// Subject in its own namespace, egress allowed to the target
+			// namespace on the server port (plus the controller's automatic DNS
+			// rule, added because egressTo is set).
+			subject = f.NewMCPServer("egress-subject", subjectNs,
+				f.WithNetwork(&mcpv1beta1.NetworkConfig{
+					EgressTo: []networkingv1.NetworkPolicyPeer{
+						{
+							NamespaceSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{corev1.LabelMetadataName: target.Namespace},
+							},
+						},
+					},
+					EgressPorts: []networkingv1.NetworkPolicyPort{
+						{Protocol: &tcp, Port: &port8080},
+					},
+				}),
+			)
+			if err := r.Create(ctx, subject); err != nil {
+				t.Fatalf("failed to create subject MCPServer: %v", err)
+			}
+			f.WaitForMCPServerCondition(ctx, t, r, subject, mcpcontroller.ConditionTypeAvailable, metav1.ConditionTrue)
+			t.Logf("subject %s/%s is Available", subject.Namespace, subject.Name)
+
+			return ctx
+		}).
+		Assess("allowed egress reaches the target Service", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			target := f.ServerFromContext(ctx)
+			pod := f.FindPodByLabel(ctx, t, cfg, subjectNs, fmt.Sprintf("mcp-server=%s", subject.Name))
+
+			host := fmt.Sprintf("%s.%s.svc", target.Name, target.Namespace)
+			// Retry until reachable: tolerate the brief window before the
+			// subject's egress/DNS NetworkPolicy rules are programmed in the
+			// dataplane, plus transient slowness on a loaded cluster.
+			probeEgressUntil(ctx, t, cfg, subjectNs, pod.Name, host, serverPort, true)
+			t.Logf("allowed egress confirmed: nc to %s:%d connected", host, serverPort)
+			return ctx
+		}).
+		Assess("disallowed egress is dropped by the CNI", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			target := f.ServerFromContext(ctx)
+			r := cfg.Client().Resources()
+
+			// Re-point the subject's egress at a namespace that does not exist, so
+			// the target is no longer an admitted destination. Only the egress
+			// peer changes; the DNS rule and the target itself are untouched, so a
+			// drop is attributable solely to the egress policy.
+			f.UpdateWithRetry(ctx, t, r, subject, func(s *mcpv1beta1.MCPServer) {
+				s.Spec.Network.EgressTo = []networkingv1.NetworkPolicyPeer{
+					{
+						NamespaceSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{corev1.LabelMetadataName: unreachableNamespace},
+						},
+					},
+				}
+			})
+			// Wait for the controller to reconcile the new generation, i.e. to
+			// have rewritten the NetworkPolicy to the narrowed egress rule.
+			f.WaitForMCPServerReconciled(ctx, t, r, subject, 3*time.Minute)
+
+			pod := f.FindPodByLabel(ctx, t, cfg, subjectNs, fmt.Sprintf("mcp-server=%s", subject.Name))
+			host := fmt.Sprintf("%s.%s.svc", target.Name, target.Namespace)
+			// Retry until dropped: the controller has written the narrowed
+			// NetworkPolicy (observedGeneration is current), but the CNI may take
+			// a moment to reprogram the dataplane, during which the previous allow
+			// rule can still admit the connection.
+			probeEgressUntil(ctx, t, cfg, subjectNs, pod.Name, host, serverPort, false)
+			t.Logf("egress drop confirmed: nc to %s:%d no longer connects", host, serverPort)
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			r := cfg.Client().Resources()
+			if subject != nil {
+				if err := r.Delete(ctx, subject); err != nil {
+					t.Logf("failed to delete subject MCPServer: %v", err)
+				}
+			}
+			if subjectNs != "" {
+				nsObj := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: subjectNs}}
+				if err := r.Delete(ctx, nsObj); err != nil {
+					t.Logf("failed to delete subject namespace %s: %v", subjectNs, err)
+				}
+			}
+			// Target teardown (it is the server stored in context).
+			return f.TeardownMCPServer(ctx, t, cfg)
+		}).
+		Feature()
+
+	testenv.Test(t, feature)
+}
+
+// probeEgressUntil repeatedly runs a busybox TCP reachability probe from podName
+// to host:port until the observed reachability matches want, or a deadline
+// elapses. It exists because egress enforcement is observed against the live
+// dataplane: there is a brief window after a NetworkPolicy is written (or first
+// created) during which the CNI has not yet (re)programmed its rules, and a
+// loaded cluster can make a single connect legitimately slow. Probing once would
+// turn that timing into a flake, so this polls instead.
+//
+// A harness/transport error from ExecProbeInPod is never a policy result and
+// fails the test immediately. A persistent wrong reachability fails on timeout
+// with the last observed exit code, so a genuine enforcement regression is still
+// reported honestly rather than masked by the retry.
+//
+// Each attempt injects a fresh ephemeral container (see ExecProbeInPod); they
+// accumulate on the pod but are bounded by namespace teardown, and the expected
+// path matches want on the first attempt.
+func probeEgressUntil(ctx context.Context, t *testing.T, cfg *envconf.Config,
+	namespace, podName, host string, port int, want bool) {
+	t.Helper()
+	deadline := time.Now().Add(90 * time.Second)
+	for attempt := 1; ; attempt++ {
+		_, stderr, exitCode, err := f.ExecProbeInPod(ctx, t, cfg, namespace, podName,
+			[]string{"nc", "-z", "-w3", host, fmt.Sprintf("%d", port)})
+		if err != nil {
+			t.Fatalf("probe harness/transport failure (not a policy result): %v", err)
+		}
+		reachable := exitCode == 0
+		if reachable == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("probe to %s:%d: wanted reachable=%v but observed reachable=%v after %d attempts (last exit %d: %s)",
+				host, port, want, reachable, attempt, exitCode, stderr)
+		}
+		time.Sleep(3 * time.Second)
+	}
 }
