@@ -82,8 +82,8 @@ spec:
               provider:
                 description: |-
                   Provider selects the sandbox execution backend. It must match the name of
-                  a registered SandboxProvider. The MVP ships a single "pod" provider that
-                  runs each execution in a bare Kubernetes Pod.
+                  a registered SandboxProvider. The MVP ships a single "agentsandbox" provider
+                  that runs each execution in an isolated agent-sandbox Sandbox.
                 maxLength: 253
                 minLength: 1
                 type: string

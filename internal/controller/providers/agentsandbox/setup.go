@@ -25,6 +25,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	sandboxv1beta1 "sigs.k8s.io/agent-sandbox/api/v1beta1"
@@ -90,7 +91,7 @@ func (p *Provider) Setup(ctx context.Context, tc sandbox.ToolsetContext) error {
 	if _, err := controllerutil.CreateOrUpdate(ctx, p.controllerClient, tmpl, func() error {
 		tmpl.Labels = labels
 		tmpl.Spec = p.templateSpec(tc.Name, labels)
-		return nil
+		return p.setOwner(tc.Owner, tmpl)
 	}); err != nil {
 		return fmt.Errorf("agentsandbox provider: applying SandboxTemplate %s/%s: %w", tc.Namespace, name, err)
 	}
@@ -100,12 +101,23 @@ func (p *Provider) Setup(ctx context.Context, tc sandbox.ToolsetContext) error {
 		wp.Labels = labels
 		wp.Spec.Replicas = new(int32) // 0: no idle pods, cold-start per claim (MVP)
 		wp.Spec.TemplateRef = extv1beta1.SandboxTemplateRef{Name: name}
-		return nil
+		return p.setOwner(tc.Owner, wp)
 	}); err != nil {
 		return fmt.Errorf("agentsandbox provider: applying SandboxWarmPool %s/%s: %w", tc.Namespace, name, err)
 	}
 
 	return nil
+}
+
+// setOwner makes the toolset the controller owner of a backend resource so it is
+// garbage-collected when the toolset is deleted. Owner and resource are always in
+// the same namespace. A nil owner is tolerated (direct provider use in tests);
+// the controller always supplies one.
+func (p *Provider) setOwner(owner client.Object, obj client.Object) error {
+	if owner == nil {
+		return nil
+	}
+	return controllerutil.SetControllerReference(owner, obj, p.controllerClient.Scheme())
 }
 
 // Teardown removes the toolset's SandboxWarmPool and SandboxTemplate, tolerating

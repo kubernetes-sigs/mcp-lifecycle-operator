@@ -35,8 +35,8 @@ type MCPToolsetSpecApplyConfiguration struct {
 	// enables a multi-server sandbox.
 	Servers []string `json:"servers,omitempty"`
 	// Provider selects the sandbox execution backend. It must match the name of
-	// a registered SandboxProvider. The MVP ships a single "pod" provider that
-	// runs each execution in a bare Kubernetes Pod.
+	// a registered SandboxProvider. The MVP ships a single "agentsandbox" provider
+	// that runs each execution in an isolated agent-sandbox Sandbox.
 	Provider *string `json:"provider,omitempty"`
 	// Policy captures the isolation policy the provider must satisfy.
 	Policy *MCPToolsetPolicyApplyConfiguration `json:"policy,omitempty"`

@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -29,16 +30,20 @@ import (
 )
 
 // Typed error strings mirror the runner's taxonomy (FR-012). The dispatcher
-// produces BackendError/TimeoutError on the claim/await path; ScriptError only
-// ever originates inside the sandbox and reaches the caller unchanged.
+// produces TimeoutError/BackendError on the claim/await path and InvalidRequest
+// for a caller argument that can never succeed on retry; ScriptError only ever
+// originates inside the sandbox and reaches the caller unchanged.
 const (
 	errTypeTimeout = "TimeoutError"
 	errTypeBackend = "BackendError"
+	errTypeInvalid = "InvalidRequest"
 )
 
-// maxTimeout caps a caller-supplied timeout so one execution cannot hold a
-// sandbox indefinitely.
-const maxTimeout = 10 * time.Minute
+// maxTimeout caps any execution's time budget - caller-supplied or the toolset
+// default - so one execution cannot hold a sandbox indefinitely. It matches the
+// MCPToolset spec.timeoutSeconds maximum (3600s), so a validly configured default
+// is never silently truncated.
+const maxTimeout = 60 * time.Minute
 
 // Discovery (list_toolsets / describe_tool) dials each backend MCP server to read
 // its own tools/list. backendListTimeout bounds a single backend lookup so one
@@ -148,7 +153,9 @@ type describeToolOutput struct {
 // the single result, and Releases the sandbox regardless of outcome.
 func (d *dispatcher) run(ctx context.Context, in executeCodeInput) executeCodeOutput {
 	if in.Toolset != d.toolset {
-		return backendOutput("unknown toolset %q", in.Toolset)
+		// A wrong toolset name is a caller error, not a backend failure: retrying
+		// the same request can never succeed.
+		return invalidOutput("unknown toolset %q (this endpoint serves %q)", in.Toolset, d.toolset)
 	}
 
 	timeout := d.timeoutFor(in.Timeout)
@@ -193,13 +200,14 @@ func (d *dispatcher) run(ctx context.Context, in executeCodeInput) executeCodeOu
 	return out
 }
 
-// timeoutFor resolves the effective timeout: a positive caller value (capped at
-// maxTimeout) else the dispatcher default.
+// timeoutFor resolves the effective timeout: a positive caller value else the
+// dispatcher default, in both cases clamped to maxTimeout so no execution can
+// hold a sandbox beyond the hard ceiling.
 func (d *dispatcher) timeoutFor(seconds int) time.Duration {
-	if seconds <= 0 {
-		return d.defaultTimeout
+	t := d.defaultTimeout
+	if seconds > 0 {
+		t = time.Duration(seconds) * time.Second
 	}
-	t := time.Duration(seconds) * time.Second
 	if t > maxTimeout {
 		return maxTimeout
 	}
@@ -213,22 +221,32 @@ func (d *dispatcher) timeoutFor(seconds int) time.Duration {
 // MVP authorization is coarse: an in-cluster caller reaching this dispatcher is
 // permitted to use its toolset.
 func (d *dispatcher) listToolsets(ctx context.Context) listToolsetsOutput {
-	servers := make([]serverInfo, 0, len(d.endpoints))
-	for _, ep := range d.endpoints {
-		si := serverInfo{Name: ep.Server}
-		tools, err := d.backendTools(ctx, ep)
-		if err != nil {
-			// Degrade gracefully: list the server so the agent knows it exists,
-			// but surface why its catalog is unavailable.
-			si.Error = err.Error()
-		} else {
-			si.Tools = make([]toolInfo, 0, len(tools))
-			for _, t := range tools {
-				si.Tools = append(si.Tools, toolInfo{Name: t.Name, Description: t.Description})
+	// Dial the backends concurrently: the lookups are independent and each is
+	// already bounded by backendListTimeout, so total latency stays ~one lookup
+	// instead of scaling with the number of servers. Each goroutine writes its own
+	// slice index, preserving endpoint order without a shared-write race.
+	servers := make([]serverInfo, len(d.endpoints))
+	var wg sync.WaitGroup
+	for i, ep := range d.endpoints {
+		wg.Add(1)
+		go func(i int, ep sandbox.Endpoint) {
+			defer wg.Done()
+			si := serverInfo{Name: ep.Server}
+			tools, err := d.backendTools(ctx, ep)
+			if err != nil {
+				// Degrade gracefully: list the server so the agent knows it exists,
+				// but surface why its catalog is unavailable.
+				si.Error = err.Error()
+			} else {
+				si.Tools = make([]toolInfo, 0, len(tools))
+				for _, t := range tools {
+					si.Tools = append(si.Tools, toolInfo{Name: t.Name, Description: t.Description})
+				}
 			}
-		}
-		servers = append(servers, si)
+			servers[i] = si
+		}(i, ep)
 	}
+	wg.Wait()
 	return listToolsetsOutput{Toolsets: []toolsetInfo{{Name: d.toolset, Servers: servers}}}
 }
 
@@ -240,7 +258,9 @@ func (d *dispatcher) describeTool(ctx context.Context, in describeToolInput) des
 
 	ep, found := d.endpointFor(in.Server)
 	if !found {
-		out.Error = &toolError{Type: errTypeBackend, Message: fmt.Sprintf("unknown server %q in toolset %q", in.Server, d.toolset)}
+		// Caller named a server outside this toolset: a request error, not a
+		// backend failure.
+		out.Error = &toolError{Type: errTypeInvalid, Message: fmt.Sprintf("unknown server %q in toolset %q", in.Server, d.toolset)}
 		return out
 	}
 
@@ -256,7 +276,8 @@ func (d *dispatcher) describeTool(ctx context.Context, in describeToolInput) des
 			return out
 		}
 	}
-	out.Error = &toolError{Type: errTypeBackend, Message: fmt.Sprintf("tool %q not found on server %q", in.Tool, in.Server)}
+	// The server was reachable but has no such tool: a caller request error.
+	out.Error = &toolError{Type: errTypeInvalid, Message: fmt.Sprintf("tool %q not found on server %q", in.Tool, in.Server)}
 	return out
 }
 
@@ -351,6 +372,10 @@ func (d *dispatcher) register(s *mcp.Server) {
 
 func backendOutput(format string, a ...any) executeCodeOutput {
 	return executeCodeOutput{Error: &toolError{Type: errTypeBackend, Message: fmt.Sprintf(format, a...)}}
+}
+
+func invalidOutput(format string, a ...any) executeCodeOutput {
+	return executeCodeOutput{Error: &toolError{Type: errTypeInvalid, Message: fmt.Sprintf(format, a...)}}
 }
 
 func timeoutOutput(msg string) executeCodeOutput {
