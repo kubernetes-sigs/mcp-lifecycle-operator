@@ -28,10 +28,12 @@ type IsolationLevel string
 
 const (
 	// IsolationBaseline requires per-execution ephemeral, filesystem-isolated
-	// sandboxes. The bare "pod" provider satisfies this.
+	// sandboxes. The "agentsandbox" provider satisfies this.
 	IsolationBaseline IsolationLevel = "baseline"
 	// IsolationEgress additionally requires controlled network egress from the
-	// sandbox. The bare "pod" provider does NOT satisfy this.
+	// sandbox. The "agentsandbox" provider does NOT satisfy this in the MVP (it
+	// runs with allow-all egress; the containment boundary is the runner's
+	// endpoint allow-list, not the network).
 	IsolationEgress IsolationLevel = "egress"
 )
 
@@ -68,8 +70,8 @@ type MCPToolsetSpec struct {
 	Servers []string `json:"servers"`
 
 	// Provider selects the sandbox execution backend. It must match the name of
-	// a registered SandboxProvider. The MVP ships a single "pod" provider that
-	// runs each execution in a bare Kubernetes Pod.
+	// a registered SandboxProvider. The MVP ships a single "agentsandbox" provider
+	// that runs each execution in an isolated agent-sandbox Sandbox.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253

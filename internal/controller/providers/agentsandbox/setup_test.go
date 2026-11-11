@@ -22,6 +22,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,6 +31,7 @@ import (
 	sandboxv1beta1 "sigs.k8s.io/agent-sandbox/api/v1beta1"
 	extv1beta1 "sigs.k8s.io/agent-sandbox/extensions/api/v1beta1"
 
+	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/sandbox"
 )
 
@@ -42,6 +44,7 @@ func newSetupClient(t *testing.T) client.Client {
 		corev1.AddToScheme,
 		sandboxv1beta1.AddToScheme,
 		extv1beta1.AddToScheme,
+		mcpv1alpha1.AddToScheme,
 	} {
 		if err := add(s); err != nil {
 			t.Fatalf("AddToScheme: %v", err)
@@ -198,6 +201,47 @@ func TestSetupIsIdempotent(t *testing.T) {
 	if len(tmpls.Items) != 1 {
 		t.Errorf("expected 1 template after repeated Setup, got %d", len(tmpls.Items))
 	}
+}
+
+// TestSetupSetsOwnerReference proves the backend resources are owner-referenced
+// to the toolset so Kubernetes garbage-collects them on toolset deletion (no
+// orphaned SandboxTemplate/SandboxWarmPool, no finalizer needed).
+func TestSetupSetsOwnerReference(t *testing.T) {
+	c := newSetupClient(t)
+	p := newSetupProvider(c)
+	ctx := context.Background()
+
+	owner := &mcpv1alpha1.MCPToolset{
+		ObjectMeta: metav1.ObjectMeta{Name: "ops", Namespace: "team-a", UID: "owner-uid"},
+	}
+	tc := sampleToolset()
+	tc.Owner = owner
+
+	if err := p.Setup(ctx, tc); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	key := types.NamespacedName{Namespace: "team-a", Name: "codemode-ops"}
+	assertControlledBy := func(kind string, refs []metav1.OwnerReference) {
+		for _, ref := range refs {
+			if ref.Kind == "MCPToolset" && ref.Name == "ops" && ref.Controller != nil && *ref.Controller {
+				return
+			}
+		}
+		t.Errorf("%s owner references = %+v; want a controller ref to MCPToolset ops", kind, refs)
+	}
+
+	var tmpl extv1beta1.SandboxTemplate
+	if err := c.Get(ctx, key, &tmpl); err != nil {
+		t.Fatalf("getting SandboxTemplate: %v", err)
+	}
+	assertControlledBy("SandboxTemplate", tmpl.OwnerReferences)
+
+	var wp extv1beta1.SandboxWarmPool
+	if err := c.Get(ctx, key, &wp); err != nil {
+		t.Fatalf("getting SandboxWarmPool: %v", err)
+	}
+	assertControlledBy("SandboxWarmPool", wp.OwnerReferences)
 }
 
 func TestTeardownDeletesBothAndToleratesNotFound(t *testing.T) {

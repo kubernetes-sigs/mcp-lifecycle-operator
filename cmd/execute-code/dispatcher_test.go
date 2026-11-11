@@ -130,13 +130,13 @@ func TestRunReturnsSingleCombinedResult(t *testing.T) {
 	}
 }
 
-func TestRunUnknownToolsetIsBackendError(t *testing.T) {
+func TestRunUnknownToolsetIsInvalidRequest(t *testing.T) {
 	fp := &fakeProvider{await: []byte(`{"result":null}`)}
 	d := testDispatcher(fp)
 
 	out := d.run(context.Background(), executeCodeInput{Code: "return 1;", Toolset: "nope"})
-	if out.Error == nil || out.Error.Type != errTypeBackend {
-		t.Fatalf("out = %+v; want BackendError", out)
+	if out.Error == nil || out.Error.Type != errTypeInvalid {
+		t.Fatalf("out = %+v; want InvalidRequest", out)
 	}
 	if len(fp.claimed) != 0 {
 		t.Errorf("unknown toolset must not claim a sandbox")
@@ -269,16 +269,41 @@ func TestDescribeTool(t *testing.T) {
 		t.Errorf("describe = %+v; want description and schema", out)
 	}
 
-	// Unknown server -> BackendError, no backend dial needed.
+	// Unknown server -> InvalidRequest (caller error), no backend dial needed.
 	out = d.describeTool(context.Background(), describeToolInput{Server: "nope", Tool: "x"})
-	if out.Error == nil || out.Error.Type != errTypeBackend {
-		t.Errorf("unknown server: out = %+v; want BackendError", out)
+	if out.Error == nil || out.Error.Type != errTypeInvalid {
+		t.Errorf("unknown server: out = %+v; want InvalidRequest", out)
 	}
 
-	// Unknown tool on a known server -> BackendError.
+	// Unknown tool on a known server -> InvalidRequest (caller error).
 	out = d.describeTool(context.Background(), describeToolInput{Server: "kubernetes", Tool: "missing"})
-	if out.Error == nil || out.Error.Type != errTypeBackend {
-		t.Errorf("unknown tool: out = %+v; want BackendError", out)
+	if out.Error == nil || out.Error.Type != errTypeInvalid {
+		t.Errorf("unknown tool: out = %+v; want InvalidRequest", out)
+	}
+}
+
+// TestTimeoutForCapsBothPaths proves maxTimeout bounds both a caller-supplied
+// timeout and the dispatcher default, and that smaller values pass through.
+func TestTimeoutForCapsBothPaths(t *testing.T) {
+	// Default path is capped when the toolset default exceeds the ceiling.
+	d := testDispatcher(&fakeProvider{})
+	d.defaultTimeout = 2 * maxTimeout
+	if got := d.timeoutFor(0); got != maxTimeout {
+		t.Errorf("default path: timeoutFor(0) = %s; want %s", got, maxTimeout)
+	}
+
+	// Caller path is capped too.
+	if got := d.timeoutFor(int(2 * maxTimeout / time.Second)); got != maxTimeout {
+		t.Errorf("caller path: timeoutFor(over) = %s; want %s", got, maxTimeout)
+	}
+
+	// Values within the ceiling pass through unchanged.
+	d.defaultTimeout = 60 * time.Second
+	if got := d.timeoutFor(0); got != 60*time.Second {
+		t.Errorf("default passthrough = %s; want 60s", got)
+	}
+	if got := d.timeoutFor(30); got != 30*time.Second {
+		t.Errorf("caller passthrough = %s; want 30s", got)
 	}
 }
 

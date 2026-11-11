@@ -108,9 +108,11 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// The dispatcher Deployment/Service and the provider's backend state are
-	// owner-referenced (garbage collected on delete), and the pod provider's
-	// Teardown is a no-op, so no finalizer is required for the MVP.
+	// The dispatcher Deployment/Service/SA/RBAC and the provider's backend state
+	// (the agentsandbox SandboxTemplate/SandboxWarmPool) are all owner-referenced
+	// to this toolset, so Kubernetes garbage-collects them on delete. No finalizer
+	// is required, which also avoids a stuck object under the generation-only watch
+	// predicate (a deletion-timestamp update does not bump generation).
 	if !toolset.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
 	}
@@ -180,6 +182,7 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		ServerEndpoints: endpoints,
 		MinIsolation:    minIsolation,
 		Timeout:         timeout,
+		Owner:           &toolset,
 	}); err != nil {
 		logger.Error(err, "provider setup failed", "provider", provider.Name())
 		return r.markNotReady(ctx, &toolset, ReasonSetupFailed,

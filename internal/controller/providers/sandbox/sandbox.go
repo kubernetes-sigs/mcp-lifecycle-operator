@@ -31,6 +31,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // CredentialScoping describes how a provider scopes the credential handed to a
@@ -107,6 +109,11 @@ type ToolsetContext struct {
 	ServerEndpoints []Endpoint
 	MinIsolation    string
 	Timeout         time.Duration
+	// Owner is the MCPToolset the backend state belongs to. When set, a provider
+	// sets it as the controller owner reference on the resources it creates so
+	// they are garbage-collected when the toolset is deleted. It is nil in
+	// Teardown (deletion is driven by garbage collection, not Teardown).
+	Owner client.Object
 }
 
 // RunnerSpec is the call-time input a provider needs to provision one sandbox
@@ -134,8 +141,8 @@ type RunnerSpec struct {
 // RunnerHandle is an opaque handle identifying a claimed sandbox so it can be
 // released.
 type RunnerHandle struct {
-	// Namespace and Name identify the sandbox resource (e.g. a Pod) for the
-	// baseline pod provider. Other providers may leave these empty and use Ref.
+	// Namespace and Name identify the sandbox resource when it is a single named
+	// Kubernetes object. Other providers may leave these empty and use Ref.
 	Namespace string
 	Name      string
 	// Ref is a provider-specific opaque identifier for backends that are not a
