@@ -24,8 +24,13 @@ import (
 	"testing"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
@@ -33,6 +38,20 @@ import (
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/category"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/scenario"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework/labels/speed"
+)
+
+const (
+	// dispatcherServicePort is the port the dispatcher Service exposes MCP on
+	// (mirrors the controller's dispatcherPort; the two packages cannot share a
+	// constant across the e2e build tag boundary).
+	dispatcherServicePort = 8080
+	// dispatcherMCPPath is the HTTP path the dispatcher serves MCP on.
+	dispatcherMCPPath = "/mcp"
+	// sandboxClaimGroup/Version/ListKind identify agent-sandbox SandboxClaims,
+	// listed unstructured so the e2e client needs no agent-sandbox scheme.
+	sandboxClaimGroup    = "extensions.agents.x-k8s.io"
+	sandboxClaimVersion  = "v1beta1"
+	sandboxClaimListKind = "SandboxClaimList"
 )
 
 // Opt-in and configuration for the code-mode SC-006 scenario. It is skipped by
@@ -142,11 +161,13 @@ func TestCodeModeOperatorOffHotPath(t *testing.T) {
 			}
 			t.Logf("scaled operator %s/%s to zero replicas", opRef.Namespace, operatorDeploymentName)
 
-			// Give the operator time to fully stop, then confirm the dispatcher data
-			// plane is unaffected: it keeps its available replicas with no reconcile
-			// loop running. This is the observable core of SC-006.
-			time.Sleep(30 * time.Second)
+			// Wait for the operator to actually terminate (no available replicas),
+			// so the execution below genuinely runs with the reconcile loop stopped
+			// rather than merely scaled on paper.
+			waitForOperatorDown(ctx, t, r, operatorDeploymentName, opRef.Namespace)
 
+			// The dispatcher data plane must be unaffected: it keeps its available
+			// replicas with no reconcile loop running (the observable core of SC-006).
 			after := &appsv1.Deployment{}
 			if err := r.Get(ctx, dispatcherName, dispatcherNs, after); err != nil {
 				t.Fatalf("dispatcher Deployment %s/%s disappeared while operator was down: %v", dispatcherNs, dispatcherName, err)
@@ -154,12 +175,155 @@ func TestCodeModeOperatorOffHotPath(t *testing.T) {
 			if after.Status.AvailableReplicas < 1 {
 				t.Fatalf("dispatcher %s/%s lost its available replicas while the operator was scaled to zero", dispatcherNs, dispatcherName)
 			}
-			t.Logf("dispatcher %s/%s still has %d available replica(s) with the operator scaled to zero (SC-006 holds)",
+			t.Logf("dispatcher %s/%s still has %d available replica(s) with the operator scaled to zero",
 				dispatcherNs, dispatcherName, after.Status.AvailableReplicas)
+
+			// Baseline the live SandboxClaims so the post-execution cleanup check is
+			// robust even if other toolsets share the namespace.
+			claimsBefore := countSandboxClaims(ctx, t, cfg, dispatcherNs)
+
+			// Connect to the dispatcher Service over the API-server proxy (the same
+			// node-agnostic transport the MCP handshake test uses) and drive a real
+			// execute_code round-trip while the operator is down.
+			httpClient, dispatcherURL := f.ServiceProxyHTTPClient(t, cfg,
+				dispatcherNs, dispatcherName, dispatcherServicePort, dispatcherMCPPath)
+			mcpClient := mcp.NewClient(&mcp.Implementation{Name: "e2e-codemode-client", Version: "v0.0.1"}, nil)
+			connectCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+			defer cancel()
+			session, err := mcpClient.Connect(connectCtx,
+				&mcp.StreamableClientTransport{Endpoint: dispatcherURL, HTTPClient: httpClient}, nil)
+			if err != nil {
+				t.Fatalf("connecting to dispatcher %s/%s over the API-server proxy: %v", dispatcherNs, dispatcherName, err)
+			}
+			defer func() { _ = session.Close() }()
+
+			// Discovery dials the allow-listed backends for their tools/list, so a
+			// successful, non-empty catalog proves the dispatcher reaches a backend
+			// with no operator involved.
+			lt, err := session.CallTool(connectCtx, &mcp.CallToolParams{Name: "list_toolsets"})
+			if err != nil {
+				t.Fatalf("list_toolsets while operator down: %v", err)
+			}
+			if lt.IsError {
+				t.Fatalf("list_toolsets reported an error: %s", mcpResultText(lt))
+			}
+			t.Logf("list_toolsets succeeded with the operator down: %s", mcpResultText(lt))
+
+			// Execute a script in a freshly claimed sandbox and verify the single
+			// returned result. This exercises the full claim -> ship code -> await ->
+			// release path in the data plane with the reconcile loop stopped.
+			exec, err := session.CallTool(connectCtx, &mcp.CallToolParams{
+				Name:      "execute_code",
+				Arguments: map[string]any{"code": "return 6 * 7;", "toolset": dispatcherToolsetName(dispatcherName)},
+			})
+			if err != nil {
+				t.Fatalf("execute_code while operator down: %v", err)
+			}
+			if exec.IsError {
+				t.Fatalf("execute_code transport error: %s", mcpResultText(exec))
+			}
+			out, ok := exec.StructuredContent.(map[string]any)
+			if !ok {
+				t.Fatalf("execute_code structured content = %T; want object (%s)", exec.StructuredContent, mcpResultText(exec))
+			}
+			if errObj, present := out["error"]; present && errObj != nil {
+				t.Fatalf("execute_code returned an error with the operator down: %v", errObj)
+			}
+			if got := out["result"]; got != float64(42) {
+				t.Fatalf("execute_code result = %v (%T); want 42", got, got)
+			}
+			t.Logf("execute_code returned 42 with the operator scaled to zero (data plane is self-sufficient)")
+
+			// The sandbox must be cleaned up after the execution: the dispatcher
+			// Releases the claim regardless of outcome, so the live claim count must
+			// return to its baseline. Allow brief eventual-deletion slack.
+			deadline := time.Now().Add(2 * time.Minute)
+			var claimsAfter int
+			for {
+				claimsAfter = countSandboxClaims(ctx, t, cfg, dispatcherNs)
+				if claimsAfter <= claimsBefore || time.Now().After(deadline) {
+					break
+				}
+				time.Sleep(5 * time.Second)
+			}
+			if claimsAfter > claimsBefore {
+				t.Fatalf("SandboxClaims not cleaned up: before=%d after=%d (the execution's claim/sandbox leaked)", claimsBefore, claimsAfter)
+			}
+			t.Logf("SandboxClaims returned to baseline (before=%d, after=%d): the execution's sandbox was cleaned up", claimsBefore, claimsAfter)
 
 			return ctx
 		}).
 		Feature()
 
 	testenv.Test(t, feature)
+}
+
+// mcpResultText concatenates the text content of an MCP tool result, for logging
+// and error messages.
+func mcpResultText(res *mcp.CallToolResult) string {
+	if res == nil {
+		return ""
+	}
+	var b []byte
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			b = append(b, tc.Text...)
+		}
+	}
+	return string(b)
+}
+
+// dispatcherToolsetName recovers the toolset name from its dispatcher resource
+// name. reconcileDispatcher names every dispatcher resource "<toolset>-execute".
+func dispatcherToolsetName(dispatcherName string) string {
+	const suffix = "-execute"
+	if len(dispatcherName) > len(suffix) && dispatcherName[len(dispatcherName)-len(suffix):] == suffix {
+		return dispatcherName[:len(dispatcherName)-len(suffix)]
+	}
+	return dispatcherName
+}
+
+// waitForOperatorDown blocks until the operator Deployment reports no available
+// replicas, so a subsequent execution genuinely runs with the reconcile loop
+// stopped. It fails the test if the operator does not terminate in time.
+func waitForOperatorDown(ctx context.Context, t *testing.T, r *resources.Resources, name, namespace string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Minute)
+	for {
+		dep := &appsv1.Deployment{}
+		if err := r.Get(ctx, name, namespace, dep); err != nil {
+			t.Fatalf("getting operator Deployment %s/%s while waiting for it to stop: %v", namespace, name, err)
+		}
+		if dep.Status.AvailableReplicas == 0 {
+			t.Logf("operator %s/%s reports 0 available replicas", namespace, name)
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("operator %s/%s still has %d available replica(s) after the scale-to-zero timeout",
+				namespace, name, dep.Status.AvailableReplicas)
+		}
+		time.Sleep(5 * time.Second)
+	}
+}
+
+// countSandboxClaims lists agent-sandbox SandboxClaims in a namespace via an
+// unstructured list so the e2e client needs no agent-sandbox scheme registration.
+func countSandboxClaims(ctx context.Context, t *testing.T, cfg *envconf.Config, namespace string) int {
+	t.Helper()
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   sandboxClaimGroup,
+		Version: sandboxClaimVersion,
+		Kind:    sandboxClaimListKind,
+	})
+	if err := cfg.Client().Resources(namespace).List(ctx, list); err != nil {
+		t.Fatalf("listing SandboxClaims in %s: %v", namespace, err)
+	}
+	n := 0
+	for _, item := range list.Items {
+		if item.GetNamespace() == namespace {
+			n++
+		}
+	}
+	return n
 }

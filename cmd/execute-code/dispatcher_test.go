@@ -90,6 +90,7 @@ func testDispatcher(p sandbox.SandboxProvider) *dispatcher {
 			{Server: "github", URL: "http://github.demo.svc:8080/mcp"},
 		},
 		defaultTimeout: 60 * time.Second,
+		sem:            make(chan struct{}, maxConcurrentExecutions),
 	}
 }
 

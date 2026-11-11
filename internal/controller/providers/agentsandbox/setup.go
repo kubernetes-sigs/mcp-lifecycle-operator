@@ -23,6 +23,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -57,6 +58,15 @@ const (
 	dispatcherComponentKey   = "app.kubernetes.io/component"
 	dispatcherComponentValue = "code-mode-dispatcher"
 	toolsetLabelKey          = "mcp.x-k8s.io/toolset"
+
+	// Sandbox container resource bounds. Requests keep scheduling predictable;
+	// limits cap a single execution so allocation-heavy JS hits its memory limit
+	// (OOM-killed, surfaced as a failed run) instead of exhausting node memory
+	// before the execution timeout fires.
+	sandboxCPURequest    = "100m"
+	sandboxMemoryRequest = "128Mi"
+	sandboxCPULimit      = "500m"
+	sandboxMemoryLimit   = "256Mi"
 )
 
 // Operator (reconcile-time) RBAC: Setup/Teardown own the per-toolset
@@ -171,6 +181,16 @@ func (p *Provider) templateSpec(toolset string, labels map[string]string) extv1b
 						// ports keep their defaults (8080/9090), which the SDK expects.
 						Args:         []string{"--root-dir=" + inputDir},
 						VolumeMounts: []corev1.VolumeMount{{Name: codemodeVolumeName, MountPath: inputDir}},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse(sandboxCPURequest),
+								corev1.ResourceMemory: resource.MustParse(sandboxMemoryRequest),
+							},
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse(sandboxCPULimit),
+								corev1.ResourceMemory: resource.MustParse(sandboxMemoryLimit),
+							},
+						},
 						SecurityContext: &corev1.SecurityContext{
 							AllowPrivilegeEscalation: new(false),
 							RunAsNonRoot:             new(true),

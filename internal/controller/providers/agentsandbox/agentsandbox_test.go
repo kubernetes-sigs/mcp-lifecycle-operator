@@ -27,11 +27,13 @@ import (
 
 // fakeSandbox is a liveSandbox test double recording writes and canned Run output.
 type fakeSandbox struct {
-	claimName string
-	writes    map[string][]byte
-	runOut    string
-	runErr    error
-	closed    bool
+	claimName  string
+	writes     map[string][]byte
+	runOut     string
+	runErr     error
+	closed     bool
+	closeCalls int
+	closeErr   error
 }
 
 func (f *fakeSandbox) ClaimName() string { return f.claimName }
@@ -46,19 +48,28 @@ func (f *fakeSandbox) Write(_ context.Context, path string, content []byte) erro
 
 func (f *fakeSandbox) Run(context.Context, string) (string, error) { return f.runOut, f.runErr }
 
-func (f *fakeSandbox) Close(context.Context) error { f.closed = true; return nil }
+func (f *fakeSandbox) Close(context.Context) error {
+	f.closeCalls++
+	if f.closeErr != nil {
+		return f.closeErr
+	}
+	f.closed = true
+	return nil
+}
 
 // fakeFactory is a sandboxFactory test double.
 type fakeFactory struct {
-	sandbox     *fakeSandbox
-	createErr   error
-	gotWarmPool string
-	gotNS       string
+	sandbox          *fakeSandbox
+	createErr        error
+	gotWarmPool      string
+	gotNS            string
+	gotShutdownAfter time.Duration
 }
 
-func (f *fakeFactory) CreateSandbox(_ context.Context, warmPoolName, namespace string) (liveSandbox, error) {
+func (f *fakeFactory) CreateSandbox(_ context.Context, warmPoolName, namespace string, shutdownAfter time.Duration) (liveSandbox, error) {
 	f.gotWarmPool = warmPoolName
 	f.gotNS = namespace
+	f.gotShutdownAfter = shutdownAfter
 	if f.createErr != nil {
 		return nil, f.createErr
 	}
@@ -108,6 +119,12 @@ func TestClaimWritesInputFiles(t *testing.T) {
 	}
 	if h.Namespace != "team-a" {
 		t.Errorf("handle Namespace = %q, want %q", h.Namespace, "team-a")
+	}
+
+	// The claim is given a server-side expiry (execution timeout plus grace) so a
+	// dispatcher crash before Release cannot leak a permanent sandbox.
+	if want := 60*time.Second + claimShutdownGrace; fac.gotShutdownAfter != want {
+		t.Errorf("shutdownAfter = %s, want %s", fac.gotShutdownAfter, want)
 	}
 
 	wantFiles := map[string]string{
@@ -226,6 +243,34 @@ func TestRelease(t *testing.T) {
 	}
 	if err := p.Release(context.Background(), sandbox.RunnerHandle{}); err != nil {
 		t.Errorf("empty-ref Release: %v", err)
+	}
+}
+
+// TestReleaseRetriesAfterFailedClose proves a Close failure retains the live
+// handle so a later Release can retry cleanup, instead of dropping the handle and
+// silently no-opping on the retry.
+func TestReleaseRetriesAfterFailedClose(t *testing.T) {
+	fs := &fakeSandbox{claimName: "c1", closeErr: errors.New("transient delete error")}
+	p := newTestProvider(&fakeFactory{})
+	p.live["c1"] = fs
+
+	if err := p.Release(context.Background(), sandbox.RunnerHandle{Ref: "c1"}); err == nil {
+		t.Fatal("expected error when Close fails")
+	}
+	if _, ok := p.live["c1"]; !ok {
+		t.Fatal("handle dropped despite failed Close; a retry would no-op")
+	}
+
+	// The failure clears; the retry must actually close and then drop the handle.
+	fs.closeErr = nil
+	if err := p.Release(context.Background(), sandbox.RunnerHandle{Ref: "c1"}); err != nil {
+		t.Fatalf("retry Release: %v", err)
+	}
+	if _, ok := p.live["c1"]; ok {
+		t.Error("handle not dropped after successful retry")
+	}
+	if fs.closeCalls != 2 {
+		t.Errorf("close calls = %d, want 2 (one failed, one successful retry)", fs.closeCalls)
 	}
 }
 

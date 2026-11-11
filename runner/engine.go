@@ -30,6 +30,12 @@ import (
 const bootstrap = `
 (function (servers) {
   servers.forEach(function (s) {
+    if (s === 'call') {
+      // 'call' is the reserved low-level entrypoint (tools.call(server, tool,
+      // args)). A server literally named "call" must not clobber it; it stays
+      // reachable via tools.call('call', tool, args).
+      return;
+    }
     tools[s] = new Proxy({}, {
       get: function (_target, tool) {
         if (typeof tool !== 'string') {
