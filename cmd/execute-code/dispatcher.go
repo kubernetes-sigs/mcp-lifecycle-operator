@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/sandbox"
 )
@@ -44,6 +45,12 @@ const (
 // MCPToolset spec.timeoutSeconds maximum (3600s), so a validly configured default
 // is never silently truncated.
 const maxTimeout = 60 * time.Minute
+
+// maxConcurrentExecutions bounds how many sandboxes one dispatcher claims at
+// once. Each execution provisions a sandbox pod, so an unbounded burst of
+// execute_code calls could exhaust node capacity; excess calls wait for a slot
+// (bounded by the execution timeout) rather than piling on.
+const maxConcurrentExecutions = 10
 
 // Discovery (list_toolsets / describe_tool) dials each backend MCP server to read
 // its own tools/list. backendListTimeout bounds a single backend lookup so one
@@ -70,6 +77,11 @@ type dispatcher struct {
 	// defaults to liveBackendTools (a real MCP tools/list) and is overridable in
 	// tests so discovery can be exercised without a live backend.
 	listBackend backendLister
+
+	// sem bounds concurrent executions (one in-flight sandbox per slot). A nil
+	// channel disables the bound (used by unit tests that drive run directly);
+	// buildDispatcher installs a buffered channel of maxConcurrentExecutions.
+	sem chan struct{}
 }
 
 // backendLister fetches one backend server's tool catalog over MCP.
@@ -159,6 +171,25 @@ func (d *dispatcher) run(ctx context.Context, in executeCodeInput) executeCodeOu
 	}
 
 	timeout := d.timeoutFor(in.Timeout)
+
+	// Bound concurrent sandboxes: wait for a slot before starting the execution
+	// clock, so time spent queued is not charged against the script's own time
+	// budget. The wait is bounded by the caller's context (cancelled on client
+	// disconnect); slots always free as in-flight executions complete.
+	if d.sem != nil {
+		select {
+		case d.sem <- struct{}{}:
+			defer func() { <-d.sem }()
+		case <-ctx.Done():
+			return timeoutOutput("timed out waiting for an execution slot")
+		}
+	}
+
+	// The claim/await budget is the execution timeout plus slack for scheduling
+	// and log retrieval, so a slow sandbox surfaces as a typed error, not a hang.
+	ctx, cancel := context.WithTimeout(ctx, timeout+30*time.Second)
+	defer cancel()
+
 	spec := sandbox.RunnerSpec{
 		Namespace:        d.namespace,
 		Toolset:          d.toolset,
@@ -169,11 +200,6 @@ func (d *dispatcher) run(ctx context.Context, in executeCodeInput) executeCodeOu
 		Timeout:          timeout,
 	}
 
-	// The claim/await budget is the execution timeout plus slack for scheduling
-	// and log retrieval, so a slow sandbox surfaces as a typed error, not a hang.
-	ctx, cancel := context.WithTimeout(ctx, timeout+30*time.Second)
-	defer cancel()
-
 	handle, err := d.provider.Claim(ctx, spec)
 	if err != nil {
 		return backendOutput("claiming sandbox: %v", err)
@@ -182,7 +208,12 @@ func (d *dispatcher) run(ctx context.Context, in executeCodeInput) executeCodeOu
 		// Release on a fresh context so cleanup still runs after a timeout.
 		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer releaseCancel()
-		_ = d.provider.Release(releaseCtx, handle)
+		// Do not discard the Release error: a failed cleanup is retained by the
+		// provider for retry, but it must still be visible in the dispatcher logs.
+		if err := d.provider.Release(releaseCtx, handle); err != nil {
+			log.FromContext(ctx).Error(err, "releasing sandbox after execution",
+				"toolset", d.toolset, "handle", handle.Ref)
+		}
 	}()
 
 	raw, err := d.provider.Await(ctx, handle)
@@ -324,12 +355,14 @@ func liveBackendTools(ctx context.Context, ep sandbox.Endpoint) ([]backendTool, 
 	}
 	defer func() { _ = session.Close() }()
 
-	res, err := session.ListTools(ctx, &mcp.ListToolsParams{})
-	if err != nil {
-		return nil, err
-	}
-	tools := make([]backendTool, 0, len(res.Tools))
-	for _, t := range res.Tools {
+	// Use the SDK's Tools iterator, which follows the tools/list cursor across
+	// pages. A plain ListTools returns only the first page, so a backend that
+	// paginates its catalog would hide its later tools from discovery.
+	var tools []backendTool
+	for t, err := range session.Tools(ctx, nil) {
+		if err != nil {
+			return nil, err
+		}
 		tools = append(tools, backendTool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema})
 	}
 	return tools, nil

@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"sync"
 	"time"
@@ -105,7 +106,23 @@ func (m *mcpToolCaller) session(ctx context.Context, server string) (*mcp.Client
 	client := mcp.NewClient(&mcp.Implementation{Name: runnerClientName, Version: runnerClientVersion}, nil)
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	if m.credential != "" {
-		httpClient.Transport = &bearerTransport{token: m.credential, base: http.DefaultTransport}
+		// The credential is scoped to the allow-listed endpoint. Pin it to that
+		// endpoint's origin so a redirect to a different host (which Go's own
+		// cross-domain Authorization stripping cannot catch here, because the token
+		// is injected at transport level, not via Request.Header) never carries the
+		// bearer token off-origin. Cross-origin redirects are refused outright.
+		parsed, err := neturl.Parse(url)
+		if err != nil {
+			return nil, fmt.Errorf("parsing endpoint %q: %w", url, err)
+		}
+		origin := endpointOrigin{scheme: parsed.Scheme, host: parsed.Host}
+		httpClient.Transport = &bearerTransport{token: m.credential, origin: origin, base: http.DefaultTransport}
+		httpClient.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
+			if !origin.matches(req.URL) {
+				return fmt.Errorf("refusing redirect off the permitted endpoint origin to %q", req.URL.Redacted())
+			}
+			return nil
+		}
 	}
 	transport := &mcp.StreamableClientTransport{
 		Endpoint:             url,
@@ -132,17 +149,36 @@ func (m *mcpToolCaller) closeAll() {
 	}
 }
 
+// endpointOrigin is the scheme+host the scoped credential is permitted to reach.
+// Host includes any port, matching url.URL.Host, so a redirect that changes the
+// port is also treated as off-origin.
+type endpointOrigin struct {
+	scheme string
+	host   string
+}
+
+func (o endpointOrigin) matches(u *neturl.URL) bool {
+	return u != nil && u.Scheme == o.scheme && u.Host == o.host
+}
+
 // bearerTransport attaches the static scoped credential (MVP, non-production) as
-// an Authorization bearer header to every backend request.
+// an Authorization bearer header, but only to requests that stay on the intended
+// endpoint origin. Off-origin requests (e.g. a redirect target) are forwarded
+// without the token so the credential never leaks to another host.
 type bearerTransport struct {
-	token string
-	base  http.RoundTripper
+	token  string
+	origin endpointOrigin
+	base   http.RoundTripper
 }
 
 func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Clone so we do not mutate the caller's request.
 	r := req.Clone(req.Context())
-	r.Header.Set("Authorization", "Bearer "+t.token)
+	if t.origin.matches(req.URL) {
+		r.Header.Set("Authorization", "Bearer "+t.token)
+	} else {
+		r.Header.Del("Authorization")
+	}
 	return t.base.RoundTrip(r)
 }
 

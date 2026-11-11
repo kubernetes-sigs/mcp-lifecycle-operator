@@ -39,7 +39,7 @@ func resolverScheme(t *testing.T) *runtime.Scheme {
 // readyServer builds a verified MCPServer with a published address URL.
 func readyServer(namespace, name, url string) *mcpv1beta1.MCPServer {
 	return &mcpv1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
+		Namespace: namespace, Name: name,
 		Status: mcpv1beta1.MCPServerStatus{
 			Address: &mcpv1beta1.MCPServerAddress{URL: url},
 			Conditions: []metav1.Condition{{
@@ -103,11 +103,11 @@ func TestResolveServersNotReady(t *testing.T) {
 
 	// Server exists but has no address and no Verified condition.
 	pending := &mcpv1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "demo", Name: "kubernetes"},
+		Namespace: "demo", Name: "kubernetes",
 	}
 	// Server has a stale address but is not Verified.
 	staleAddr := &mcpv1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "demo", Name: "github"},
+		Namespace: "demo", Name: "github",
 		Status: mcpv1beta1.MCPServerStatus{
 			Address: &mcpv1beta1.MCPServerAddress{URL: "http://github.demo.svc.cluster.local:8080/mcp"},
 			Conditions: []metav1.Condition{{

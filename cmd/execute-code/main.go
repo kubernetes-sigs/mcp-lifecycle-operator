@@ -127,6 +127,7 @@ func buildDispatcher() (*dispatcher, string, error) {
 		credential:     sandbox.CredentialRef{SecretName: os.Getenv(envCredSecret), Key: os.Getenv(envCredKey)},
 		endpoints:      endpoints,
 		defaultTimeout: parseTimeoutSeconds(os.Getenv(envDefaultTimeout), defaultExecTimeout),
+		sem:            make(chan struct{}, maxConcurrentExecutions),
 	}
 
 	addr := os.Getenv(envListenAddr)

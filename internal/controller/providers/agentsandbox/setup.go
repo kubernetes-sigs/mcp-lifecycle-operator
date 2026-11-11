@@ -23,6 +23,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -57,6 +58,15 @@ const (
 	dispatcherComponentKey   = "app.kubernetes.io/component"
 	dispatcherComponentValue = "code-mode-dispatcher"
 	toolsetLabelKey          = "mcp.x-k8s.io/toolset"
+
+	// Sandbox container resource bounds. Requests keep scheduling predictable;
+	// limits cap a single execution so allocation-heavy JS hits its memory limit
+	// (OOM-killed, surfaced as a failed run) instead of exhausting node memory
+	// before the execution timeout fires.
+	sandboxCPURequest    = "100m"
+	sandboxMemoryRequest = "128Mi"
+	sandboxCPULimit      = "500m"
+	sandboxMemoryLimit   = "256Mi"
 )
 
 // Operator (reconcile-time) RBAC: Setup/Teardown own the per-toolset
@@ -87,7 +97,7 @@ func (p *Provider) Setup(ctx context.Context, tc sandbox.ToolsetContext) error {
 	name := resourceName(tc.Name)
 	labels := managedLabels(tc.Name)
 
-	tmpl := &extv1beta1.SandboxTemplate{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: tc.Namespace}}
+	tmpl := &extv1beta1.SandboxTemplate{Name: name, Namespace: tc.Namespace}
 	if _, err := controllerutil.CreateOrUpdate(ctx, p.controllerClient, tmpl, func() error {
 		tmpl.Labels = labels
 		tmpl.Spec = p.templateSpec(tc.Name, labels)
@@ -96,7 +106,7 @@ func (p *Provider) Setup(ctx context.Context, tc sandbox.ToolsetContext) error {
 		return fmt.Errorf("agentsandbox provider: applying SandboxTemplate %s/%s: %w", tc.Namespace, name, err)
 	}
 
-	wp := &extv1beta1.SandboxWarmPool{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: tc.Namespace}}
+	wp := &extv1beta1.SandboxWarmPool{Name: name, Namespace: tc.Namespace}
 	if _, err := controllerutil.CreateOrUpdate(ctx, p.controllerClient, wp, func() error {
 		wp.Labels = labels
 		wp.Spec.Replicas = new(int32) // 0: no idle pods, cold-start per claim (MVP)
@@ -129,12 +139,12 @@ func (p *Provider) Teardown(ctx context.Context, tc sandbox.ToolsetContext) erro
 
 	name := resourceName(tc.Name)
 
-	wp := &extv1beta1.SandboxWarmPool{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: tc.Namespace}}
+	wp := &extv1beta1.SandboxWarmPool{Name: name, Namespace: tc.Namespace}
 	if err := p.controllerClient.Delete(ctx, wp); err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("agentsandbox provider: deleting SandboxWarmPool %s/%s: %w", tc.Namespace, name, err)
 	}
 
-	tmpl := &extv1beta1.SandboxTemplate{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: tc.Namespace}}
+	tmpl := &extv1beta1.SandboxTemplate{Name: name, Namespace: tc.Namespace}
 	if err := p.controllerClient.Delete(ctx, tmpl); err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("agentsandbox provider: deleting SandboxTemplate %s/%s: %w", tc.Namespace, name, err)
 	}
@@ -149,36 +159,44 @@ func (p *Provider) templateSpec(toolset string, labels map[string]string) extv1b
 	return extv1beta1.SandboxTemplateSpec{
 		NetworkPolicyManagement: extv1beta1.NetworkPolicyManagementManaged,
 		NetworkPolicy:           networkPolicySpec(toolset),
-		SandboxBlueprint: sandboxv1beta1.SandboxBlueprint{
-			PodTemplate: sandboxv1beta1.PodTemplate{
-				ObjectMeta: sandboxv1beta1.PodMetadata{Labels: labels},
-				Spec: corev1.PodSpec{
-					AutomountServiceAccountToken: new(false),
-					SecurityContext: &corev1.PodSecurityContext{
-						RunAsNonRoot:   new(true),
-						SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
-					},
-					Volumes: []corev1.Volume{{
-						Name:         codemodeVolumeName,
-						VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
-					}},
-					Containers: []corev1.Container{{
-						Name:  sandboxContainerName,
-						Image: p.runnerImage,
-						// Root sandboxd at the writable /codemode emptyDir so the
-						// dispatcher's (relative) file writes land there and the
-						// runner reads them from the same path. sandboxd's REST/gRPC
-						// ports keep their defaults (8080/9090), which the SDK expects.
-						Args:         []string{"--root-dir=" + inputDir},
-						VolumeMounts: []corev1.VolumeMount{{Name: codemodeVolumeName, MountPath: inputDir}},
-						SecurityContext: &corev1.SecurityContext{
-							AllowPrivilegeEscalation: new(false),
-							RunAsNonRoot:             new(true),
-							Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
-							SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
-						},
-					}},
+		PodTemplate: sandboxv1beta1.PodTemplate{
+			ObjectMeta: sandboxv1beta1.PodMetadata{Labels: labels},
+			Spec: corev1.PodSpec{
+				AutomountServiceAccountToken: new(false),
+				SecurityContext: &corev1.PodSecurityContext{
+					RunAsNonRoot:   new(true),
+					SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 				},
+				Volumes: []corev1.Volume{{
+					Name:     codemodeVolumeName,
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				}},
+				Containers: []corev1.Container{{
+					Name:  sandboxContainerName,
+					Image: p.runnerImage,
+					// Root sandboxd at the writable /codemode emptyDir so the
+					// dispatcher's (relative) file writes land there and the
+					// runner reads them from the same path. sandboxd's REST/gRPC
+					// ports keep their defaults (8080/9090), which the SDK expects.
+					Args:         []string{"--root-dir=" + inputDir},
+					VolumeMounts: []corev1.VolumeMount{{Name: codemodeVolumeName, MountPath: inputDir}},
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse(sandboxCPURequest),
+							corev1.ResourceMemory: resource.MustParse(sandboxMemoryRequest),
+						},
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse(sandboxCPULimit),
+							corev1.ResourceMemory: resource.MustParse(sandboxMemoryLimit),
+						},
+					},
+					SecurityContext: &corev1.SecurityContext{
+						AllowPrivilegeEscalation: new(false),
+						RunAsNonRoot:             new(true),
+						Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+						SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+					},
+				}},
 			},
 		},
 	}

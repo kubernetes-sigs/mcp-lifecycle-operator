@@ -77,14 +77,14 @@ func createReadyServer(ctx context.Context, name, url string) {
 func deleteToolsetResources(ctx context.Context, toolset string, servers ...string) {
 	name := dispatcherName(toolset)
 	objMeta := metav1.ObjectMeta{Name: name, Namespace: toolsetTestNamespace}
-	_ = k8sClient.Delete(ctx, &mcpv1alpha1.MCPToolset{ObjectMeta: metav1.ObjectMeta{Name: toolset, Namespace: toolsetTestNamespace}})
+	_ = k8sClient.Delete(ctx, &mcpv1alpha1.MCPToolset{Name: toolset, Namespace: toolsetTestNamespace})
 	_ = k8sClient.Delete(ctx, &appsv1.Deployment{ObjectMeta: objMeta})
 	_ = k8sClient.Delete(ctx, &corev1.Service{ObjectMeta: objMeta})
 	_ = k8sClient.Delete(ctx, &corev1.ServiceAccount{ObjectMeta: objMeta})
 	_ = k8sClient.Delete(ctx, &rbacv1.Role{ObjectMeta: objMeta})
 	_ = k8sClient.Delete(ctx, &rbacv1.RoleBinding{ObjectMeta: objMeta})
 	for _, s := range servers {
-		_ = k8sClient.Delete(ctx, &mcpv1beta1.MCPServer{ObjectMeta: metav1.ObjectMeta{Name: s, Namespace: toolsetTestNamespace}})
+		_ = k8sClient.Delete(ctx, &mcpv1beta1.MCPServer{Name: s, Namespace: toolsetTestNamespace})
 	}
 }
 
@@ -107,7 +107,7 @@ var _ = Describe("MCPToolset Controller", func() {
 			createReadyServer(ctx, serverName, "http://kubernetes.default.svc:8080/mcp")
 
 			toolset := &mcpv1alpha1.MCPToolset{
-				ObjectMeta: metav1.ObjectMeta{Name: toolsetName, Namespace: toolsetTestNamespace},
+				Name: toolsetName, Namespace: toolsetTestNamespace,
 				Spec: mcpv1alpha1.MCPToolsetSpec{
 					Servers:  []string{serverName},
 					Provider: "agentsandbox",
@@ -115,18 +115,21 @@ var _ = Describe("MCPToolset Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, toolset)).To(Succeed())
 
-			_, err := newToolsetReconciler().Reconcile(ctx, reconcile.Request{NamespacedName: toolsetKey})
+			By("deploying the dispatcher but staying out of Ready until it is available")
+			res, err := newToolsetReconciler().Reconcile(ctx, reconcile.Request{NamespacedName: toolsetKey})
 			Expect(err).NotTo(HaveOccurred())
+			// envtest has no Deployment controller, so the dispatcher never reports
+			// Available on its own: readiness must be withheld (gated on availability).
+			Expect(res.RequeueAfter).To(BeNumerically(">", 0))
 
-			By("reporting ServersResolved and Ready true with a published endpoint")
 			got := &mcpv1alpha1.MCPToolset{}
 			Expect(k8sClient.Get(ctx, toolsetKey, got)).To(Succeed())
 			Expect(meta.IsStatusConditionTrue(got.Status.Conditions, ConditionTypeServersResolved)).To(BeTrue())
-			Expect(meta.IsStatusConditionTrue(got.Status.Conditions, ConditionTypeReady)).To(BeTrue())
-			Expect(got.Status.ResolvedServers).To(ConsistOf(serverName))
-			Expect(got.Status.ObservedGeneration).To(Equal(got.Generation))
-			wantEndpoint := fmt.Sprintf("http://%s.%s.svc:%d/mcp", dispKey.Name, toolsetTestNamespace, dispatcherPort)
-			Expect(got.Status.ExecuteEndpoint).To(Equal(wantEndpoint))
+			progressing := meta.FindStatusCondition(got.Status.Conditions, ConditionTypeReady)
+			Expect(progressing).NotTo(BeNil())
+			Expect(progressing.Status).To(Equal(metav1.ConditionFalse))
+			Expect(progressing.Reason).To(Equal(ReasonDispatcherProgressing))
+			Expect(got.Status.ExecuteEndpoint).To(BeEmpty())
 
 			By("creating the dispatcher Deployment with the dispatcher image and runner-image env")
 			deploy := &appsv1.Deployment{}
@@ -135,7 +138,31 @@ var _ = Describe("MCPToolset Controller", func() {
 			Expect(container.Image).To(Equal(toolsetDispImage))
 			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: envDispRunnerImage, Value: toolsetRunnerImage}))
 			Expect(container.Env).To(ContainElement(corev1.EnvVar{Name: envDispProvider, Value: "agentsandbox"}))
+			Expect(container.ReadinessProbe).NotTo(BeNil())
 			Expect(deploy.Spec.Template.Spec.ServiceAccountName).To(Equal(dispKey.Name))
+
+			By("becoming Ready once the dispatcher Deployment reports Available")
+			deploy.Status.ObservedGeneration = deploy.Generation
+			deploy.Status.Replicas = 1
+			deploy.Status.AvailableReplicas = 1
+			deploy.Status.ReadyReplicas = 1
+			deploy.Status.Conditions = []appsv1.DeploymentCondition{{
+				Type:    appsv1.DeploymentAvailable,
+				Status:  corev1.ConditionTrue,
+				Reason:  "MinimumReplicasAvailable",
+				Message: "available for test",
+			}}
+			Expect(k8sClient.Status().Update(ctx, deploy)).To(Succeed())
+
+			_, err = newToolsetReconciler().Reconcile(ctx, reconcile.Request{NamespacedName: toolsetKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, toolsetKey, got)).To(Succeed())
+			Expect(meta.IsStatusConditionTrue(got.Status.Conditions, ConditionTypeReady)).To(BeTrue())
+			Expect(got.Status.ResolvedServers).To(ConsistOf(serverName))
+			Expect(got.Status.ObservedGeneration).To(Equal(got.Generation))
+			wantEndpoint := fmt.Sprintf("http://%s.%s.svc:%d/mcp", dispKey.Name, toolsetTestNamespace, dispatcherPort)
+			Expect(got.Status.ExecuteEndpoint).To(Equal(wantEndpoint))
 
 			By("creating the dispatcher Service on the execute port")
 			svc := &corev1.Service{}
@@ -156,14 +183,14 @@ var _ = Describe("MCPToolset Controller", func() {
 		// resources it might own.
 		reconcileToolset := func(name string, spec mcpv1alpha1.MCPToolsetSpec) *mcpv1alpha1.MCPToolset {
 			toolset := &mcpv1alpha1.MCPToolset{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: toolsetTestNamespace},
-				Spec:       spec,
+				Name: name, Namespace: toolsetTestNamespace,
+				Spec: spec,
 			}
 			Expect(k8sClient.Create(ctx, toolset)).To(Succeed())
 			DeferCleanup(func() { deleteToolsetResources(ctx, name) })
 
 			_, err := newToolsetReconciler().Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: name, Namespace: toolsetTestNamespace},
+				Name: name, Namespace: toolsetTestNamespace,
 			})
 			Expect(err).NotTo(HaveOccurred())
 

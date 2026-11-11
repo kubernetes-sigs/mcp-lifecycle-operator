@@ -18,6 +18,7 @@ package agentsandbox
 
 import (
 	"context"
+	"time"
 
 	"k8s.io/client-go/rest"
 	sandboxsdk "sigs.k8s.io/agent-sandbox/clients/go/sandbox"
@@ -45,8 +46,10 @@ type liveSandbox interface {
 type sandboxFactory interface {
 	// CreateSandbox provisions a fresh sandbox from the named warm pool. The
 	// returned sandbox is already open (the SDK's CreateSandbox calls Open
-	// internally), so callers must not open it again.
-	CreateSandbox(ctx context.Context, warmPoolName, namespace string) (liveSandbox, error)
+	// internally), so callers must not open it again. shutdownAfter bounds the
+	// claim's server-side lifetime so a dispatcher that crashes before Release
+	// cannot leak a permanent sandbox; a non-positive value means no expiry.
+	CreateSandbox(ctx context.Context, warmPoolName, namespace string, shutdownAfter time.Duration) (liveSandbox, error)
 	// GetSandbox re-attaches to an existing sandbox by claim name.
 	GetSandbox(ctx context.Context, claimName, namespace string) (liveSandbox, error)
 	// DeleteSandbox deletes a sandbox by claim name.
@@ -73,12 +76,16 @@ type sdkFactory struct {
 	client *sandboxsdk.Client
 }
 
-func (f *sdkFactory) CreateSandbox(ctx context.Context, warmPoolName, namespace string) (liveSandbox, error) {
-	sb, err := f.client.CreateSandbox(ctx, warmPoolName, namespace)
+func (f *sdkFactory) CreateSandbox(ctx context.Context, warmPoolName, namespace string, shutdownAfter time.Duration) (liveSandbox, error) {
+	var opts []sandboxsdk.CreateOption
+	if shutdownAfter > 0 {
+		opts = append(opts, sandboxsdk.WithShutdownAfter(shutdownAfter))
+	}
+	sb, err := f.client.CreateSandbox(ctx, warmPoolName, namespace, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return &sdkSandbox{sb: sb}, nil
+	return &sdkSandbox{sb: sb, client: f.client, namespace: namespace}, nil
 }
 
 func (f *sdkFactory) GetSandbox(ctx context.Context, claimName, namespace string) (liveSandbox, error) {
@@ -86,16 +93,20 @@ func (f *sdkFactory) GetSandbox(ctx context.Context, claimName, namespace string
 	if err != nil {
 		return nil, err
 	}
-	return &sdkSandbox{sb: sb}, nil
+	return &sdkSandbox{sb: sb, client: f.client, namespace: namespace}, nil
 }
 
 func (f *sdkFactory) DeleteSandbox(ctx context.Context, claimName, namespace string) error {
 	return f.client.DeleteSandbox(ctx, claimName, namespace)
 }
 
-// sdkSandbox adapts *sandboxsdk.Sandbox to the liveSandbox interface.
+// sdkSandbox adapts *sandboxsdk.Sandbox to the liveSandbox interface. It keeps a
+// reference to the owning Client so Close can route cleanup through
+// Client.DeleteSandbox (see Close).
 type sdkSandbox struct {
-	sb *sandboxsdk.Sandbox
+	sb        *sandboxsdk.Sandbox
+	client    *sandboxsdk.Client
+	namespace string
 }
 
 func (s *sdkSandbox) ClaimName() string { return s.sb.ClaimName() }
@@ -112,4 +123,11 @@ func (s *sdkSandbox) Run(ctx context.Context, command string) (string, error) {
 	return res.Stdout, nil
 }
 
-func (s *sdkSandbox) Close(ctx context.Context) error { return s.sb.Close(ctx) }
+// Close tears the sandbox down. It routes through Client.DeleteSandbox rather
+// than Sandbox.Close directly: in the pinned SDK (v1.0.10) Sandbox.Close deletes
+// the claim but leaves the handle in the Client's registry, whereas
+// Client.DeleteSandbox removes the registry entry as well, so repeated executions
+// do not accumulate closed handles in the long-lived dispatcher client.
+func (s *sdkSandbox) Close(ctx context.Context) error {
+	return s.client.DeleteSandbox(ctx, s.sb.ClaimName(), s.namespace)
+}

@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -70,6 +71,12 @@ const (
 
 	// defaultCredentialKey is the Secret key used when CredentialRef.Key is empty.
 	defaultCredentialKey = "credential"
+
+	// claimShutdownGrace is added to a claim's execution timeout to derive its
+	// server-side expiry (WithShutdownAfter). It leaves room for scheduling, the
+	// runner's own work, and log retrieval while still guaranteeing the claim is
+	// reaped if the dispatcher dies before it can Release the sandbox.
+	claimShutdownGrace = 5 * time.Minute
 )
 
 // secretReader reads a single value from a Secret. It is abstracted so the
@@ -149,7 +156,7 @@ func (p *Provider) Claim(ctx context.Context, spec sandbox.RunnerSpec) (sandbox.
 		return sandbox.RunnerHandle{}, err
 	}
 
-	sb, err := factory.CreateSandbox(ctx, warmPoolName(spec.Toolset), spec.Namespace)
+	sb, err := factory.CreateSandbox(ctx, warmPoolName(spec.Toolset), spec.Namespace, spec.Timeout+claimShutdownGrace)
 	if err != nil {
 		return sandbox.RunnerHandle{}, fmt.Errorf("agentsandbox provider: creating sandbox: %w", err)
 	}
@@ -219,18 +226,32 @@ func (p *Provider) Await(ctx context.Context, h sandbox.RunnerHandle) ([]byte, e
 
 // Release closes the sandbox (tearing it down and deleting its claim) and drops
 // the live handle. A missing handle is treated as already released.
+//
+// The handle is removed from the live map up front so a concurrent or repeated
+// Release of the same ref cannot double-close; if Close then fails, the handle is
+// re-inserted so a subsequent Release can retry cleanup instead of silently
+// no-opping. The claim's WithShutdownAfter expiry is the backstop if no retry
+// ever arrives.
 func (p *Provider) Release(ctx context.Context, h sandbox.RunnerHandle) error {
 	if h.Ref == "" {
 		return nil
 	}
 	p.mu.Lock()
-	sb := p.live[h.Ref]
+	sb, ok := p.live[h.Ref]
 	delete(p.live, h.Ref)
 	p.mu.Unlock()
-	if sb == nil {
+	if !ok || sb == nil {
+		// Already released (or claimed by a concurrent Release): nothing to do.
 		return nil
 	}
 	if err := sb.Close(ctx); err != nil {
+		// Re-insert so a later Release retries, unless a fresh claim already took
+		// this ref in the meantime.
+		p.mu.Lock()
+		if _, taken := p.live[h.Ref]; !taken {
+			p.live[h.Ref] = sb
+		}
+		p.mu.Unlock()
 		return fmt.Errorf("agentsandbox provider: closing sandbox %q: %w", h.Ref, err)
 	}
 	return nil

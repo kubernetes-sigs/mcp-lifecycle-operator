@@ -212,7 +212,7 @@ func TestSetupSetsOwnerReference(t *testing.T) {
 	ctx := context.Background()
 
 	owner := &mcpv1alpha1.MCPToolset{
-		ObjectMeta: metav1.ObjectMeta{Name: "ops", Namespace: "team-a", UID: "owner-uid"},
+		Name: "ops", Namespace: "team-a", UID: "owner-uid",
 	}
 	tc := sampleToolset()
 	tc.Owner = owner
