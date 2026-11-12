@@ -1,0 +1,58 @@
+# Code Mode MVP: an MCPToolset that lets an agent submit a script composing
+# multiple MCP tool calls against a set of MCPServers. The script runs in an
+# isolated sandbox (the "agentsandbox" provider runs each execution in a
+# dedicated agent-sandbox Sandbox) and only the final result is returned.
+#
+# Prerequisite: the agent-sandbox controller and its CRDs must be installed in
+# the cluster (see https://github.com/kubernetes-sigs/agent-sandbox).
+#
+# Apply the MCPServer first, wait for it to become Verified, then apply the
+# MCPToolset. Once the toolset reports Ready=True, submit code to the URL in
+# status.executeEndpoint.
+#
+#   kubectl apply -f examples/mcptoolset-ops.yaml
+#   kubectl -n codemode wait --for=condition=Ready mcptoolset/ops-toolset
+#   kubectl -n codemode get mcptoolset ops-toolset -o jsonpath='{.status.executeEndpoint}'
+#
+# Everything lives in a dedicated "codemode" namespace. Do NOT name an MCPServer
+# "kubernetes": its generated Service would collide with the built-in API Service,
+# and a Service named "kubernetes" makes the kubelet inject KUBERNETES_SERVICE_HOST
+# into every pod in the namespace, hijacking in-cluster API clients.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: codemode
+---
+apiVersion: mcp.x-k8s.io/v1beta1
+kind: MCPServer
+metadata:
+  name: k8s-mcp
+  namespace: codemode
+spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: quay.io/containers/kubernetes_mcp_server:latest
+  config:
+    port: 8080
+---
+apiVersion: mcp.x-k8s.io/v1alpha1
+kind: MCPToolset
+metadata:
+  name: ops-toolset
+  namespace: codemode
+spec:
+  # The servers a submitted script may reach (the containment boundary).
+  servers:
+    - k8s-mcp
+  # The sandbox execution backend. "agentsandbox" runs each execution in a
+  # dedicated agent-sandbox Sandbox (baseline isolation: per-execution,
+  # ephemeral, filesystem-isolated).
+  provider: agentsandbox
+  # Minimum isolation the provider must satisfy. "baseline" is the default and
+  # is satisfied by the agentsandbox provider.
+  policy:
+    minIsolation: baseline
+  # Default per-execution time budget (also caps the scoped credential lifetime).
+  timeoutSeconds: 120

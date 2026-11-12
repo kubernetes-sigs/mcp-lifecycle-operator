@@ -1,0 +1,225 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: mcptoolsets.mcp.x-k8s.io
+spec:
+  group: mcp.x-k8s.io
+  names:
+    kind: MCPToolset
+    listKind: MCPToolsetList
+    plural: mcptoolsets
+    singular: mcptoolset
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.provider
+      name: Provider
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.executeEndpoint
+      name: Endpoint
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          MCPToolset enables "code mode" for a set of MCPServers: an agent submits a
+          script that composes multiple MCP tool calls, the script runs in an isolated
+          sandbox provisioned by the selected provider, and only the final result is
+          returned. The operator reconciles the long-lived dispatcher infrastructure
+          and publishes status.executeEndpoint; it is not on the per-execution path.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              MCPToolsetSpec defines the desired state of MCPToolset.
+
+              A MCPToolset is a binding-style resource: it names one or more MCPServer
+              resources in the same namespace and selects a sandbox provider that runs
+              submitted code (code mode) against those servers, returning only the final
+              result.
+            properties:
+              policy:
+                description: Policy captures the isolation policy the provider must
+                  satisfy.
+                properties:
+                  minIsolation:
+                    default: baseline
+                    description: |-
+                      MinIsolation is the minimum isolation the selected provider must satisfy.
+                      If the provider's declared guarantees are weaker, the toolset is rejected
+                      (Ready=False, reason InsufficientIsolation) and no dispatcher is deployed.
+                      Defaults to "baseline".
+                    enum:
+                    - baseline
+                    - egress
+                    type: string
+                type: object
+              provider:
+                description: |-
+                  Provider selects the sandbox execution backend. It must match the name of
+                  a registered SandboxProvider. The MVP ships a single "agentsandbox" provider
+                  that runs each execution in an isolated agent-sandbox Sandbox.
+                maxLength: 253
+                minLength: 1
+                type: string
+              servers:
+                description: |-
+                  Servers is the list of MCPServer resource names, in the same namespace as
+                  this MCPToolset, whose tools the toolset exposes to submitted code. A
+                  script running against this toolset may only reach the servers listed here
+                  (the containment boundary). At least one server is required; the list
+                  enables a multi-server sandbox.
+                items:
+                  maxLength: 253
+                  minLength: 1
+                  type: string
+                maxItems: 64
+                minItems: 1
+                type: array
+                x-kubernetes-validations:
+                - message: servers must not contain duplicate entries
+                  rule: self.all(s, self.exists_one(x, x == s))
+              timeoutSeconds:
+                default: 120
+                description: |-
+                  TimeoutSeconds is the default per-execution time budget applied to code
+                  submitted against this toolset. It also caps the lifetime of the scoped
+                  credential injected into the sandbox. Defaults to 120 seconds.
+
+                  Note: the MVP injects a single static, long-lived scoped credential into
+                  each sandbox rather than a per-execution brokered identity. This is NOT
+                  production grade; per-execution identity via RFC 8693 token exchange is
+                  deferred (see the code-mode design, section 7).
+                format: int32
+                maximum: 3600
+                minimum: 1
+                type: integer
+            required:
+            - provider
+            - servers
+            type: object
+          status:
+            description: MCPToolsetStatus defines the observed state of MCPToolset.
+            properties:
+              conditions:
+                description: |-
+                  Conditions represent the latest available observations of the toolset's
+                  state.
+
+                  Standard condition types:
+                  - "ServersResolved": every entry in spec.servers maps to an existing,
+                    ready MCPServer Service. False names the missing/not-ready server.
+                  - "Ready": all servers resolved, the provider satisfied the isolation
+                    policy, and the dispatcher is available with ExecuteEndpoint published.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              executeEndpoint:
+                description: |-
+                  ExecuteEndpoint is the in-cluster URL of the code-mode dispatcher for this
+                  toolset. Callers submit code here; the physical topology behind this URL
+                  (a per-toolset Deployment today, possibly a shared router later) is an
+                  implementation detail. Populated only when Ready is True.
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration reflects the generation most recently observed by the
+                  controller. When it matches metadata.generation, the status is up to date.
+                format: int64
+                type: integer
+              resolvedServers:
+                description: |-
+                  ResolvedServers lists the servers that were successfully resolved to a
+                  reachable MCPServer Service endpoint. Observability only.
+                items:
+                  type: string
+                type: array
+                x-kubernetes-list-type: atomic
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

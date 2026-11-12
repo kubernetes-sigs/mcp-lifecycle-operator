@@ -42,10 +42,14 @@ import (
 
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	sandboxv1beta1 "sigs.k8s.io/agent-sandbox/api/v1beta1"
+	extv1beta1 "sigs.k8s.io/agent-sandbox/extensions/api/v1beta1"
+
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/agentsandbox"
 	kuadrantapi "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant/api"
 	webhookpolicy "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/webhook"
 
@@ -57,6 +61,9 @@ import (
 	// The kuadrant provider is imported by name (not blank) so its opt-in
 	// extension-namespace allowlist can be configured from startup flags.
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant"
+	// The agentsandbox code-mode provider registers itself via init(); it is
+	// imported by name above for the SetConfig/SetControllerClient/SetRunnerImage
+	// wiring in main.
 	// +kubebuilder:scaffold:imports
 )
 
@@ -73,6 +80,10 @@ func init() {
 	utilruntime.Must(gatewayv1.Install(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	utilruntime.Must(kuadrantapi.AddToScheme(scheme))
+	// agent-sandbox types: the agentsandbox provider's reconcile-time Setup/Teardown
+	// create SandboxTemplate + SandboxWarmPool via the controller-runtime client.
+	utilruntime.Must(sandboxv1beta1.AddToScheme(scheme))
+	utilruntime.Must(extv1beta1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -98,6 +109,8 @@ func main() {
 	var httprouteAllowedGatewayNamespaces string
 	var kuadrantAllowedExtensionNamespaces string
 	var clusterDomain string
+	var dispatcherImage string
+	var runnerImage string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -165,6 +178,12 @@ func main() {
 			"Empty means no restriction (any namespace named in a binding's ConfigMap is trusted).")
 	flag.StringVar(&clusterDomain, "cluster-domain", controller.DefaultClusterDomain,
 		"Kubernetes DNS cluster domain used for MCP Service handshakes and status addresses; must be a DNS subdomain.")
+	flag.StringVar(&dispatcherImage, "dispatcher-image", os.Getenv("DISPATCHER_IMAGE"),
+		"Image for the code-mode execute_code dispatcher the MCPToolset controller deploys. "+
+			"Falls back to the DISPATCHER_IMAGE env var. Required to reconcile MCPToolsets.")
+	flag.StringVar(&runnerImage, "runner-image", os.Getenv("RUNNER_IMAGE"),
+		"Portable code-mode runner image the dispatcher launches per execution. "+
+			"Falls back to the RUNNER_IMAGE env var.")
 
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
@@ -317,6 +336,15 @@ func main() {
 			disallowPrivilegedSecurityContext, disallowPrivilegedFlagSet)
 	}
 
+	// Wire the agentsandbox code-mode provider for its reconcile-time half:
+	// Setup/Teardown create the per-toolset SandboxTemplate + SandboxWarmPool via
+	// the controller-runtime client, baking the sandbox image from --runner-image.
+	// SetConfig is wired for symmetry; the dispatcher half (Claim/Await/Release)
+	// runs in the execute_code process, not here.
+	agentsandbox.SetConfig(mgr.GetConfig())
+	agentsandbox.SetControllerClient(mgr.GetClient())
+	agentsandbox.SetRunnerImage(runnerImage)
+
 	reconciler := &controller.MCPServerReconciler{
 		Client:                      mgr.GetClient(),
 		Scheme:                      mgr.GetScheme(),
@@ -379,6 +407,15 @@ func main() {
 	}
 	if err := providers.SetupAll(mgr); err != nil {
 		setupLog.Error(err, "unable to set up gateway providers")
+		os.Exit(1)
+	}
+	if err := (&controller.MCPToolsetReconciler{
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		DispatcherImage: dispatcherImage,
+		RunnerImage:     runnerImage,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "MCPToolset")
 		os.Exit(1)
 	}
 	if enableWebhook {

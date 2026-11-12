@@ -184,6 +184,37 @@ For more examples, see the [examples/](./examples/) directory:
 - **[everything-mcp-server](./examples/everything-mcp-server/)** - Deploy the Everything MCP Server
 - **[gateway-integration](./examples/gateway-integration/)** - Expose an MCP server through a gateway
 
+## Code Mode (experimental)
+
+Code mode lets an agent submit a script that composes many MCP tool calls at
+once. The script runs in an isolated sandbox and only the final result is
+returned, instead of the agent round-tripping every individual tool call.
+
+An `MCPToolset` binds a set of `MCPServer` resources to a sandbox provider (the
+`agentsandbox` provider, built on
+[agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)) and, once
+reconciled, publishes a `status.executeEndpoint`. The operator reconciles only
+the long-lived dispatcher infrastructure; it is never on the per-execution path
+(the dispatcher claims sandboxes directly from the provider).
+
+**Prerequisite:** the agent-sandbox controller and its CRDs must be installed in
+the cluster, and the `mcplo-agentsandbox` sandbox image (sandboxd + the runner,
+built via `make docker-build-agentsandbox`) must be reachable as the operator's
+`--runner-image`.
+
+```bash
+kubectl apply -f examples/mcptoolset-ops.yaml
+kubectl wait --for=condition=Ready mcptoolset/ops-toolset
+kubectl get mcptoolset ops-toolset -o jsonpath='{.status.executeEndpoint}'
+```
+
+- Example: **[mcptoolset-ops.yaml](./examples/mcptoolset-ops.yaml)**
+- Design: [Code Mode MVP design](./docs/superpowers/specs/2026-09-30-code-mode-design.md)
+- Validation walkthrough: [quickstart](./specs/013-code-mode-mvp/quickstart.md)
+
+The MVP credential model is a single static, non-production scoped credential;
+per-execution identity (RFC 8693 token exchange) is deferred. See the design doc.
+
 ## Development
 
 ### Prerequisites

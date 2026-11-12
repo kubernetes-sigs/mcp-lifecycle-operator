@@ -39,8 +39,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	sandboxv1beta1 "sigs.k8s.io/agent-sandbox/api/v1beta1"
+	extv1beta1 "sigs.k8s.io/agent-sandbox/extensions/api/v1beta1"
+
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/agentsandbox"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -73,6 +77,12 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	err = gatewayv1.Install(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
+	// agent-sandbox types: the agentsandbox provider's Setup creates
+	// SandboxTemplate + SandboxWarmPool during reconcile.
+	err = sandboxv1beta1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = extv1beta1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme
 
@@ -81,6 +91,7 @@ var _ = BeforeSuite(func() {
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
 			gatewayAPICRDPath(),
+			agentSandboxCRDPath(),
 		},
 		ErrorIfCRDPathMissing: true,
 	}
@@ -98,6 +109,12 @@ var _ = BeforeSuite(func() {
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
+
+	// Wire the agentsandbox provider's reconcile-time half so the MCPToolset
+	// controller can resolve it and its Setup can create backend state.
+	agentsandbox.SetConfig(cfg)
+	agentsandbox.SetControllerClient(k8sClient)
+	agentsandbox.SetRunnerImage("quay.io/matzew/codemode-runner:test")
 })
 
 var _ = AfterSuite(func() {
@@ -115,6 +132,16 @@ func gatewayAPICRDPath() string {
 	out, err := cmd.Output()
 	Expect(err).NotTo(HaveOccurred(), "Failed to resolve Gateway API module directory via 'go list -m'; run 'go mod download' first")
 	return filepath.Join(strings.TrimSpace(string(out)), "config", "crd", "standard")
+}
+
+// agentSandboxCRDPath resolves the agent-sandbox CRD directory from the Go module
+// cache the same way, so the agentsandbox provider's SandboxTemplate/WarmPool
+// resources can be created during reconcile tests.
+func agentSandboxCRDPath() string {
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "sigs.k8s.io/agent-sandbox")
+	out, err := cmd.Output()
+	Expect(err).NotTo(HaveOccurred(), "Failed to resolve agent-sandbox module directory via 'go list -m'; run 'go mod download' first")
+	return filepath.Join(strings.TrimSpace(string(out)), "k8s", "crds")
 }
 
 // getFirstFoundEnvTestBinaryDir locates the first binary in the specified path.
