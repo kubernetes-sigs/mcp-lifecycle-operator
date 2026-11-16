@@ -1,0 +1,802 @@
+/*
+Copyright 2026 The Kubernetes Authors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// Promoted from v1beta1. Deprecated fields are omitted from the GA API.
+
+package v1
+
+import (
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+
+// WorkloadKind defines the type of workload resource for BYO workloads.
+// +kubebuilder:validation:Enum=Deployment;DaemonSet;StatefulSet
+type WorkloadKind string
+
+const (
+	// WorkloadKindDeployment indicates a Deployment workload.
+	WorkloadKindDeployment WorkloadKind = "Deployment"
+	// WorkloadKindDaemonSet indicates a DaemonSet workload.
+	WorkloadKindDaemonSet WorkloadKind = "DaemonSet"
+	// WorkloadKindStatefulSet indicates a StatefulSet workload.
+	WorkloadKindStatefulSet WorkloadKind = "StatefulSet"
+)
+
+// WorkloadReference references an external workload resource in the same namespace.
+type WorkloadReference struct {
+	// Name of the workload resource.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// Kind of the workload resource.
+	// +kubebuilder:validation:Required
+	Kind WorkloadKind `json:"kind"`
+}
+
+// ServiceReference references an external Service in the same namespace.
+type ServiceReference struct {
+	// Name of the Service resource.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
+// SourceType defines the type of source for the MCP server.
+// +kubebuilder:validation:Enum=ContainerImage
+type SourceType string
+
+const (
+	// SourceTypeContainerImage indicates the source is a container image.
+	SourceTypeContainerImage SourceType = "ContainerImage"
+)
+
+// ContainerImageSource defines a container image source.
+type ContainerImageSource struct {
+	// Ref is the container image containing the MCP server implementation.
+	// Must be a valid OCI image reference.
+	// Examples:
+	//   - ghcr.io/modelcontextprotocol/servers/filesystem:latest
+	//   - ghcr.io/modelcontextprotocol/servers/github:v1.0.0
+	//   - custom-registry.io/my-mcp-server:1.2.3
+	//   - custom-registry.io/my-mcp-server@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength:=1
+	// +kubebuilder:validation:MaxLength:=1000
+	// +kubebuilder:validation:XValidation:rule="self.matches('^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])((\\\\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]))+)?(:[0-9]+)?\\\\b')",message="must start with a valid domain. valid domains must be alphanumeric characters (lowercase and uppercase) separated by the \".\" character."
+	// +kubebuilder:validation:XValidation:rule="self.find('(\\\\/[a-z0-9]+((([._]|__|[-]*)[a-z0-9]+)+)?((\\\\/[a-z0-9]+((([._]|__|[-]*)[a-z0-9]+)+)?)+)?)') != \"\"",message="a valid name is required. valid names must contain lowercase alphanumeric characters separated only by the \".\", \"_\", \"__\", \"-\" characters."
+	// +kubebuilder:validation:XValidation:rule="self.find('(@.*:)') != \"\" || self.find(':.*$') != \"\"",message="must end with a digest or a tag"
+	// +kubebuilder:validation:XValidation:rule="self.find('(@.*:)') == \"\" ? (self.find(':.*$') != \"\" ? self.find(':.*$').substring(1).size() <= 127 : true) : true",message="tag is invalid. the tag must not be more than 127 characters"
+	// +kubebuilder:validation:XValidation:rule="self.find('(@.*:)') == \"\" ? (self.find(':.*$') != \"\" ? self.find(':.*$').matches(':[\\\\w][\\\\w.-]*$') : true) : true",message="tag is invalid. valid tags must begin with a word character (alphanumeric + \"_\") followed by word characters or \".\", and \"-\" characters"
+	// +kubebuilder:validation:XValidation:rule="self.find('(@.*:)') != \"\" ? self.find('(@.*:)').matches('(@[A-Za-z][A-Za-z0-9]*([-_+.][A-Za-z][A-Za-z0-9]*)*[:])') : true",message="digest algorithm is not valid. valid algorithms must start with an uppercase or lowercase alpha character followed by alphanumeric characters and may contain the \"-\", \"_\", \"+\", and \".\" characters."
+	// +kubebuilder:validation:XValidation:rule="self.find('(@.*:)') != \"\" ? self.find(':.*$').substring(1).size() >= 32 : true",message="digest is not valid. the encoded string must be at least 32 characters"
+	// +kubebuilder:validation:XValidation:rule="self.find('(@.*:)') != \"\" ? self.find(':.*$').matches(':[0-9A-Fa-f]*$') : true",message="digest is not valid. the encoded string must only contain hex characters (A-F, a-f, 0-9)"
+	Ref string `json:"ref,omitempty"`
+	// NOTE: the validation rules above are taken from
+	// https://github.com/operator-framework/operator-controller/blob/475e1341d0aa045c4fcb6a93a1ffeb2d16484ca7/api/v1/clustercatalog_types.go#L275-L321
+
+	// PullPolicy controls when the kubelet pulls the MCP server image.
+	// When omitted, Kubernetes applies its native default based on the image reference.
+	// +optional
+	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
+	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
+
+	// ImagePullSecrets specifies credentials for pulling the MCP server image
+	// from private registries.
+	// The operator passes these references to the managed Pod and does not read
+	// or copy Secret data.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:XValidation:rule="self.all(secret, secret.name != '')",message="imagePullSecrets names must not be empty"
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+}
+
+// Source defines where the MCP server's container image (or other source types in the future) is located.
+// +kubebuilder:validation:XValidation:rule="self.type == 'ContainerImage' ? has(self.containerImage) : !has(self.containerImage)",message="containerImage must be set when type is ContainerImage and must not be set otherwise"
+type Source struct {
+	// Type is a required field that configures how the MCP server should be sourced.
+	// Allowed values are: ContainerImage.
+	// When set to ContainerImage, the MCP server will be sourced directly from an OCI
+	// container image following the configuration specified in containerImage.
+	// +kubebuilder:validation:Required
+	Type SourceType `json:"type,omitempty"`
+
+	// ContainerImage specifies container image details when Type is ContainerImage.
+	// +optional
+	ContainerImage *ContainerImageSource `json:"containerImage,omitempty"`
+}
+
+// StorageType defines the type of storage mount.
+// +kubebuilder:validation:Enum=ConfigMap;Secret;EmptyDir
+type StorageType string
+
+const (
+	// StorageTypeConfigMap indicates a ConfigMap volume source.
+	StorageTypeConfigMap StorageType = "ConfigMap"
+	// StorageTypeSecret indicates a Secret volume source.
+	StorageTypeSecret StorageType = "Secret"
+	// StorageTypeEmptyDir indicates an EmptyDir volume source.
+	StorageTypeEmptyDir StorageType = "EmptyDir"
+)
+
+// MountPermissions defines the access permissions for a volume mount.
+// +kubebuilder:validation:Enum=ReadOnly;ReadWrite;RecursiveReadOnly
+type MountPermissions string
+
+const (
+	// MountPermissionsReadOnly indicates the mount is read-only.
+	MountPermissionsReadOnly MountPermissions = "ReadOnly"
+	// MountPermissionsReadWrite indicates the mount is read-write.
+	MountPermissionsReadWrite MountPermissions = "ReadWrite"
+	// MountPermissionsRecursiveReadOnly indicates the mount and all its submounts are recursively read-only.
+	// This provides stronger guarantees than ReadOnly alone.
+	MountPermissionsRecursiveReadOnly MountPermissions = "RecursiveReadOnly"
+)
+
+// StorageSource defines the source of the storage to mount (ConfigMap, Secret, or EmptyDir).
+// +kubebuilder:validation:XValidation:rule="self.type == 'ConfigMap' ? has(self.configMap) : !has(self.configMap)",message="configMap must be set when type is ConfigMap and must not be set otherwise"
+// +kubebuilder:validation:XValidation:rule="self.type == 'Secret' ? has(self.secret) : !has(self.secret)",message="secret must be set when type is Secret and must not be set otherwise"
+// +kubebuilder:validation:XValidation:rule="self.type == 'EmptyDir' ? has(self.emptyDir) : !has(self.emptyDir)",message="emptyDir must be set when type is EmptyDir and must not be set otherwise"
+type StorageSource struct {
+	// Type is a required field that specifies the type of volume source.
+	// Allowed values are: ConfigMap, Secret, EmptyDir.
+	// This determines which volume source field (configMap, secret, or emptyDir) should be configured.
+	// +kubebuilder:validation:Required
+	Type StorageType `json:"type,omitempty"`
+
+	// ConfigMap specifies a ConfigMap volume source (when Type is ConfigMap).
+	// Uses native Kubernetes ConfigMapVolumeSource type for full feature parity.
+	// +optional
+	ConfigMap *corev1.ConfigMapVolumeSource `json:"configMap,omitempty"`
+
+	// Secret specifies a Secret volume source (when Type is Secret).
+	// Uses native Kubernetes SecretVolumeSource type for full feature parity.
+	// +optional
+	Secret *corev1.SecretVolumeSource `json:"secret,omitempty"`
+
+	// EmptyDir specifies an EmptyDir volume source (when Type is EmptyDir).
+	// Uses native Kubernetes EmptyDirVolumeSource type for full feature parity.
+	// +optional
+	EmptyDir *corev1.EmptyDirVolumeSource `json:"emptyDir,omitempty"`
+}
+
+// StorageMount defines a storage mount combining volume source and mount configuration.
+// The Path and Permissions fields apply to all storage types, while Source contains
+// the type-specific configuration (ConfigMap, Secret, or EmptyDir).
+type StorageMount struct {
+	// Path is a required field that specifies where the volume should be mounted in the container.
+	// Must be an absolute path (starting with /).
+	// The ConfigMap or Secret data will be accessible to the MCP server process at this location.
+	// Must be between 1 and 4096 characters, start with '/', and must not contain ':'.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=4096
+	// +kubebuilder:validation:XValidation:rule="self.startsWith('/')",message="path must be an absolute path (must start with '/')"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="path must not contain ':' character"
+	Path string `json:"path,omitempty"`
+
+	// Permissions specifies the access permissions for the mount.
+	// Allowed values are ReadOnly, ReadWrite, and RecursiveReadOnly.
+	// When set to ReadOnly, the mount is read-only.
+	// When set to ReadWrite, the mount is read-write.
+	// When set to RecursiveReadOnly, the mount and all submounts are recursively read-only.
+	// Defaults to ReadOnly for ConfigMap and Secret mounts.
+	// For EmptyDir mounts, ReadWrite is more common for writable scratch space.
+	// +optional
+	// +kubebuilder:default=ReadOnly
+	Permissions MountPermissions `json:"permissions,omitempty"`
+
+	// Source defines where the storage data comes from (ConfigMap, Secret, or EmptyDir).
+	// +kubebuilder:validation:Required
+	Source StorageSource `json:"source,omitzero"`
+}
+
+// ServerConfig defines how the MCP server should be configured when it runs.
+type ServerConfig struct {
+	// Port specifies the port number on which the MCP server listens for connections.
+	// Must be between 1 and 65535.
+	// For operator-managed workloads, this is the container port; a referenced
+	// Service may expose a different port, which is resolved from that Service.
+	// Required for operator-managed workloads or when serviceRef is not set.
+	// When both workloadRef and serviceRef are set and port is omitted,
+	// the port is resolved from the referenced Service.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	Port int32 `json:"port,omitempty"`
+
+	// Arguments are command line arguments for the MCP server container.
+	// Use this to pass configuration flags to the server.
+	// Example: ["--config", "/etc/mcp-config/config.toml", "--verbose"]
+	// When not specified, the container image's default arguments (CMD/ENTRYPOINT) are used.
+	// Empty strings within the array are not allowed.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.all(arg, arg.size() > 0)",message="arguments must not contain empty strings"
+	Arguments []string `json:"arguments,omitempty"`
+
+	// Env is a list of environment variables to set in the MCP server container.
+	// Supports the full Kubernetes EnvVar API including valueFrom for secrets and configmaps.
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// EnvFrom is a list of sources to populate environment variables in the MCP server container.
+	// Each entry injects all key-value pairs from a Secret or ConfigMap as environment variables.
+	// The keys become the variable names. Useful when a Secret's keys already match
+	// the expected env var names (e.g., GITHUB_TOKEN).
+	// +optional
+	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
+
+	// Storage defines storage mounts for ConfigMaps, Secrets, and EmptyDirs.
+	// Each item uses native Kubernetes volume source types for consistency and feature parity.
+	// If specified, must contain at least 1 item. Maximum 64 items.
+	// Each storage mount must have a unique path.
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=64
+	// +listType=map
+	// +listMapKey=path
+	Storage []StorageMount `json:"storage,omitempty"`
+
+	// Path is the HTTP path where the MCP server listens for SSE/Streamable HTTP connections.
+	// This path is appended to the service address in the status URL.
+	// Must be a valid URI path component starting with '/'.
+	// Maximum 253 characters. Cannot contain spaces, control characters, or query/fragment separators (? #).
+	// Examples: /mcp, /api/v1/mcp, /services/mcp-server
+	// Defaults to /mcp if not specified.
+	// +optional
+	// +kubebuilder:default="/mcp"
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:XValidation:rule="self.startsWith('/')",message="path must start with '/'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(' ')",message="path must not contain spaces"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('?')",message="path must not contain query string separator '?'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('#')",message="path must not contain fragment separator '#'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('\\n') && !self.contains('\\r') && !self.contains('\\t')",message="path must not contain control characters (newlines, tabs)"
+	Path string `json:"path,omitempty"`
+}
+
+// SecurityConfig defines security-related configuration.
+// If not specified, default security settings will be applied.
+// See individual field documentation for specific defaults.
+type SecurityConfig struct {
+	// ServiceAccountName is the name of the ServiceAccount to use for the MCP server pods.
+	// The ServiceAccount should have appropriate RBAC permissions for the MCP server's operations.
+	// If not specified, the default ServiceAccount for the namespace will be used.
+	// Must be a string that follows the DNS1123 subdomain format.
+	// Must be at most 253 characters in length, and must consist only of lower case alphanumeric characters, '-'
+	// and '.', and must start and end with an alphanumeric character.
+	// Example: For kubernetes-mcp-server with read-only access, create a ServiceAccount
+	// and bind it to the 'view' ClusterRole.
+	// +optional
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:XValidation:rule="self == '' || !format.dns1123Subdomain().validate(self).hasValue()",message="serviceAccountName must be a valid DNS subdomain name: a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character."
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+
+	// PodSecurityContext specifies the security context for the MCP server pod.
+	// +optional
+	PodSecurityContext *corev1.PodSecurityContext `json:"podSecurityContext,omitempty"`
+
+	// SecurityContext specifies the security context for the MCP server container.
+	// +optional
+	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
+}
+
+// HealthConfig defines health check configuration for the MCP server.
+// If not specified, no health probes will be configured.
+//
+// The probes are passed directly to the Deployment's container spec without any
+// transformation, providing full access to the Kubernetes Probe API. This includes
+// all probe types (httpGet, tcpSocket, exec, grpc) and all configuration options
+// (initialDelaySeconds, periodSeconds, timeoutSeconds, successThreshold, failureThreshold).
+//
+// +kubebuilder:validation:MinProperties=1
+type HealthConfig struct {
+	// LivenessProbe defines the liveness probe for the MCP server container.
+	// Kubernetes uses liveness probes to know when to restart a container.
+	// If not specified, no liveness probe will be configured.
+	//
+	// This probe is passed directly to the container spec without transformation,
+	// providing full compatibility with the Kubernetes Probe API.
+	//
+	// +optional
+	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
+
+	// ReadinessProbe defines the readiness probe for the MCP server container.
+	// Kubernetes uses readiness probes to know when a container is ready to start accepting traffic.
+	// If not specified, no readiness probe will be configured.
+	//
+	// This probe is passed directly to the container spec without transformation,
+	// providing full compatibility with the Kubernetes Probe API.
+	//
+	// +optional
+	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
+}
+
+// RuntimeConfig defines runtime execution configuration for the MCP server.
+//
+// This section covers how the MCP server executes and behaves at runtime,
+// including replicas, security, resource allocation, and health probes.
+//
+// If not specified, default runtime settings will be applied.
+// See individual field documentation for specific defaults.
+// +kubebuilder:validation:MinProperties=1
+type RuntimeConfig struct {
+	// Strategy controls rollout of the operator-managed Deployment.
+	// When omitted or removed, defaults to RollingUpdate with maxSurge and
+	// maxUnavailable both set to 25%. This does not provide session-aware draining.
+	// With workloadRef, configure the strategy on the referenced workload instead.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="!has(self.type) || self.type in ['', 'RollingUpdate', 'Recreate']",message="strategy.type must be RollingUpdate or Recreate"
+	// +kubebuilder:validation:XValidation:rule="!has(self.type) || self.type != 'Recreate' || !has(self.rollingUpdate)",message="rollingUpdate must not be set for Recreate"
+	// +kubebuilder:validation:XValidation:rule="!has(self.rollingUpdate) || !has(self.rollingUpdate.maxSurge) || (type(self.rollingUpdate.maxSurge) == int ? self.rollingUpdate.maxSurge >= 0 : self.rollingUpdate.maxSurge.matches('^[0-9]+%$'))",message="maxSurge must be a non-negative integer or percentage"
+	// +kubebuilder:validation:XValidation:rule="!has(self.rollingUpdate) || !has(self.rollingUpdate.maxUnavailable) || (type(self.rollingUpdate.maxUnavailable) == int ? self.rollingUpdate.maxUnavailable >= 0 : self.rollingUpdate.maxUnavailable.matches('^(100|[0-9]{1,2})%$'))",message="maxUnavailable must be a non-negative integer or percentage between 0% and 100%"
+	// +kubebuilder:validation:XValidation:rule="!has(self.rollingUpdate) || !has(self.rollingUpdate.maxSurge) || !has(self.rollingUpdate.maxUnavailable) || (type(self.rollingUpdate.maxSurge) == int ? self.rollingUpdate.maxSurge != 0 : !self.rollingUpdate.maxSurge.matches('^0+%$')) || (type(self.rollingUpdate.maxUnavailable) == int ? self.rollingUpdate.maxUnavailable != 0 : !self.rollingUpdate.maxUnavailable.matches('^0+%$'))",message="maxSurge and maxUnavailable must not both be zero"
+	Strategy *appsv1.DeploymentStrategy `json:"strategy,omitempty"`
+
+	// Replicas is the number of MCP server pod replicas to run.
+	// Defaults to 1 if not specified.
+	// Set to 0 to scale down the deployment.
+	// This field is a pointer (*int32) to distinguish between:
+	//   - nil (not specified) -> defaults to 1 replica
+	//   - ptr.To(0) (explicit 0) -> scale-to-zero
+	// This follows the same pattern as Deployment.Spec.Replicas in k8s.io/api/apps/v1.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	Replicas *int32 `json:"replicas,omitempty"`
+
+	// Security defines security-related configuration.
+	// If not specified, default security settings will be applied.
+	// +optional
+	Security SecurityConfig `json:"security,omitzero"`
+
+	// Resources defines the resource requirements for the MCP server container.
+	// This includes CPU and memory requests and limits.
+	// If not specified, the following defaults are applied:
+	//   - Requests: 50m CPU, 64Mi memory
+	//   - Limits: 500m CPU, 256Mi memory
+	// Supports partial specification (e.g., only requests or only limits).
+	// When partially specified, only the provided fields are used; defaults
+	// are not merged into the unspecified fields.
+	// Example:
+	//   resources:
+	//     requests:
+	//       cpu: "100m"
+	//       memory: "256Mi"
+	//     limits:
+	//       cpu: "500m"
+	//       memory: "512Mi"
+	// +optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// Health defines health check configuration for the MCP server.
+	// If not specified, no health probes will be configured.
+	// +optional
+	Health HealthConfig `json:"health,omitzero"`
+}
+
+// NetworkConfig defines network policies for the MCP server pod.
+type NetworkConfig struct {
+	// IngressFrom restricts which sources can reach the MCP server port.
+	// Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,
+	// namespaceSelector, ipBlock).
+	// When empty, the source is governed by the operator's default NetworkPolicy
+	// posture: under the "open" posture (the default) any pod in the cluster can
+	// reach the MCP server, while under the "restricted" posture the
+	// operator-generated policy denies ingress by default. That deny only takes
+	// effect where a NetworkPolicy-enforcing network plugin is installed, and it is
+	// unioned with any other NetworkPolicy selecting the same pod, so another policy
+	// may still admit traffic. Under "restricted" this field must include peers
+	// matching the operator pods and each required gateway source; otherwise, where
+	// the policy is enforced, the operator handshake cannot reach the server, so it
+	// never becomes Verified and its address is not published.
+	// +optional
+	IngressFrom []networkingv1.NetworkPolicyPeer `json:"ingressFrom,omitempty"`
+
+	// EgressTo restricts which destinations the MCP server pod can reach.
+	// Uses standard Kubernetes NetworkPolicyPeer selectors (podSelector,
+	// namespaceSelector, ipBlock).
+	// When empty, egress to all destinations is allowed (default).
+	// DNS (UDP/TCP port 53) egress is always permitted regardless of this
+	// setting.
+	// +optional
+	EgressTo []networkingv1.NetworkPolicyPeer `json:"egressTo,omitempty"`
+
+	// EgressPorts restricts which ports the MCP server pod can connect to.
+	// When empty and EgressTo is set, all ports are allowed to the
+	// specified destinations. When set, only listed ports are allowed
+	// (in addition to DNS port 53 which is always permitted).
+	// +optional
+	EgressPorts []networkingv1.NetworkPolicyPort `json:"egressPorts,omitempty"`
+
+	// DNSEgressPeer scopes the automatically-added DNS (UDP/TCP port 53)
+	// egress rule to a specific destination instead of allowing DNS to
+	// any destination. Uses a standard Kubernetes NetworkPolicyPeer
+	// selector (podSelector, namespaceSelector, ipBlock).
+	// This field only takes effect when EgressTo or EgressPorts is set;
+	// it does not by itself activate egress restrictions.
+	// When EgressTo or EgressPorts is set and DNSEgressPeer is empty,
+	// DNS egress remains permitted to any destination (default).
+	// +optional
+	DNSEgressPeer *networkingv1.NetworkPolicyPeer `json:"dnsEgressPeer,omitempty"`
+}
+
+// MCPServerSpec defines the desired state of MCPServer.
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.source)",message="source must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="has(self.workloadRef) || has(self.source)",message="either source or workloadRef must be set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.storage)",message="config.storage must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.env)",message="config.env must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.envFrom)",message="config.envFrom must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.config) || !has(self.config.arguments)",message="config.arguments must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.replicas)",message="runtime.replicas must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.strategy)",message="runtime.strategy must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.resources)",message="runtime.resources must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.security)",message="runtime.security must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.runtime) || !has(self.runtime.health)",message="runtime.health must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.workloadRef) || !has(self.network)",message="network must not be set when workloadRef is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.serviceRef) || !has(self.mcp) || !has(self.mcp.stateless)",message="mcp.stateless must not be set when serviceRef is set"
+// +kubebuilder:validation:XValidation:rule="(has(self.workloadRef) && has(self.serviceRef)) || (has(self.config) && has(self.config.port))",message="config.port is required for operator-managed workloads or when serviceRef is not set"
+// +kubebuilder:validation:XValidation:rule="!(has(self.workloadRef) && has(self.serviceRef)) || !has(self.extraLabels)",message="extraLabels must not be set when both workloadRef and serviceRef are set"
+// +kubebuilder:validation:XValidation:rule="!(has(self.workloadRef) && has(self.serviceRef)) || !has(self.extraAnnotations)",message="extraAnnotations must not be set when both workloadRef and serviceRef are set"
+// +kubebuilder:validation:XValidation:rule="has(self.workloadRef) == has(oldSelf.workloadRef)",message="workloadRef cannot be added or removed after creation"
+type MCPServerSpec struct {
+	// ExtraLabels are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
+	// The operator-managed keys "app" and "mcp-server" cannot be overridden.
+	// +optional
+	ExtraLabels map[string]string `json:"extraLabels,omitempty"`
+	// ExtraAnnotations are applied to the Deployment metadata, PodTemplate metadata, and Service metadata.
+	// +optional
+	ExtraAnnotations map[string]string `json:"extraAnnotations,omitempty"`
+
+	// WorkloadRef references an external Deployment, DaemonSet, or StatefulSet
+	// in the same namespace. When set, the operator monitors the referenced
+	// workload read-only and never creates its own Deployment.
+	// Mutually exclusive with source and operator-managed workload fields.
+	// Cannot be added or removed after creation; create a new MCPServer to switch
+	// between managed and BYO workloads. The referenced name and kind may change.
+	// +optional
+	WorkloadRef *WorkloadReference `json:"workloadRef,omitempty"`
+
+	// ServiceRef references an external Service in the same namespace.
+	// When set, the operator skips Service creation and uses the referenced
+	// Service for the MCP endpoint URL.
+	// +optional
+	ServiceRef *ServiceReference `json:"serviceRef,omitempty"`
+
+	// Source defines where the MCP server should be sourced from.
+	// Currently supports container images, with potential for additional source types in the future.
+	// Required when workloadRef is not set.
+	// +optional
+	Source Source `json:"source,omitzero"`
+
+	// Config defines how the MCP server should be configured when it runs.
+	// This includes runtime settings such as the server port, command-line arguments,
+	// environment variables, and storage mounts.
+	// May be omitted in BYO mode when workloadRef and serviceRef are set.
+	// +optional
+	Config ServerConfig `json:"config,omitzero"`
+
+	// Runtime defines runtime management configuration.
+	// If not specified, default runtime settings will be applied.
+	// +optional
+	Runtime RuntimeConfig `json:"runtime,omitzero"`
+
+	// MCP defines Model Context Protocol specific properties of the server.
+	// This section describes the MCP server's protocol-level behavior,
+	// as opposed to how it is sourced, configured, or managed at runtime.
+	// +optional
+	MCP MCPConfig `json:"mcp,omitzero"`
+
+	// Network configures network policies for the MCP server pod.
+	// +optional
+	Network *NetworkConfig `json:"network,omitempty"`
+
+	// Transport configures transport-layer settings for
+	// operator-to-MCP-server communication.
+	// +optional
+	Transport *TransportConfig `json:"transport,omitempty"`
+
+	// Gateway configures gateway integration for this MCPServer.
+	// When set, the operator creates an MCPGatewayBinding resource that
+	// integration controllers watch to provision gateway-specific resources.
+	// +optional
+	Gateway *GatewaySpec `json:"gateway,omitempty"`
+}
+
+// GatewaySpec configures gateway integration for an MCPServer.
+type GatewaySpec struct {
+	// Provider identifies which gateway integration controller should handle
+	// this MCPServer. The operator creates an MCPGatewayBinding with this value
+	// as spec.provider. Integration controllers filter bindings by provider name.
+	// Example: "httproute" for the reference Gateway API HTTPRoute controller.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Provider string `json:"provider"`
+
+	// ConfigRef is the name of a ConfigMap in the same namespace containing
+	// gateway-specific configuration. The ConfigMap is referenced by the
+	// MCPGatewayBinding and read by the integration controller.
+	// +optional
+	// +kubebuilder:validation:MaxLength=253
+	ConfigRef string `json:"configRef,omitempty"`
+}
+
+// SecretReference references a Secret in the same namespace as the MCPServer.
+type SecretReference struct {
+	// Name of the Secret.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
+// TLSClientConfig configures TLS for operator-to-MCP-server communication
+// during handshake and discovery probes.
+type TLSClientConfig struct {
+	// Enabled controls whether the operator uses HTTPS for handshake/discovery.
+	// When true, the operator connects to the MCP server using TLS.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// CABundleSecret references a Secret containing a CA certificate bundle
+	// under the key "ca.crt". Used to verify the MCP server's TLS certificate.
+	// When unset and enabled is true, system CA certificates are used.
+	// +optional
+	CABundleSecret *SecretReference `json:"caBundleSecret,omitempty"`
+
+	// InsecureSkipVerify disables TLS certificate verification.
+	// For development and testing only.
+	// +optional
+	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
+}
+
+// TransportConfig configures transport-layer settings for
+// operator-to-MCP-server communication.
+type TransportConfig struct {
+	// TLS configures TLS for operator-to-MCP-server communication
+	// during handshake and discovery probes.
+	// +optional
+	TLS *TLSClientConfig `json:"tls,omitempty"`
+}
+
+// MCPConfig defines Model Context Protocol specific properties of the server.
+// This section captures how the server behaves as an MCP server, such as whether
+// it maintains session state. These properties are distinct from container configuration
+// (config), deployment management (runtime), and image sourcing (source).
+type MCPConfig struct {
+	// Stateless indicates whether the MCP server is stateless (does not maintain session state).
+	// Only set this to true if the MCP server you are deploying declares that it is stateless.
+	// When true, the generated Service uses SessionAffinity "None", allowing
+	// requests to be freely load-balanced across replicas.
+	// When false or unset, the Service uses SessionAffinity "ClientIP" so that
+	// a given client's requests are routed to the same pod.
+	// Defaults to false (stateful).
+	// +optional
+	Stateless *bool `json:"stateless,omitempty"`
+}
+
+// MCPServerAddress contains the address information for the MCPServer.
+type MCPServerAddress struct {
+	// URL is the address of the MCP server.
+	// When no gateway is configured, this is the cluster-internal service address
+	// (e.g. <scheme>://<servicename>.<namespace>.svc.<cluster-domain>:<port>/<path>).
+	// The scheme is "https" when TLS is enabled, "http" otherwise.
+	// When a gateway provider is active, this is the external gateway address.
+	// +optional
+	URL string `json:"url,omitempty"`
+}
+
+// MCPServerCapabilities describes which MCP protocol capabilities the server advertises
+// during the protocol handshake (initialize or server/discover).
+type MCPServerCapabilities struct {
+	// Tools indicates the server supports tool listing and invocation.
+	// +optional
+	Tools bool `json:"tools,omitempty"`
+	// Resources indicates the server supports resource listing and reading.
+	// +optional
+	Resources bool `json:"resources,omitempty"`
+	// Prompts indicates the server supports prompt templates.
+	// +optional
+	Prompts bool `json:"prompts,omitempty"`
+	// Completions indicates the server supports argument autocompletion.
+	// +optional
+	Completions bool `json:"completions,omitempty"`
+}
+
+// MCPServerInfo contains identity and capability information reported by the
+// MCP server during the protocol handshake (initialize or server/discover).
+type MCPServerInfo struct {
+	// Name is the server's self-reported name.
+	// +optional
+	Name string `json:"name,omitempty"`
+	// Version is the server's self-reported version.
+	// +optional
+	Version string `json:"version,omitempty"`
+	// ProtocolVersion is the MCP protocol version negotiated during the protocol
+	// handshake. The value reflects whichever version was agreed upon by both
+	// client and server.
+	// +optional
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+	// Instructions describes how to use the server and its features.
+	// This can be used by clients to improve the LLM's understanding of
+	// available tools, resources, etc.
+	// +optional
+	Instructions string `json:"instructions,omitempty"`
+	// Capabilities lists which MCP protocol features the server supports.
+	// +optional
+	Capabilities *MCPServerCapabilities `json:"capabilities,omitempty"`
+}
+
+// MCPServerStatus defines the observed state of MCPServer.
+type MCPServerStatus struct {
+	// ObservedGeneration reflects the generation most recently observed by the controller.
+	// This allows users to determine if the status reflects the latest spec changes.
+	// When observedGeneration matches metadata.generation, the status is up-to-date.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// DeploymentName is the name of the Deployment created for this MCPServer.
+	// +optional
+	DeploymentName string `json:"deploymentName,omitempty"`
+
+	// ServiceName is the name of the Service backing this MCPServer.
+	// For operator-managed mode this is the created Service; for BYO this
+	// is the serviceRef name, or the MCPServer name when serviceRef is unset.
+	// +optional
+	ServiceName string `json:"serviceName,omitempty"`
+
+	// WorkloadName identifies the workload backing this MCPServer.
+	// For BYO: "{Kind}/{Name}" (e.g. "DaemonSet/my-ds").
+	// Empty for operator-managed workloads (use DeploymentName instead).
+	// +optional
+	WorkloadName string `json:"workloadName,omitempty"`
+
+	// WorkloadSummary is a human-readable summary for the print column.
+	// For BYO: "BYO:{Kind}/{Name}". For operator-managed: the container image ref.
+	// +optional
+	WorkloadSummary string `json:"workloadSummary,omitempty"`
+
+	// GatewayBinding contains the status of the MCPGatewayBinding created for
+	// this MCPServer, when spec.gateway is configured.
+	// +optional
+	GatewayBinding *GatewayBindingStatus `json:"gatewayBinding,omitempty"`
+
+	// Address contains the address of the MCP server service.
+	// +optional
+	Address *MCPServerAddress `json:"address,omitempty"`
+
+	// VerifiedEndpointURL is the internal Service URL for which Verified=True
+	// was established. Unlike Address, it is not replaced by a gateway URL.
+	// A changed or missing value requires endpoint verification again.
+	// +optional
+	VerifiedEndpointURL string `json:"verifiedEndpointURL,omitempty"`
+
+	// ServerInfo contains identity and capability information reported by the
+	// MCP server during the protocol handshake (initialize or server/discover).
+	// This field is populated only after a successful handshake.
+	// +optional
+	ServerInfo *MCPServerInfo `json:"serverInfo,omitempty"`
+
+	// Replicas is the total number of desired instances for this MCPServer.
+	// For operator-managed mode this reflects the owned Deployment; for BYO
+	// this reflects the referenced workload (Deployment, DaemonSet, or StatefulSet).
+	// +optional
+	Replicas int32 `json:"replicas,omitempty"`
+
+	// ReadyReplicas is the number of healthy instances for this MCPServer.
+	// For operator-managed mode this reflects the owned Deployment; for BYO
+	// this reflects the referenced workload.
+	// +optional
+	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
+
+	// Conditions represent the latest available observations of the MCPServer's state.
+	//
+	// Standard condition types (the stable part of the contract):
+	//
+	// - "Accepted": Configuration is valid and all referenced resources exist.
+	// - "Available": Workload is running, dependent resources (Deployment,
+	//   Service, NetworkPolicy) are reconciled, and at least one replica is Ready.
+	// - "Verified": The MCP endpoint completed the protocol handshake and is
+	//   reachable - the signal a Gateway or client uses before routing traffic
+	//   to it.
+	// - "GatewayRegistered": Gateway integration is active (only when spec.gateway is set).
+	//
+	// Each condition carries a Reason and a human-readable Message. The set of
+	// reasons is an implementation detail of the controller and is intentionally
+	// not enumerated here to avoid drift; specific failure details
+	// (ImagePullBackOff, OOMKilled, CrashLoop, etc.) are reported in the message,
+	// not the reason.
+	//
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// GatewayBindingStatus contains the status of the MCPGatewayBinding
+// created for this MCPServer.
+type GatewayBindingStatus struct {
+	// Name is the name of the MCPGatewayBinding resource.
+	Name string `json:"name"`
+
+	// Provider is the gateway integration provider handling this binding.
+	Provider string `json:"provider"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:ac:generate=true
+// Keep v1 out of the served CRD until conversion is implemented in #505.
+// +kubebuilder:skipversion
+// +kubebuilder:resource:scope=Namespaced
+
+// MCPServer runs a Model Context Protocol (MCP) server in Kubernetes.
+//
+// By default, MCPServer creates and manages a Deployment, Service, and NetworkPolicy
+// to run an MCP server from a container image. WorkloadRef and ServiceRef can
+// instead reference existing resources managed outside the operator. The MCP
+// server exposes tools, resources, and prompts that AI applications can use via
+// the Model Context Protocol.
+//
+// Example:
+//
+//	apiVersion: mcp.x-k8s.io/v1
+//	kind: MCPServer
+//	metadata:
+//	  name: example
+//	spec:
+//	  source:
+//	    type: ContainerImage
+//	    containerImage:
+//	      ref: example-mcp-image
+//	  config:
+//	    port: 8080
+//
+// In managed mode, the controller manages Deployment, Service, and NetworkPolicy resources with the same name as the MCPServer,
+// using ownerReferences to establish ownership. The controller will reject updates to resources
+// owned by other controllers or resources with no controller owner (to prevent silent overwrites
+// of manually-created resources), but will adopt orphaned resources from a deleted MCPServer
+// with the same name to enable seamless recreation. Referenced workloads and
+// Services remain under their existing management and are not adopted or deleted.
+type MCPServer struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// metadata is a standard object metadata
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitzero"`
+
+	// spec defines the desired state of MCPServer
+	// +required
+	Spec MCPServerSpec `json:"spec"`
+
+	// status defines the observed state of MCPServer
+	// +optional
+	Status MCPServerStatus `json:"status,omitzero"`
+}
+
+// +kubebuilder:object:root=true
+
+// MCPServerList contains a list of MCPServer
+type MCPServerList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitzero"`
+	Items           []MCPServer `json:"items"`
+}
