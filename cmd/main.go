@@ -42,6 +42,7 @@ import (
 
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
@@ -69,6 +70,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(mcpv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(mcpv1.AddToScheme(scheme))
 	utilruntime.Must(mcpv1beta1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1.Install(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
@@ -404,7 +406,7 @@ func main() {
 			"image allowlist, digest pinning, storage-mount and securityContext admission policies are " +
 			"NOT enforced. Enable the webhook in production to validate MCPServer specs.")
 	}
-	if err := (&mcpv1beta1.MCPServer{}).SetupWebhookWithManager(mgr); err != nil {
+	if err := (&mcpv1.MCPServer{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "MCPServer")
 		os.Exit(1)
 	}
