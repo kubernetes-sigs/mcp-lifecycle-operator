@@ -744,9 +744,16 @@ type GatewayBindingStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:ac:generate=true
-// Keep v1 out of the served CRD until conversion is implemented in #505.
-// +kubebuilder:skipversion
+// +kubebuilder:unservedversion
 // +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Accepted",type=string,JSONPath=`.status.conditions[?(@.type=="Accepted")].status`
+// +kubebuilder:printcolumn:name="Available",type=string,JSONPath=`.status.conditions[?(@.type=="Available")].status`
+// +kubebuilder:printcolumn:name="Verified",type=string,JSONPath=`.status.conditions[?(@.type=="Verified")].status`
+// +kubebuilder:printcolumn:name="Workload",type=string,JSONPath=`.status.workloadSummary`
+// +kubebuilder:printcolumn:name="Port",type=integer,JSONPath=`.spec.config.port`
+// +kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.status.address.url`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // MCPServer runs a Model Context Protocol (MCP) server in Kubernetes.
 //

@@ -30,7 +30,6 @@ import (
 // MCPServerApplyConfiguration represents a declarative configuration of the MCPServer type for use
 // with apply.
 //
-// Keep v1 out of the served CRD until conversion is implemented in #505.
 // MCPServer runs a Model Context Protocol (MCP) server in Kubernetes.
 //
 // By default, MCPServer creates and manages a Deployment, Service, and NetworkPolicy
