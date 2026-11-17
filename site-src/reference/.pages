@@ -1,4 +1,5 @@
 nav:
   - "MCPServer (v1)": index.md
   - "MCPServer (v1beta1)": v1beta1.md
-  - "MCPServer and Gateway Bindings (v1alpha1)": v1alpha1.md
+  - "MCPServer (v1alpha1)": v1alpha1.md
+  - "MCPGatewayBinding (v1alpha1)": mcpgatewaybinding.md

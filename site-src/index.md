@@ -4,7 +4,7 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 
 `MCPServer` has a GA `mcp.x-k8s.io/v1` API. Existing `v1beta1` and `v1alpha1` clients remain supported while those versions are served. `MCPGatewayBinding` remains `v1alpha1`.
 
-For older clients, see the [v1beta1 API reference](reference/v1beta1.md) and [v1alpha1 API reference](reference/v1alpha1.md). Before retiring an older served version, follow the [storage migration guide](operating/storage-version-migration.md).
+For older clients, see the [v1beta1 MCPServer reference](reference/v1beta1.md) and [v1alpha1 MCPServer reference](reference/v1alpha1.md). See the [MCPGatewayBinding reference](reference/mcpgatewaybinding.md) for the alpha gateway binding. Before retiring an older served version, follow the [storage migration guide](operating/storage-version-migration.md).
 
 ## Core Capabilities
 
