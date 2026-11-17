@@ -115,10 +115,8 @@ var _ = Describe("isSameGroupKind", func() {
 var _ = Describe("findMCPServersForResource", func() {
 	It("should return reconcile requests for MCPServers referencing a ConfigMap", func() {
 		mcpServer := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-server",
-				Namespace: "default",
-			},
+			Name:      "test-server",
+			Namespace: "default",
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -131,7 +129,7 @@ var _ = Describe("findMCPServersForResource", func() {
 					EnvFrom: []corev1.EnvFromSource{
 						{
 							ConfigMapRef: &corev1.ConfigMapEnvSource{
-								LocalObjectReference: corev1.LocalObjectReference{Name: "my-config"},
+								Name: "my-config",
 							},
 						},
 					},
@@ -147,7 +145,7 @@ var _ = Describe("findMCPServersForResource", func() {
 
 		r := &MCPServerReconciler{Client: fakeClient, Scheme: k8sClient.Scheme(), APIReader: fakeClient}
 		configMap := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-config", Namespace: "default"},
+			Name: "my-config", Namespace: "default",
 		}
 
 		requests := r.findMCPServersForConfigMap(context.Background(), configMap)
@@ -159,10 +157,8 @@ var _ = Describe("findMCPServersForResource", func() {
 
 	It("should return reconcile requests for MCPServers referencing a Secret", func() {
 		mcpServer := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-server",
-				Namespace: "default",
-			},
+			Name:      "test-server",
+			Namespace: "default",
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -175,7 +171,7 @@ var _ = Describe("findMCPServersForResource", func() {
 					EnvFrom: []corev1.EnvFromSource{
 						{
 							SecretRef: &corev1.SecretEnvSource{
-								LocalObjectReference: corev1.LocalObjectReference{Name: "my-secret"},
+								Name: "my-secret",
 							},
 						},
 					},
@@ -191,7 +187,7 @@ var _ = Describe("findMCPServersForResource", func() {
 
 		r := &MCPServerReconciler{Client: fakeClient, Scheme: k8sClient.Scheme(), APIReader: fakeClient}
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-secret", Namespace: "default"},
+			Name: "my-secret", Namespace: "default",
 		}
 
 		requests := r.findMCPServersForSecret(context.Background(), secret)
@@ -209,7 +205,7 @@ var _ = Describe("findMCPServersForResource", func() {
 
 		r := &MCPServerReconciler{Client: fakeClient, Scheme: k8sClient.Scheme(), APIReader: fakeClient}
 		configMap := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: "unused-config", Namespace: "default"},
+			Name: "unused-config", Namespace: "default",
 		}
 
 		requests := r.findMCPServersForConfigMap(context.Background(), configMap)
@@ -244,9 +240,7 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 								Source: mcpv1beta1.StorageSource{
 									Type: mcpv1beta1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "my-config",
-										},
+										Name: "my-config",
 									},
 								},
 							},
@@ -266,9 +260,7 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								ConfigMapRef: &corev1.ConfigMapEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "env-config",
-									},
+									Name: "env-config",
 								},
 							},
 						},
@@ -289,10 +281,8 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 								Name: "MY_VAR",
 								ValueFrom: &corev1.EnvVarSource{
 									ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "var-config",
-										},
-										Key: "some-key",
+										Name: "var-config",
+										Key:  "some-key",
 									},
 								},
 							},
@@ -314,9 +304,7 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 								Source: mcpv1beta1.StorageSource{
 									Type: mcpv1beta1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "config-a",
-										},
+										Name: "config-a",
 									},
 								},
 							},
@@ -324,9 +312,7 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								ConfigMapRef: &corev1.ConfigMapEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "config-b",
-									},
+									Name: "config-b",
 								},
 							},
 							{
@@ -342,10 +328,8 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 								Name: "VAR",
 								ValueFrom: &corev1.EnvVarSource{
 									ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "config-c",
-										},
-										Key: "key",
+										Name: "config-c",
+										Key:  "key",
 									},
 								},
 							},
@@ -379,9 +363,7 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								ConfigMapRef: &corev1.ConfigMapEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "shared-config",
-									},
+									Name: "shared-config",
 								},
 							},
 						},
@@ -441,9 +423,7 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								SecretRef: &corev1.SecretEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "env-secret",
-									},
+									Name: "env-secret",
 								},
 							},
 						},
@@ -464,10 +444,8 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 								Name: "MY_VAR",
 								ValueFrom: &corev1.EnvVarSource{
 									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "var-secret",
-										},
-										Key: "some-key",
+										Name: "var-secret",
+										Key:  "some-key",
 									},
 								},
 							},
@@ -497,9 +475,7 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								SecretRef: &corev1.SecretEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "secret-b",
-									},
+									Name: "secret-b",
 								},
 							},
 							{
@@ -515,10 +491,8 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 								Name: "VAR",
 								ValueFrom: &corev1.EnvVarSource{
 									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "secret-c",
-										},
-										Key: "key",
+										Name: "secret-c",
+										Key:  "key",
 									},
 								},
 							},
@@ -573,9 +547,7 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								SecretRef: &corev1.SecretEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "shared-secret",
-									},
+									Name: "shared-secret",
 								},
 							},
 						},

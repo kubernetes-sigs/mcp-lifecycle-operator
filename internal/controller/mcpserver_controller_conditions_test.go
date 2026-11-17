@@ -123,7 +123,7 @@ var _ = Describe("extractDeploymentState", func() {
 var _ = Describe("analyzePodFailures", func() {
 	It("should detect ImagePullBackOff", func() {
 		pods := []corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-pod-abc123"},
+			Name: "my-pod-abc123",
 			Status: corev1.PodStatus{
 				ContainerStatuses: []corev1.ContainerStatus{{
 					State: corev1.ContainerState{
@@ -143,7 +143,7 @@ var _ = Describe("analyzePodFailures", func() {
 
 	It("should detect ErrImagePull", func() {
 		pods := []corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-pod-abc123"},
+			Name: "my-pod-abc123",
 			Status: corev1.PodStatus{
 				ContainerStatuses: []corev1.ContainerStatus{{
 					State: corev1.ContainerState{
@@ -162,7 +162,7 @@ var _ = Describe("analyzePodFailures", func() {
 
 	It("should detect CrashLoopBackOff with exit code from last termination", func() {
 		pods := []corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-pod-abc123"},
+			Name: "my-pod-abc123",
 			Status: corev1.PodStatus{
 				ContainerStatuses: []corev1.ContainerStatus{{
 					RestartCount: 5,
@@ -188,7 +188,7 @@ var _ = Describe("analyzePodFailures", func() {
 
 	It("should detect CrashLoopBackOff without last termination state", func() {
 		pods := []corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-pod-abc123"},
+			Name: "my-pod-abc123",
 			Status: corev1.PodStatus{
 				ContainerStatuses: []corev1.ContainerStatus{{
 					RestartCount: 3,
@@ -208,7 +208,7 @@ var _ = Describe("analyzePodFailures", func() {
 
 	It("should detect CreateContainerConfigError", func() {
 		pods := []corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-pod-abc123"},
+			Name: "my-pod-abc123",
 			Status: corev1.PodStatus{
 				ContainerStatuses: []corev1.ContainerStatus{{
 					State: corev1.ContainerState{
@@ -228,7 +228,7 @@ var _ = Describe("analyzePodFailures", func() {
 
 	It("should detect OOMKilled", func() {
 		pods := []corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-pod-abc123"},
+			Name: "my-pod-abc123",
 			Status: corev1.PodStatus{
 				ContainerStatuses: []corev1.ContainerStatus{{
 					RestartCount: 2,
@@ -250,7 +250,7 @@ var _ = Describe("analyzePodFailures", func() {
 
 	It("should detect init container failures", func() {
 		pods := []corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-pod-abc123"},
+			Name: "my-pod-abc123",
 			Status: corev1.PodStatus{
 				InitContainerStatuses: []corev1.ContainerStatus{{
 					State: corev1.ContainerState{
@@ -269,7 +269,7 @@ var _ = Describe("analyzePodFailures", func() {
 
 	It("should detect probe failure (running but not ready)", func() {
 		pods := []corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-pod-abc123"},
+			Name: "my-pod-abc123",
 			Status: corev1.PodStatus{
 				ContainerStatuses: []corev1.ContainerStatus{{
 					Ready:        false,
@@ -288,7 +288,7 @@ var _ = Describe("analyzePodFailures", func() {
 
 	It("should not flag running container with zero restarts as probe failure", func() {
 		pods := []corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-pod-abc123"},
+			Name: "my-pod-abc123",
 			Status: corev1.PodStatus{
 				ContainerStatuses: []corev1.ContainerStatus{{
 					Ready:        false,
@@ -305,7 +305,7 @@ var _ = Describe("analyzePodFailures", func() {
 
 	It("should return empty string when no failures detected", func() {
 		pods := []corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-pod-abc123"},
+			Name: "my-pod-abc123",
 			Status: corev1.PodStatus{
 				ContainerStatuses: []corev1.ContainerStatus{{
 					Ready: true,
@@ -329,8 +329,8 @@ var _ = Describe("analyzePodFailures", func() {
 // all podFailureSignature inspects.
 func podWithContainerStatus(name string, cs corev1.ContainerStatus) *corev1.Pod {
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Status:     corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{cs}},
+		Name: name, Namespace: "default",
+		Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{cs}},
 	}
 }
 
@@ -583,16 +583,14 @@ var _ = Describe("reconcileAvailableCondition", func() {
 	})
 
 	It("should surface pod failure when progressing with zero ready replicas and ImagePullBackOff", func() {
-		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "test-prog-imgpull-"}}
+		ns := &corev1.Namespace{GenerateName: "test-prog-imgpull-"}
 		Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
 		labels := map[string]string{"test": "progressing-imgpull"}
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "imgpull-pod",
-				Namespace: ns.Name,
-				Labels:    labels,
-			},
+			Name:      "imgpull-pod",
+			Namespace: ns.Name,
+			Labels:    labels,
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{{Name: "c", Image: "ghcr.io/bad/image:v1"}},
 			},
@@ -611,7 +609,7 @@ var _ = Describe("reconcileAvailableCondition", func() {
 		Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
 
 		deployment := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Namespace: ns.Name},
+			Namespace: ns.Name,
 			Spec: appsv1.DeploymentSpec{
 				Selector: &metav1.LabelSelector{MatchLabels: labels},
 			},
@@ -630,16 +628,14 @@ var _ = Describe("reconcileAvailableCondition", func() {
 	})
 
 	It("should surface pod failure when progressing with zero ready replicas and CrashLoopBackOff", func() {
-		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "test-prog-crash-"}}
+		ns := &corev1.Namespace{GenerateName: "test-prog-crash-"}
 		Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
 		labels := map[string]string{"test": "progressing-crash"}
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "crash-pod",
-				Namespace: ns.Name,
-				Labels:    labels,
-			},
+			Name:      "crash-pod",
+			Namespace: ns.Name,
+			Labels:    labels,
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{{Name: "c", Image: "myimage:latest"}},
 			},
@@ -660,7 +656,7 @@ var _ = Describe("reconcileAvailableCondition", func() {
 		Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
 
 		deployment := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Namespace: ns.Name},
+			Namespace: ns.Name,
 			Spec: appsv1.DeploymentSpec{
 				Selector: &metav1.LabelSelector{MatchLabels: labels},
 			},
@@ -680,16 +676,14 @@ var _ = Describe("reconcileAvailableCondition", func() {
 	})
 
 	It("should return waiting message when progressing with zero ready replicas but no pod failures", func() {
-		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "test-prog-nofail-"}}
+		ns := &corev1.Namespace{GenerateName: "test-prog-nofail-"}
 		Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
 		labels := map[string]string{"test": "progressing-nofail"}
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "healthy-pod",
-				Namespace: ns.Name,
-				Labels:    labels,
-			},
+			Name:      "healthy-pod",
+			Namespace: ns.Name,
+			Labels:    labels,
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{{Name: "c", Image: "myimage:latest"}},
 			},
@@ -705,7 +699,7 @@ var _ = Describe("reconcileAvailableCondition", func() {
 		Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
 
 		deployment := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Namespace: ns.Name},
+			Namespace: ns.Name,
 			Spec: appsv1.DeploymentSpec{
 				Selector: &metav1.LabelSelector{MatchLabels: labels},
 			},
@@ -746,9 +740,7 @@ var _ = Describe("reconcileAvailableCondition", func() {
 
 	It("should return WorkloadUnavailable when deployment spec is not yet observed", func() {
 		deployment := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation: 3,
-			},
+			Generation: 3,
 			Status: appsv1.DeploymentStatus{
 				ObservedGeneration: 2,
 				Conditions: []appsv1.DeploymentCondition{

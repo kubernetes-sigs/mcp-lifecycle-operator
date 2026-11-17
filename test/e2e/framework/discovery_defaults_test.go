@@ -130,19 +130,17 @@ func TestFromPodLabels_RunningPod_ReturnsNamespaceAndSA(t *testing.T) {
 	ctx := context.Background()
 	r := cfg.Client().Resources()
 
-	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-ns-sa"}}
+	ns := &corev1.Namespace{Name: "test-ns-sa"}
 	if err := r.Create(ctx, ns); err != nil {
 		t.Fatalf("failed to create namespace: %v", err)
 	}
 
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "mcp-lifecycle-controller-manager-abc",
-			Namespace: "test-ns-sa",
-			Labels: map[string]string{
-				"control-plane":          "controller-manager",
-				"app.kubernetes.io/name": "mcp-lifecycle-operator",
-			},
+		Name:      "mcp-lifecycle-controller-manager-abc",
+		Namespace: "test-ns-sa",
+		Labels: map[string]string{
+			"control-plane":          "controller-manager",
+			"app.kubernetes.io/name": "mcp-lifecycle-operator",
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: "my-custom-sa",
@@ -175,19 +173,17 @@ func TestFromPodLabels_RunningPod_WithMetricsService_ReturnsFullRef(t *testing.T
 	ctx := context.Background()
 	r := cfg.Client().Resources()
 
-	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-ns-svc"}}
+	ns := &corev1.Namespace{Name: "test-ns-svc"}
 	if err := r.Create(ctx, ns); err != nil {
 		t.Fatalf("failed to create namespace: %v", err)
 	}
 
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "mcp-lifecycle-controller-manager-xyz",
-			Namespace: "test-ns-svc",
-			Labels: map[string]string{
-				"control-plane":          "controller-manager",
-				"app.kubernetes.io/name": "mcp-lifecycle-operator",
-			},
+		Name:      "mcp-lifecycle-controller-manager-xyz",
+		Namespace: "test-ns-svc",
+		Labels: map[string]string{
+			"control-plane":          "controller-manager",
+			"app.kubernetes.io/name": "mcp-lifecycle-operator",
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: "my-sa",
@@ -204,10 +200,8 @@ func TestFromPodLabels_RunningPod_WithMetricsService_ReturnsFullRef(t *testing.T
 	}
 
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-operator-metrics-service",
-			Namespace: "test-ns-svc",
-		},
+		Name:      "my-operator-metrics-service",
+		Namespace: "test-ns-svc",
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{"control-plane": "controller-manager"},
 			Ports:    []corev1.ServicePort{{Port: 8443}},
@@ -237,19 +231,17 @@ func TestFromPodLabels_RunningPod_NoMetricsService_ReturnsPartialRef(t *testing.
 	ctx := context.Background()
 	r := cfg.Client().Resources()
 
-	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-ns-nosvc"}}
+	ns := &corev1.Namespace{Name: "test-ns-nosvc"}
 	if err := r.Create(ctx, ns); err != nil {
 		t.Fatalf("failed to create namespace: %v", err)
 	}
 
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "mcp-lifecycle-controller-manager-nosvc",
-			Namespace: "test-ns-nosvc",
-			Labels: map[string]string{
-				"control-plane":          "controller-manager",
-				"app.kubernetes.io/name": "mcp-lifecycle-operator",
-			},
+		Name:      "mcp-lifecycle-controller-manager-nosvc",
+		Namespace: "test-ns-nosvc",
+		Labels: map[string]string{
+			"control-plane":          "controller-manager",
+			"app.kubernetes.io/name": "mcp-lifecycle-operator",
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: "my-sa",

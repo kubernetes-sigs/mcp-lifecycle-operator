@@ -183,17 +183,15 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 		BeforeEach(func() {
 			By("Pre-creating a Deployment owned by a different controller")
 			foreignDeployment := &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "apps/v1",
-							Kind:       "SomeOtherController",
-							Name:       "foreign-owner",
-							UID:        types.UID("foreign-controller-uid"),
-							Controller: new(true),
-						},
+				Name:      resourceName,
+				Namespace: "default",
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "apps/v1",
+						Kind:       "SomeOtherController",
+						Name:       "foreign-owner",
+						UID:        types.UID("foreign-controller-uid"),
+						Controller: new(true),
 					},
 				},
 				Spec: appsv1.DeploymentSpec{
@@ -267,17 +265,15 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 		BeforeEach(func() {
 			By("Pre-creating a Service owned by a different controller")
 			foreignService := &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "apps/v1",
-							Kind:       "SomeOtherController",
-							Name:       "foreign-svc-owner",
-							UID:        types.UID("foreign-svc-controller-uid"),
-							Controller: new(true),
-						},
+				Name:      resourceName,
+				Namespace: "default",
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "apps/v1",
+						Kind:       "SomeOtherController",
+						Name:       "foreign-svc-owner",
+						UID:        types.UID("foreign-svc-controller-uid"),
+						Controller: new(true),
 					},
 				},
 				Spec: corev1.ServiceSpec{
@@ -510,24 +506,22 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 
 			By("Pre-creating a Deployment with multiple non-controller owners")
 			multiOwnerDeployment := &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "mcp.x-k8s.io/v1beta1",
-							Kind:       "MCPServer",
-							Name:       "some-other-server",
-							UID:        types.UID("other-mcpserver-uid"),
-							Controller: new(false), // Not a controller
-						},
-						{
-							APIVersion: "apps/v1",
-							Kind:       "ReplicaSet",
-							Name:       "some-replicaset",
-							UID:        types.UID("replicaset-uid"),
-							Controller: new(false), // Also not a controller
-						},
+				Name:      resourceName,
+				Namespace: "default",
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "mcp.x-k8s.io/v1beta1",
+						Kind:       "MCPServer",
+						Name:       "some-other-server",
+						UID:        types.UID("other-mcpserver-uid"),
+						Controller: new(false), // Not a controller
+					},
+					{
+						APIVersion: "apps/v1",
+						Kind:       "ReplicaSet",
+						Name:       "some-replicaset",
+						UID:        types.UID("replicaset-uid"),
+						Controller: new(false), // Also not a controller
 					},
 				},
 				Spec: appsv1.DeploymentSpec{
@@ -615,24 +609,22 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 
 			By("Pre-creating a Service with multiple non-controller owners")
 			multiOwnerService := &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "mcp.x-k8s.io/v1beta1",
-							Kind:       "MCPServer",
-							Name:       "some-other-server",
-							UID:        types.UID("other-mcpserver-uid"),
-							Controller: new(false), // Not a controller
-						},
-						{
-							APIVersion: "v1",
-							Kind:       "ConfigMap",
-							Name:       "some-config",
-							UID:        types.UID("config-uid"),
-							Controller: new(false), // Also not a controller
-						},
+				Name:      resourceName,
+				Namespace: "default",
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "mcp.x-k8s.io/v1beta1",
+						Kind:       "MCPServer",
+						Name:       "some-other-server",
+						UID:        types.UID("other-mcpserver-uid"),
+						Controller: new(false), // Not a controller
+					},
+					{
+						APIVersion: "v1",
+						Kind:       "ConfigMap",
+						Name:       "some-config",
+						UID:        types.UID("config-uid"),
+						Controller: new(false), // Also not a controller
 					},
 				},
 				Spec: corev1.ServiceSpec{
@@ -708,10 +700,8 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 		It("should adopt deployment when MCPServer is recreated with same name", func() {
 			By("Creating first MCPServer")
 			oldMCPServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: mcpv1beta1.MCPServerSpec{
 					Source: mcpv1beta1.Source{
 						Type: mcpv1beta1.SourceTypeContainerImage,
@@ -759,10 +749,8 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 
 			By("Creating new MCPServer with same name")
 			newMCPServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: mcpv1beta1.MCPServerSpec{
 					Source: mcpv1beta1.Source{
 						Type: mcpv1beta1.SourceTypeContainerImage,
@@ -827,10 +815,8 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 		It("should adopt service when MCPServer is recreated with same name", func() {
 			By("Creating first MCPServer")
 			oldMCPServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: mcpv1beta1.MCPServerSpec{
 					Source: mcpv1beta1.Source{
 						Type: mcpv1beta1.SourceTypeContainerImage,
@@ -878,10 +864,8 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 
 			By("Creating new MCPServer with same name")
 			newMCPServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: mcpv1beta1.MCPServerSpec{
 					Source: mcpv1beta1.Source{
 						Type: mcpv1beta1.SourceTypeContainerImage,
@@ -1011,10 +995,8 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 
 			By("Creating first MCPServer")
 			oldMCPServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: mcpv1beta1.MCPServerSpec{
 					Source: mcpv1beta1.Source{
 						Type: mcpv1beta1.SourceTypeContainerImage,
@@ -1059,10 +1041,8 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 
 			By("Creating new MCPServer with same image")
 			newMCPServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: mcpv1beta1.MCPServerSpec{
 					Source: mcpv1beta1.Source{
 						Type: mcpv1beta1.SourceTypeContainerImage,
@@ -1109,10 +1089,8 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 		BeforeEach(func() {
 			By("Pre-creating a Deployment with no owner")
 			unownedDeployment := &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: appsv1.DeploymentSpec{
 					Selector: &metav1.LabelSelector{
 						MatchLabels: managedWorkloadSelector(resourceName),
@@ -1187,10 +1165,8 @@ var _ = Describe("MCPServer Controller - Foreign Owned Resources", func() {
 		BeforeEach(func() {
 			By("Pre-creating a Service with no owner")
 			unownedService := &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: corev1.ServiceSpec{
 					Selector: managedWorkloadSelector(resourceName),
 					Ports: []corev1.ServicePort{

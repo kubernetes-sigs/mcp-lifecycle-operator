@@ -34,10 +34,8 @@ import (
 
 func TestConversionRoundTrip_MinimalSpec(t *testing.T) {
 	original := &MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-server",
-			Namespace: "default",
-		},
+		Name:      "test-server",
+		Namespace: "default",
 		Spec: MCPServerSpec{
 			Source: Source{
 				Type: SourceTypeContainerImage,
@@ -68,12 +66,10 @@ func TestConversionRoundTrip_MinimalSpec(t *testing.T) {
 
 func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 	original := &MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        "full-server",
-			Namespace:   "production",
-			Labels:      map[string]string{"app": "test"},
-			Annotations: map[string]string{"note": "test"},
-		},
+		Name:        "full-server",
+		Namespace:   "production",
+		Labels:      map[string]string{"app": "test"},
+		Annotations: map[string]string{"note": "test"},
 		Spec: MCPServerSpec{
 			ExtraLabels:      map[string]string{"team": "platform"},
 			ExtraAnnotations: map[string]string{"env": "prod"},
@@ -94,14 +90,14 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 					{Name: "LOG_LEVEL", Value: "debug"},
 					{Name: "SECRET_KEY", ValueFrom: &corev1.EnvVarSource{
 						SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{Name: "my-secret"},
-							Key:                  "key",
+							Name: "my-secret",
+							Key:  "key",
 						},
 					}},
 				},
 				EnvFrom: []corev1.EnvFromSource{
 					{ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "my-config"},
+						Name: "my-config",
 					}},
 				},
 				Storage: []StorageMount{
@@ -111,7 +107,7 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 						Source: StorageSource{
 							Type: StorageTypeConfigMap,
 							ConfigMap: &corev1.ConfigMapVolumeSource{
-								LocalObjectReference: corev1.LocalObjectReference{Name: "server-config"},
+								Name: "server-config",
 							},
 						},
 					},
@@ -159,14 +155,10 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 				},
 				Health: HealthConfig{
 					LivenessProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt32(8080)},
-						},
+						HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt32(8080)},
 					},
 					ReadinessProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							HTTPGet: &corev1.HTTPGetAction{Path: "/readyz", Port: intstr.FromInt32(8080)},
-						},
+						HTTPGet: &corev1.HTTPGetAction{Path: "/readyz", Port: intstr.FromInt32(8080)},
 					},
 				},
 			},
@@ -269,10 +261,8 @@ func TestConversion_HandshakeRetryCountDroppedInHub(t *testing.T) {
 	// round-trip through v1beta1. This is acceptable: v1alpha1 makes no stability
 	// guarantee and the value is controller-managed retry state, not user data.
 	original := &MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "retry-test",
-			Namespace: "default",
-		},
+		Name:      "retry-test",
+		Namespace: "default",
 		Spec: MCPServerSpec{
 			Source: Source{Type: SourceTypeContainerImage, ContainerImage: &ContainerImageSource{Ref: "test:v1"}},
 			Config: ServerConfig{Port: 8080},
@@ -300,10 +290,8 @@ func TestConversion_HandshakeRetryCountDroppedInHub(t *testing.T) {
 
 func TestConversionRoundTrip_NilOptionalFields(t *testing.T) {
 	original := &MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "nil-fields",
-			Namespace: "default",
-		},
+		Name:      "nil-fields",
+		Namespace: "default",
 		Spec: MCPServerSpec{
 			Source: Source{
 				Type:           SourceTypeContainerImage,
@@ -354,10 +342,8 @@ func TestConversionRoundTrip_NilOptionalFields(t *testing.T) {
 
 func TestConversionRoundTrip_ServerInfoWithNilCapabilities(t *testing.T) {
 	original := &MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "no-caps",
-			Namespace: "default",
-		},
+		Name:      "no-caps",
+		Namespace: "default",
 		Spec: MCPServerSpec{
 			Source: Source{Type: SourceTypeContainerImage, ContainerImage: &ContainerImageSource{Ref: "test:v1"}},
 			Config: ServerConfig{Port: 8080},
@@ -392,10 +378,8 @@ func TestConversionRoundTrip_ServerInfoWithNilCapabilities(t *testing.T) {
 
 func TestConversionRoundTrip_HubToSpoke_NoConditions(t *testing.T) {
 	hub := &v1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "from-hub",
-			Namespace: "test-ns",
-		},
+		Name:      "from-hub",
+		Namespace: "test-ns",
 		Spec: v1beta1.MCPServerSpec{
 			Source: v1beta1.Source{
 				Type: v1beta1.SourceTypeContainerImage,
@@ -438,10 +422,8 @@ func TestConversionRoundTrip_HubToSpoke_NoConditions(t *testing.T) {
 
 func TestConversionRoundTrip_HubToSpoke_WithConditions(t *testing.T) {
 	hub := &v1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "from-hub-conds",
-			Namespace: "test-ns",
-		},
+		Name:      "from-hub-conds",
+		Namespace: "test-ns",
 		Spec: v1beta1.MCPServerSpec{
 			Source: v1beta1.Source{
 				Type:           v1beta1.SourceTypeContainerImage,
@@ -501,7 +483,7 @@ func TestConversionRoundTrip_HubToSpoke_WithConditions(t *testing.T) {
 // unknown, so the merged v1alpha1 Ready condition must be Unknown, not True.
 func TestConversion_HubToSpoke_VerifiedUnknownNoAvailable(t *testing.T) {
 	hub := &v1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{Name: "verified-unknown", Namespace: "test-ns"},
+		Name: "verified-unknown", Namespace: "test-ns",
 		Spec: v1beta1.MCPServerSpec{
 			Source: v1beta1.Source{
 				Type:           v1beta1.SourceTypeContainerImage,
@@ -593,7 +575,7 @@ func TestConversion_ReadyConditionSplit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			original := &MCPServer{
-				ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+				Name: "test", Namespace: "default",
 				Spec: MCPServerSpec{
 					Source: Source{Type: SourceTypeContainerImage, ContainerImage: &ContainerImageSource{Ref: "test:v1"}},
 					Config: ServerConfig{Port: 8080},
@@ -640,10 +622,8 @@ func TestConversion_ReadyConditionSplit(t *testing.T) {
 
 func TestConversionRoundTrip_ZeroReplicas(t *testing.T) {
 	original := &MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scaled-to-zero",
-			Namespace: "default",
-		},
+		Name:      "scaled-to-zero",
+		Namespace: "default",
 		Spec: MCPServerSpec{
 			Source: Source{Type: SourceTypeContainerImage, ContainerImage: &ContainerImageSource{Ref: "test:v1"}},
 			Config: ServerConfig{Port: 8080},
@@ -731,7 +711,7 @@ func TestConversionRoundTrip_ReadyConditionReasons(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			original := &MCPServer{
-				ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+				Name: "test", Namespace: "default",
 				Spec: MCPServerSpec{
 					Source: Source{Type: SourceTypeContainerImage, ContainerImage: &ContainerImageSource{Ref: "test:v1"}},
 					Config: ServerConfig{Port: 8080},

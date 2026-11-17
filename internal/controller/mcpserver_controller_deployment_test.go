@@ -314,17 +314,15 @@ var _ = Describe("MCPServer Controller - reconcileDeployment", func() {
 		mcpServer.UID = "fake-uid"
 
 		brokenDeployment := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-empty-containers",
-				Namespace: "default",
-				OwnerReferences: []metav1.OwnerReference{
-					{
-						APIVersion: "mcp.x-k8s.io/v1beta1",
-						Kind:       "MCPServer",
-						Name:       "test-empty-containers",
-						UID:        "fake-uid",
-						Controller: new(true),
-					},
+			Name:      "test-empty-containers",
+			Namespace: "default",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "mcp.x-k8s.io/v1beta1",
+					Kind:       "MCPServer",
+					Name:       "test-empty-containers",
+					UID:        "fake-uid",
+					Controller: new(true),
 				},
 			},
 			Spec: appsv1.DeploymentSpec{
@@ -559,9 +557,7 @@ var _ = Describe("MCPServer Controller - Transient Validation Errors", func() {
 				Source: mcpv1beta1.StorageSource{
 					Type: mcpv1beta1.StorageTypeConfigMap,
 					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "test-config",
-						},
+						Name: "test-config",
 					},
 				},
 			},
@@ -630,11 +626,9 @@ var _ = Describe("MCPServer Controller - Transient Validation Errors", func() {
 	It("should preserve existing status conditions on transient error after prior successful reconcile", func() {
 		By("First reconcile succeeds with ConfigMap present")
 		configMap := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-config",
-				Namespace: "default",
-			},
-			Data: map[string]string{"key": "value"},
+			Name:      "test-config",
+			Namespace: "default",
+			Data:      map[string]string{"key": "value"},
 		}
 		Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
@@ -865,7 +859,7 @@ var _ = Describe("MCPServer Controller - Resource Requirements", func() {
 		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
 		defer func() {
 			_ = k8sClient.Delete(ctx, &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{Name: defaultResName, Namespace: "default"},
+				Name: defaultResName, Namespace: "default",
 			})
 		}()
 
@@ -906,7 +900,7 @@ var _ = Describe("MCPServer Controller - Resource Requirements", func() {
 		}
 
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: "test-only-requests", Namespace: "default"},
+			Name: "test-only-requests", Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -944,7 +938,7 @@ var _ = Describe("MCPServer Controller - Resource Requirements", func() {
 		}
 
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: "test-only-limits", Namespace: "default"},
+			Name: "test-only-limits", Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -984,7 +978,7 @@ var _ = Describe("MCPServer Controller - Resource Requirements", func() {
 		}
 
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: "test-only-cpu", Namespace: "default"},
+			Name: "test-only-cpu", Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1025,7 +1019,7 @@ var _ = Describe("MCPServer Controller - Resource Requirements", func() {
 		}
 
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: "test-only-memory", Namespace: "default"},
+			Name: "test-only-memory", Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1056,20 +1050,16 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		mcpServer := newTestMCPServer(resourceName)
 		mcpServer.Spec.Runtime.Health = mcpv1beta1.HealthConfig{
 			LivenessProbe: &corev1.Probe{
-				ProbeHandler: corev1.ProbeHandler{
-					HTTPGet: &corev1.HTTPGetAction{
-						Path: "/health",
-						Port: intstr.FromInt(8080),
-					},
+				HTTPGet: &corev1.HTTPGetAction{
+					Path: "/health",
+					Port: intstr.FromInt(8080),
 				},
 				InitialDelaySeconds: 10,
 				PeriodSeconds:       30,
 			},
 			ReadinessProbe: &corev1.Probe{
-				ProbeHandler: corev1.ProbeHandler{
-					TCPSocket: &corev1.TCPSocketAction{
-						Port: intstr.FromInt(8080),
-					},
+				TCPSocket: &corev1.TCPSocketAction{
+					Port: intstr.FromInt(8080),
 				},
 				InitialDelaySeconds: 5,
 				PeriodSeconds:       10,
@@ -1147,21 +1137,17 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		mcpServer := &mcpv1beta1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 		mcpServer.Spec.Runtime.Health.LivenessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Path: "/healthz",
-					Port: intstr.FromInt(8080),
-				},
+			HTTPGet: &corev1.HTTPGetAction{
+				Path: "/healthz",
+				Port: intstr.FromInt(8080),
 			},
 			InitialDelaySeconds: 15,
 			PeriodSeconds:       60,
 		}
 		mcpServer.Spec.Runtime.Health.ReadinessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Path: "/ready",
-					Port: intstr.FromInt(8080),
-				},
+			HTTPGet: &corev1.HTTPGetAction{
+				Path: "/ready",
+				Port: intstr.FromInt(8080),
 			},
 			InitialDelaySeconds: 3,
 			PeriodSeconds:       5,
@@ -1241,11 +1227,9 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 	It("should handle only liveness probe (no readiness)", func() {
 		mcpServer := newTestMCPServer("test-only-liveness")
 		mcpServer.Spec.Runtime.Health.LivenessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Path: "/health",
-					Port: intstr.FromInt(8080),
-				},
+			HTTPGet: &corev1.HTTPGetAction{
+				Path: "/health",
+				Port: intstr.FromInt(8080),
 			},
 			InitialDelaySeconds: 10,
 		}
@@ -1264,7 +1248,7 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		}
 
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: "test-only-liveness", Namespace: "default"},
+			Name: "test-only-liveness", Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1285,10 +1269,8 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 	It("should handle only readiness probe (no liveness)", func() {
 		mcpServer := newTestMCPServer("test-only-readiness")
 		mcpServer.Spec.Runtime.Health.ReadinessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(8080),
-				},
+			TCPSocket: &corev1.TCPSocketAction{
+				Port: intstr.FromInt(8080),
 			},
 			InitialDelaySeconds: 5,
 		}
@@ -1307,7 +1289,7 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		}
 
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: "test-only-readiness", Namespace: "default"},
+			Name: "test-only-readiness", Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1339,7 +1321,7 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		}
 
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: "test-default-probe", Namespace: "default"},
+			Name: "test-default-probe", Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1376,7 +1358,7 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		}
 
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: "test-default-probe-custom-port", Namespace: "default"},
+			Name: "test-default-probe-custom-port", Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1407,9 +1389,7 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 
 	It("should fill zero-valued timing fields on user-provided probes", func() {
 		probe := withProbeDefaults(&corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt(8080)},
-			},
+			HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt(8080)},
 		})
 		Expect(probe.FailureThreshold).NotTo(BeZero())
 		Expect(probe.PeriodSeconds).NotTo(BeZero())
@@ -1420,9 +1400,7 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 
 	It("should preserve user-set timing fields on probes", func() {
 		probe := withProbeDefaults(&corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt(8080)},
-			},
+			TCPSocket:           &corev1.TCPSocketAction{Port: intstr.FromInt(8080)},
 			PeriodSeconds:       30,
 			FailureThreshold:    5,
 			InitialDelaySeconds: 10,
@@ -1444,10 +1422,8 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 	It("should not inject default readiness probe when custom readiness probe is specified", func() {
 		mcpServer := newTestMCPServer("test-custom-overrides-default")
 		mcpServer.Spec.Runtime.Health.ReadinessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt(3000),
-				},
+			TCPSocket: &corev1.TCPSocketAction{
+				Port: intstr.FromInt(3000),
 			},
 			InitialDelaySeconds: 15,
 			PeriodSeconds:       20,
@@ -1467,7 +1443,7 @@ var _ = Describe("MCPServer Controller - Health Probes", func() {
 		}
 
 		_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: "test-custom-overrides-default", Namespace: "default"},
+			Name: "test-custom-overrides-default", Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 

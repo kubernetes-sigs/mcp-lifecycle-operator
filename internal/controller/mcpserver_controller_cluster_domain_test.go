@@ -20,18 +20,17 @@ import (
 	"testing"
 
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestMCPServiceURLUsesConfiguredClusterDomain(t *testing.T) {
-	server := &mcpv1beta1.MCPServer{ObjectMeta: metav1.ObjectMeta{Name: "server", Namespace: "apps"}, Spec: mcpv1beta1.MCPServerSpec{Config: mcpv1beta1.ServerConfig{Port: 8080}}}
+	server := &mcpv1beta1.MCPServer{Name: "server", Namespace: "apps", Spec: mcpv1beta1.MCPServerSpec{Config: mcpv1beta1.ServerConfig{Port: 8080}}}
 	if got, want := mcpServiceURL(server, ServiceEndpoint{Name: "server", Port: 8080}, "cozy.local", "/mcp"), "http://server.apps.svc.cozy.local:8080/mcp"; got != want {
 		t.Fatalf("mcpServiceURL() = %q, want %q", got, want)
 	}
 }
 
 func TestMCPServiceURLDefaultsClusterDomain(t *testing.T) {
-	server := &mcpv1beta1.MCPServer{ObjectMeta: metav1.ObjectMeta{Name: "server", Namespace: "apps"}, Spec: mcpv1beta1.MCPServerSpec{Config: mcpv1beta1.ServerConfig{Port: 9090}}}
+	server := &mcpv1beta1.MCPServer{Name: "server", Namespace: "apps", Spec: mcpv1beta1.MCPServerSpec{Config: mcpv1beta1.ServerConfig{Port: 9090}}}
 	if got, want := mcpServiceURL(server, ServiceEndpoint{Name: "server", Port: 9090}, "  ", "/stream"), "http://server.apps.svc.cluster.local:9090/stream"; got != want {
 		t.Fatalf("mcpServiceURL() = %q, want %q", got, want)
 	}

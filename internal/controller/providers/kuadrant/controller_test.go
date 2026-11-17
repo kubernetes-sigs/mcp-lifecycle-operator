@@ -30,7 +30,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -157,16 +156,14 @@ func hostnamePtr(h string) *gatewayv1.Hostname {
 }
 
 func ensureGatewayNamespace(ctx context.Context) {
-	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "gateway-ns"}}
+	ns := &corev1.Namespace{Name: "gateway-ns"}
 	_ = k8sClient.Create(ctx, ns)
 }
 
 func newTestMCPServer(name string) *mcpv1beta1.MCPServer {
 	return &mcpv1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: testNamespace,
-		},
+		Name:      name,
+		Namespace: testNamespace,
 		Spec: mcpv1beta1.MCPServerSpec{
 			Source: mcpv1beta1.Source{
 				Type: mcpv1beta1.SourceTypeContainerImage,
@@ -198,26 +195,24 @@ func setRegistrationReady(ctx context.Context, name, namespace string) { //nolin
 func setHTTPRouteAccepted(ctx context.Context, route *gatewayv1.HTTPRoute) {
 	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(route), route)).To(Succeed())
 	route.Status = gatewayv1.HTTPRouteStatus{
-		RouteStatus: gatewayv1.RouteStatus{
-			Parents: []gatewayv1.RouteParentStatus{
-				{
-					ParentRef:      route.Spec.ParentRefs[0],
-					ControllerName: "gateway.example.com/controller",
-					Conditions: []metav1.Condition{
-						{
-							Type:               string(gatewayv1.RouteConditionAccepted),
-							Status:             metav1.ConditionTrue,
-							Reason:             "Accepted",
-							LastTransitionTime: metav1.Now(),
-							ObservedGeneration: route.Generation,
-						},
-						{
-							Type:               string(gatewayv1.RouteConditionResolvedRefs),
-							Status:             metav1.ConditionTrue,
-							Reason:             "ResolvedRefs",
-							LastTransitionTime: metav1.Now(),
-							ObservedGeneration: route.Generation,
-						},
+		Parents: []gatewayv1.RouteParentStatus{
+			{
+				ParentRef:      route.Spec.ParentRefs[0],
+				ControllerName: "gateway.example.com/controller",
+				Conditions: []metav1.Condition{
+					{
+						Type:               string(gatewayv1.RouteConditionAccepted),
+						Status:             metav1.ConditionTrue,
+						Reason:             "Accepted",
+						LastTransitionTime: metav1.Now(),
+						ObservedGeneration: route.Generation,
+					},
+					{
+						Type:               string(gatewayv1.RouteConditionResolvedRefs),
+						Status:             metav1.ConditionTrue,
+						Reason:             "ResolvedRefs",
+						LastTransitionTime: metav1.Now(),
+						ObservedGeneration: route.Generation,
 					},
 				},
 			},
@@ -268,10 +263,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 	createGatewayExtension := func(publicHost string, ready bool) {
 		ensureGatewayNamespace(ctx)
 		ext := &kuadrantapi.MCPGatewayExtension{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      gatewayExtensionName,
-				Namespace: "gateway-ns",
-			},
+			Name:      gatewayExtensionName,
+			Namespace: "gateway-ns",
 			Spec: kuadrantapi.MCPGatewayExtensionSpec{
 				PublicHost: publicHost,
 				TargetRef: kuadrantapi.TargetReference{
@@ -292,11 +285,9 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 	createConfigMap := func(data map[string]string) {
 		cm := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      configMapName,
-				Namespace: testNamespace,
-			},
-			Data: data,
+			Name:      configMapName,
+			Namespace: testNamespace,
+			Data:      data,
 		}
 		Expect(k8sClient.Create(ctx, cm)).To(Succeed())
 	}
@@ -313,10 +304,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 	createBinding := func() {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      bindingName,
-				Namespace: testNamespace,
-			},
+			Name:      bindingName,
+			Namespace: testNamespace,
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: mcpServerName,
 				Provider:     ProviderName,
@@ -329,23 +318,23 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 	doReconcile := func() (reconcile.Result, error) {
 		r := newReconciler()
 		return r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 	}
 
 	AfterEach(func() {
 		for _, obj := range []client.Object{
-			&kuadrantapi.MCPServerRegistration{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
-			&kuadrantapi.MCPServerRegistration{ObjectMeta: metav1.ObjectMeta{Name: "conflicting-reg", Namespace: testNamespace}},
-			&gatewayv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
-			&mcpv1alpha1.MCPGatewayBinding{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
-			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: configMapName, Namespace: testNamespace}},
-			&mcpv1beta1.MCPServer{ObjectMeta: metav1.ObjectMeta{Name: mcpServerName, Namespace: testNamespace}},
+			&kuadrantapi.MCPServerRegistration{Name: bindingName, Namespace: testNamespace},
+			&kuadrantapi.MCPServerRegistration{Name: "conflicting-reg", Namespace: testNamespace},
+			&gatewayv1.HTTPRoute{Name: bindingName, Namespace: testNamespace},
+			&mcpv1alpha1.MCPGatewayBinding{Name: bindingName, Namespace: testNamespace},
+			&corev1.ConfigMap{Name: configMapName, Namespace: testNamespace},
+			&mcpv1beta1.MCPServer{Name: mcpServerName, Namespace: testNamespace},
 		} {
 			_ = k8sClient.Delete(ctx, obj)
 		}
 		for _, extName := range []string{gatewayExtensionName, "second-extension", "other-extension"} {
-			ext := &kuadrantapi.MCPGatewayExtension{ObjectMeta: metav1.ObjectMeta{Name: extName, Namespace: "gateway-ns"}}
+			ext := &kuadrantapi.MCPGatewayExtension{Name: extName, Namespace: "gateway-ns"}
 			_ = k8sClient.Delete(ctx, ext)
 		}
 	})
@@ -357,8 +346,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, server)).To(Succeed()) })
 		generation := server.Generation
 		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: "watched-backend", Namespace: testNamespace},
-			Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 8080}}},
+			Name: "watched-backend", Namespace: testNamespace,
+			Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 8080}}},
 		}
 		Expect(k8sClient.Create(ctx, svc)).To(Succeed())
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, svc)).To(Succeed()) })
@@ -445,7 +434,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		}
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: "external-mcp", Namespace: testNamespace},
+			Name: "external-mcp", Namespace: testNamespace,
 			Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{
 				{Name: "metrics", Port: 2112},
 				{Name: "mcp", Port: 9090, TargetPort: intstr.FromInt32(8080)},
@@ -663,10 +652,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("creating a pre-existing MCPServerRegistration with the same prefix")
 		conflictingReg := &kuadrantapi.MCPServerRegistration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "conflicting-reg",
-				Namespace: testNamespace,
-			},
+			Name:      "conflicting-reg",
+			Namespace: testNamespace,
 			Spec: kuadrantapi.MCPServerRegistrationSpec{
 				TargetRef: kuadrantapi.TargetReference{
 					Group: "gateway.networking.k8s.io",
@@ -707,10 +694,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("creating a pre-existing MCPServerRegistration with the same explicit prefix")
 		conflictingReg := &kuadrantapi.MCPServerRegistration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "conflicting-reg",
-				Namespace: testNamespace,
-			},
+			Name:      "conflicting-reg",
+			Namespace: testNamespace,
 			Spec: kuadrantapi.MCPServerRegistrationSpec{
 				TargetRef: kuadrantapi.TargetReference{
 					Group: "gateway.networking.k8s.io",
@@ -822,10 +807,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createConfigMap(validConfigData())
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      bindingName,
-				Namespace: testNamespace,
-			},
+			Name:      bindingName,
+			Namespace: testNamespace,
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: "nonexistent",
 				Provider:     ProviderName,
@@ -864,10 +847,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("creating a Gateway with a wildcard listener")
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -906,10 +887,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -950,10 +929,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -996,10 +973,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("creating a Gateway with a wildcard listener")
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -1048,10 +1023,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -1104,10 +1077,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -1156,10 +1127,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -1208,10 +1177,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -1263,10 +1230,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -1331,10 +1296,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      bindingName,
-				Namespace: testNamespace,
-			},
+			Name:      bindingName,
+			Namespace: testNamespace,
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: mcpServerName,
 				Provider:     ProviderName,
@@ -1368,10 +1331,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		By("creating a new extension pointing to a different gateway")
 		ensureGatewayNamespace(ctx)
 		ext2 := &kuadrantapi.MCPGatewayExtension{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "other-extension",
-				Namespace: "gateway-ns",
-			},
+			Name:      "other-extension",
+			Namespace: "gateway-ns",
 			Spec: kuadrantapi.MCPGatewayExtensionSpec{
 				PublicHost: "myserver.mcp.local",
 				TargetRef: kuadrantapi.TargetReference{
@@ -1415,27 +1376,25 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		By("setting accepted status from a different gateway")
 		differentGW := gatewayv1.Namespace("other-ns")
 		route.Status = gatewayv1.HTTPRouteStatus{
-			RouteStatus: gatewayv1.RouteStatus{
-				Parents: []gatewayv1.RouteParentStatus{
-					{
-						ParentRef: gatewayv1.ParentReference{
-							Name:      "other-gateway",
-							Namespace: &differentGW,
+			Parents: []gatewayv1.RouteParentStatus{
+				{
+					ParentRef: gatewayv1.ParentReference{
+						Name:      "other-gateway",
+						Namespace: &differentGW,
+					},
+					ControllerName: "gateway.example.com/controller",
+					Conditions: []metav1.Condition{
+						{
+							Type:               string(gatewayv1.RouteConditionAccepted),
+							Status:             metav1.ConditionTrue,
+							Reason:             "Accepted",
+							LastTransitionTime: metav1.Now(),
 						},
-						ControllerName: "gateway.example.com/controller",
-						Conditions: []metav1.Condition{
-							{
-								Type:               string(gatewayv1.RouteConditionAccepted),
-								Status:             metav1.ConditionTrue,
-								Reason:             "Accepted",
-								LastTransitionTime: metav1.Now(),
-							},
-							{
-								Type:               string(gatewayv1.RouteConditionResolvedRefs),
-								Status:             metav1.ConditionTrue,
-								Reason:             "ResolvedRefs",
-								LastTransitionTime: metav1.Now(),
-							},
+						{
+							Type:               string(gatewayv1.RouteConditionResolvedRefs),
+							Status:             metav1.ConditionTrue,
+							Reason:             "ResolvedRefs",
+							LastTransitionTime: metav1.Now(),
 						},
 					},
 				},
@@ -1477,26 +1436,24 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("setting accepted conditions with the old generation")
 		route.Status = gatewayv1.HTTPRouteStatus{
-			RouteStatus: gatewayv1.RouteStatus{
-				Parents: []gatewayv1.RouteParentStatus{
-					{
-						ParentRef:      route.Spec.ParentRefs[0],
-						ControllerName: "gateway.example.com/controller",
-						Conditions: []metav1.Condition{
-							{
-								Type:               string(gatewayv1.RouteConditionAccepted),
-								Status:             metav1.ConditionTrue,
-								Reason:             "Accepted",
-								LastTransitionTime: metav1.Now(),
-								ObservedGeneration: oldGeneration,
-							},
-							{
-								Type:               string(gatewayv1.RouteConditionResolvedRefs),
-								Status:             metav1.ConditionTrue,
-								Reason:             "ResolvedRefs",
-								LastTransitionTime: metav1.Now(),
-								ObservedGeneration: oldGeneration,
-							},
+			Parents: []gatewayv1.RouteParentStatus{
+				{
+					ParentRef:      route.Spec.ParentRefs[0],
+					ControllerName: "gateway.example.com/controller",
+					Conditions: []metav1.Condition{
+						{
+							Type:               string(gatewayv1.RouteConditionAccepted),
+							Status:             metav1.ConditionTrue,
+							Reason:             "Accepted",
+							LastTransitionTime: metav1.Now(),
+							ObservedGeneration: oldGeneration,
+						},
+						{
+							Type:               string(gatewayv1.RouteConditionResolvedRefs),
+							Status:             metav1.ConditionTrue,
+							Reason:             "ResolvedRefs",
+							LastTransitionTime: metav1.Now(),
+							ObservedGeneration: oldGeneration,
 						},
 					},
 				},
@@ -1522,10 +1479,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 			r := newReconciler()
 			cm := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      configMapName,
-					Namespace: testNamespace,
-				},
+				Name:      configMapName,
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
 			Expect(requests).To(HaveLen(1))
@@ -1539,10 +1494,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			// WatchesMetadata delivers a *metav1.PartialObjectMetadata, not a full
 			// ConfigMap. The handler must map using only name/namespace.
 			partial := &metav1.PartialObjectMetadata{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      configMapName,
-					Namespace: testNamespace,
-				},
+				Name:      configMapName,
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForConfigMap(ctx, partial)
 			Expect(requests).To(HaveLen(1))
@@ -1554,10 +1507,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 			r := newReconciler()
 			cm := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "unrelated-cm",
-					Namespace: testNamespace,
-				},
+				Name:      "unrelated-cm",
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
 			Expect(requests).To(BeEmpty())
@@ -1565,10 +1516,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		It("should not return bindings with non-kuadrant provider", func() {
 			binding := &mcpv1alpha1.MCPGatewayBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      bindingName,
-					Namespace: testNamespace,
-				},
+				Name:      bindingName,
+				Namespace: testNamespace,
 				Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 					MCPServerRef: mcpServerName,
 					Provider:     "httproute",
@@ -1579,10 +1528,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 			r := newReconciler()
 			cm := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      configMapName,
-					Namespace: testNamespace,
-				},
+				Name:      configMapName,
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
 			Expect(requests).To(BeEmpty())
@@ -1592,7 +1539,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 	It("should return early when binding is not found", func() {
 		r := newReconciler()
 		result, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: "nonexistent", Namespace: testNamespace},
+			Name: "nonexistent", Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result).To(Equal(reconcile.Result{}))
@@ -1601,10 +1548,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 	It("should set Registered=False when ConfigMap does not exist", func() {
 		createMCPServer()
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      bindingName,
-				Namespace: testNamespace,
-			},
+			Name:      bindingName,
+			Namespace: testNamespace,
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: mcpServerName,
 				Provider:     ProviderName,
@@ -1656,27 +1601,25 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		By("setting accepted status with matching name but different namespace")
 		wrongNS := gatewayv1.Namespace("wrong-namespace")
 		route.Status = gatewayv1.HTTPRouteStatus{
-			RouteStatus: gatewayv1.RouteStatus{
-				Parents: []gatewayv1.RouteParentStatus{
-					{
-						ParentRef: gatewayv1.ParentReference{
-							Name:      gatewayv1.ObjectName("my-gateway"),
-							Namespace: &wrongNS,
+			Parents: []gatewayv1.RouteParentStatus{
+				{
+					ParentRef: gatewayv1.ParentReference{
+						Name:      gatewayv1.ObjectName("my-gateway"),
+						Namespace: &wrongNS,
+					},
+					ControllerName: "gateway.example.com/controller",
+					Conditions: []metav1.Condition{
+						{
+							Type:               string(gatewayv1.RouteConditionAccepted),
+							Status:             metav1.ConditionTrue,
+							Reason:             "Accepted",
+							LastTransitionTime: metav1.Now(),
 						},
-						ControllerName: "gateway.example.com/controller",
-						Conditions: []metav1.Condition{
-							{
-								Type:               string(gatewayv1.RouteConditionAccepted),
-								Status:             metav1.ConditionTrue,
-								Reason:             "Accepted",
-								LastTransitionTime: metav1.Now(),
-							},
-							{
-								Type:               string(gatewayv1.RouteConditionResolvedRefs),
-								Status:             metav1.ConditionTrue,
-								Reason:             "ResolvedRefs",
-								LastTransitionTime: metav1.Now(),
-							},
+						{
+							Type:               string(gatewayv1.RouteConditionResolvedRefs),
+							Status:             metav1.ConditionTrue,
+							Reason:             "ResolvedRefs",
+							LastTransitionTime: metav1.Now(),
 						},
 					},
 				},
@@ -1793,21 +1736,17 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		}
 
 		foreignRoute := &gatewayv1.HTTPRoute{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            bindingName,
-				Namespace:       testNamespace,
-				OwnerReferences: []metav1.OwnerReference{foreignOwner},
-			},
-			Spec: gatewayv1.HTTPRouteSpec{},
+			Name:            bindingName,
+			Namespace:       testNamespace,
+			OwnerReferences: []metav1.OwnerReference{foreignOwner},
+			Spec:            gatewayv1.HTTPRouteSpec{},
 		}
 		Expect(k8sClient.Create(ctx, foreignRoute)).To(Succeed())
 
 		foreignReg := &kuadrantapi.MCPServerRegistration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            bindingName,
-				Namespace:       testNamespace,
-				OwnerReferences: []metav1.OwnerReference{foreignOwner},
-			},
+			Name:            bindingName,
+			Namespace:       testNamespace,
+			OwnerReferences: []metav1.OwnerReference{foreignOwner},
 			Spec: kuadrantapi.MCPServerRegistrationSpec{
 				TargetRef: kuadrantapi.TargetReference{Group: "gateway.networking.k8s.io", Kind: "HTTPRoute", Name: bindingName},
 				Path:      "/mcp",
@@ -1877,11 +1816,9 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			annotations[providers.AnnotationExtensionRef] = extensionRef
 		}
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        bindingName,
-				Namespace:   testNamespace,
-				Annotations: annotations,
-			},
+			Name:        bindingName,
+			Namespace:   testNamespace,
+			Annotations: annotations,
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: mcpServerName,
 				Provider:     provider,
@@ -1920,13 +1857,13 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		By("matching that binding from Gateway and Extension events without any ConfigMap read")
 		mapper := &Reconciler{Client: k8sClient, APIReader: failReader{}, Scheme: k8sClient.Scheme()}
 		gwReqs := mapper.findBindingsForGateway(ctx, &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-gateway", Namespace: "gateway-ns"},
+			Name: "my-gateway", Namespace: "gateway-ns",
 		})
 		Expect(gwReqs).To(HaveLen(1))
 		Expect(gwReqs[0].Name).To(Equal(bindingName))
 
 		extReqs := mapper.findBindingsForGatewayExtension(ctx, &kuadrantapi.MCPGatewayExtension{
-			ObjectMeta: metav1.ObjectMeta{Name: gatewayExtensionName, Namespace: "gateway-ns"},
+			Name: gatewayExtensionName, Namespace: "gateway-ns",
 		})
 		Expect(extReqs).To(HaveLen(1))
 		Expect(extReqs[0].Name).To(Equal(bindingName))
@@ -1938,10 +1875,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-gateway",
-					Namespace: "gateway-ns",
-				},
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
 			Expect(requests).To(HaveLen(1))
@@ -1953,10 +1888,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "other-gateway",
-					Namespace: "gateway-ns",
-				},
+				Name:      "other-gateway",
+				Namespace: "gateway-ns",
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
 			Expect(requests).To(BeEmpty())
@@ -1967,10 +1900,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-gateway",
-					Namespace: "gateway-ns",
-				},
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
 			Expect(requests).To(BeEmpty())
@@ -1981,10 +1912,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-gateway",
-					Namespace: "gateway-ns",
-				},
+				Name:      "my-gateway",
+				Namespace: "gateway-ns",
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
 			Expect(requests).To(BeEmpty())
@@ -1996,7 +1925,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			createAnnotatedBinding(ProviderName, providers.RefKey("gateway-ns", "my-gateway"), providers.RefKey("gateway-ns", gatewayExtensionName))
 
 			ext := &kuadrantapi.MCPGatewayExtension{
-				ObjectMeta: metav1.ObjectMeta{Name: gatewayExtensionName, Namespace: "gateway-ns"},
+				Name: gatewayExtensionName, Namespace: "gateway-ns",
 			}
 
 			r := mapperReconciler()
@@ -2009,7 +1938,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			createAnnotatedBinding(ProviderName, providers.RefKey("gateway-ns", "my-gateway"), providers.RefKey("gateway-ns", gatewayExtensionName))
 
 			ext := &kuadrantapi.MCPGatewayExtension{
-				ObjectMeta: metav1.ObjectMeta{Name: "different-extension", Namespace: "gateway-ns"},
+				Name: "different-extension", Namespace: "gateway-ns",
 			}
 
 			r := mapperReconciler()
@@ -2021,7 +1950,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 			createAnnotatedBinding("httproute", providers.RefKey("gateway-ns", "my-gateway"), providers.RefKey("gateway-ns", gatewayExtensionName))
 
 			ext := &kuadrantapi.MCPGatewayExtension{
-				ObjectMeta: metav1.ObjectMeta{Name: gatewayExtensionName, Namespace: "gateway-ns"},
+				Name: gatewayExtensionName, Namespace: "gateway-ns",
 			}
 
 			r := mapperReconciler()
@@ -2052,10 +1981,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 			r := newReconciler()
 			server := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      mcpServerName,
-					Namespace: testNamespace,
-				},
+				Name:      mcpServerName,
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForMCPServer(ctx, server)
 			Expect(requests).To(HaveLen(1))
@@ -2067,10 +1994,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 			r := newReconciler()
 			server := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "other-server",
-					Namespace: testNamespace,
-				},
+				Name:      "other-server",
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForMCPServer(ctx, server)
 			Expect(requests).To(BeEmpty())
@@ -2152,10 +2077,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("creating a Gateway where the wildcard listener has a different name than the extension's sectionName")
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -2179,10 +2102,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("creating extension with sectionName pointing to public listener")
 		ext := &kuadrantapi.MCPGatewayExtension{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      gatewayExtensionName,
-				Namespace: "gateway-ns",
-			},
+			Name:      gatewayExtensionName,
+			Namespace: "gateway-ns",
 			Spec: kuadrantapi.MCPGatewayExtensionSpec{
 				PublicHost: "mcp.example.com",
 				TargetRef: kuadrantapi.TargetReference{
@@ -2221,10 +2142,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("creating a Gateway with a catch-all and a wildcard listener")
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -2248,10 +2167,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("creating extension targeting catch-all listener (NOT the wildcard)")
 		ext := &kuadrantapi.MCPGatewayExtension{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      gatewayExtensionName,
-				Namespace: "gateway-ns",
-			},
+			Name:      gatewayExtensionName,
+			Namespace: "gateway-ns",
 			Spec: kuadrantapi.MCPGatewayExtensionSpec{
 				PublicHost: "mcp.example.com",
 				TargetRef: kuadrantapi.TargetReference{
@@ -2290,10 +2207,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -2317,10 +2232,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		defer func() { _ = k8sClient.Delete(ctx, gw) }()
 
 		ext := &kuadrantapi.MCPGatewayExtension{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      gatewayExtensionName,
-				Namespace: "gateway-ns",
-			},
+			Name:      gatewayExtensionName,
+			Namespace: "gateway-ns",
 			Spec: kuadrantapi.MCPGatewayExtensionSpec{
 				PublicHost: "mcp.example.com",
 				TargetRef: kuadrantapi.TargetReference{
@@ -2359,10 +2272,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -2404,10 +2315,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -2450,10 +2359,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -2503,10 +2410,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -2556,10 +2461,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -2576,10 +2479,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		defer func() { _ = k8sClient.Delete(ctx, gw) }()
 
 		ext := &kuadrantapi.MCPGatewayExtension{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      gatewayExtensionName,
-				Namespace: "gateway-ns",
-			},
+			Name:      gatewayExtensionName,
+			Namespace: "gateway-ns",
 			Spec: kuadrantapi.MCPGatewayExtensionSpec{
 				PublicHost: "mcp.example.com",
 				TargetRef: kuadrantapi.TargetReference{
@@ -2619,10 +2520,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 
 		By("creating extension referencing a non-existent gateway")
 		ext := &kuadrantapi.MCPGatewayExtension{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      gatewayExtensionName,
-				Namespace: "gateway-ns",
-			},
+			Name:      gatewayExtensionName,
+			Namespace: "gateway-ns",
 			Spec: kuadrantapi.MCPGatewayExtensionSpec{
 				PublicHost: "mcp.example.com",
 				TargetRef: kuadrantapi.TargetReference{
@@ -2684,10 +2583,8 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 		createMCPServer()
 
 		gw := &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-gateway",
-				Namespace: "gateway-ns",
-			},
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
 			Spec: gatewayv1.GatewaySpec{
 				GatewayClassName: "test",
 				Listeners: []gatewayv1.Listener{
@@ -2734,7 +2631,7 @@ var _ = Describe("Kuadrant Provider Controller", func() {
 				AllowedExtensionNamespaces: allowlist,
 			}
 			return r.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+				Name: bindingName, Namespace: testNamespace,
 			})
 		}
 

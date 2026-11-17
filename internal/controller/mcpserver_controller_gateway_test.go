@@ -707,9 +707,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 					Source: mcpv1beta1.StorageSource{
 						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "nonexistent-cm",
-							},
+							Name: "nonexistent-cm",
 						},
 					},
 				},
@@ -761,9 +759,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 					Source: mcpv1beta1.StorageSource{
 						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "nonexistent-cm",
-							},
+							Name: "nonexistent-cm",
 						},
 					},
 				},
@@ -788,11 +784,9 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 	Context("applyGatewayStatus", func() {
 		It("should not override Ready reason when already False", func() {
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-apply-gw",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-apply-gw",
+				Namespace:  "default",
+				Generation: 1,
 			}
 
 			readyCondition := metav1.Condition{
@@ -824,11 +818,9 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 
 		It("should override Ready when not already False", func() {
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-apply-gw-override",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-apply-gw-override",
+				Namespace:  "default",
+				Generation: 1,
 			}
 
 			readyCondition := metav1.Condition{
@@ -860,11 +852,9 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 
 		It("should override mcpURL when gateway provides an address", func() {
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-apply-gw-url",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-apply-gw-url",
+				Namespace:  "default",
+				Generation: 1,
 			}
 
 			readyCondition := metav1.Condition{
@@ -900,10 +890,8 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			reconciler, fr := newReconcilerForTestWithFakeEvents(k8sClient, k8sClient.Scheme())
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-emit-gw",
-					Namespace: "default",
-				},
+				Name:      "test-emit-gw",
+				Namespace: "default",
 			}
 
 			reconciler.emitGatewayBindingReconcileFailed(mcpServer, "binding error")
@@ -913,10 +901,8 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		It("should not panic when recorder is nil", func() {
 			reconciler := &MCPServerReconciler{}
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-emit-gw-nil",
-					Namespace: "default",
-				},
+				Name:      "test-emit-gw-nil",
+				Namespace: "default",
 			}
 			reconciler.emitGatewayBindingReconcileFailed(mcpServer, "binding error")
 		})

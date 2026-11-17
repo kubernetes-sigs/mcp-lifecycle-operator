@@ -129,11 +129,9 @@ func (r *MCPServerReconciler) createService(mcpServer *mcpv1beta1.MCPServer, sel
 	}
 
 	service := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      mcpServer.Name,
-			Namespace: mcpServer.Namespace,
-			Labels:    labels,
-		},
+		Name:      mcpServer.Name,
+		Namespace: mcpServer.Namespace,
+		Labels:    labels,
 		Spec: corev1.ServiceSpec{
 			Type:     corev1.ServiceTypeClusterIP,
 			Selector: selector,

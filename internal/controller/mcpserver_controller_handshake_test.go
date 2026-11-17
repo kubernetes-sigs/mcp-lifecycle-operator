@@ -57,10 +57,8 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 
 	BeforeEach(func() {
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: "default",
-			},
+			Name:      resourceName,
+			Namespace: "default",
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -1226,7 +1224,7 @@ var _ = Describe("emitCapabilityChangeDetected", func() {
 	It("should not panic when Recorder is nil", func() {
 		r := &MCPServerReconciler{}
 		mcpServer := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+			Name: "test", Namespace: "default",
 		}
 		Expect(func() { r.emitCapabilityChangeDetected(mcpServer, "tools: false->true") }).NotTo(Panic())
 	})
@@ -1335,10 +1333,8 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 
 	BeforeEach(func() {
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: "default",
-			},
+			Name:      resourceName,
+			Namespace: "default",
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -1607,10 +1603,8 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 	It("should set Accepted=False when CA Secret has invalid PEM data", func() {
 		By("Creating a Secret with invalid PEM data")
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "bad-ca",
-				Namespace: "default",
-			},
+			Name:      "bad-ca",
+			Namespace: "default",
 			Data: map[string][]byte{
 				"ca.crt": []byte("not-a-valid-pem"),
 			},
@@ -1648,10 +1642,8 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 	It("should set Accepted=False when CA Secret is missing ca.crt key", func() {
 		By("Creating a Secret without the ca.crt key")
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "no-cacrt",
-				Namespace: "default",
-			},
+			Name:      "no-cacrt",
+			Namespace: "default",
 			Data: map[string][]byte{
 				"tls.crt": []byte("some-data"),
 			},
@@ -1689,10 +1681,8 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 	It("should set Accepted=False when CA Secret contains non-certificate PEM", func() {
 		By("Creating a Secret with a private key PEM instead of a certificate")
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "privkey-ca",
-				Namespace: "default",
-			},
+			Name:      "privkey-ca",
+			Namespace: "default",
 			Data: map[string][]byte{
 				"ca.crt": pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte("not-a-cert")}),
 			},
@@ -1779,11 +1769,9 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 	It("should reject insecureSkipVerify combined with caBundleSecret", func() {
 		By("Creating a CA Secret")
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "conflict-ca",
-				Namespace: "default",
-			},
-			Data: map[string][]byte{"ca.crt": []byte("dummy")},
+			Name:      "conflict-ca",
+			Namespace: "default",
+			Data:      map[string][]byte{"ca.crt": []byte("dummy")},
 		}
 		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
@@ -1820,11 +1808,9 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		By("Creating a CA bundle Secret with valid PEM")
 		originalPEM := generateSelfSignedCAPEMOnly()
 		caSecret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "rotation-ca",
-				Namespace: "default",
-			},
-			Data: map[string][]byte{"ca.crt": originalPEM},
+			Name:      "rotation-ca",
+			Namespace: "default",
+			Data:      map[string][]byte{"ca.crt": originalPEM},
 		}
 		Expect(k8sClient.Create(ctx, caSecret)).To(Succeed())
 

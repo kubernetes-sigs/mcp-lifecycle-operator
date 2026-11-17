@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
@@ -51,7 +50,7 @@ func TestMatchesProvider(t *testing.T) {
 		{
 			name: "non-binding object",
 			obj: event.CreateEvent{Object: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Name: "test",
 			}},
 			want: false,
 		},

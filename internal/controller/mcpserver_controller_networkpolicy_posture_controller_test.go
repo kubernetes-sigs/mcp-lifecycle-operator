@@ -37,7 +37,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 	reconcileOnce := func(name string) *mcpv1beta1.MCPServer {
 		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: name, Namespace: "default"},
+			Name: name, Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 		mcpServer := &mcpv1beta1.MCPServer{}
@@ -188,7 +188,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, mcpServer)).To(Succeed())
 		mcpServer.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 			{ConfigMapRef: &corev1.ConfigMapEnvSource{
-				LocalObjectReference: corev1.LocalObjectReference{Name: "does-not-exist"},
+				Name: "does-not-exist",
 			}},
 		}
 		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
@@ -215,7 +215,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 		mcpServer := newTestMCPServer(name)
 		mcpServer.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 			{ConfigMapRef: &corev1.ConfigMapEnvSource{
-				LocalObjectReference: corev1.LocalObjectReference{Name: "does-not-exist"},
+				Name: "does-not-exist",
 			}},
 		}
 		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())

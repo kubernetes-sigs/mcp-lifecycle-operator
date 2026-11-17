@@ -52,10 +52,8 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 
 		BeforeEach(func() {
 			dep := &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "byo-svc-deploy",
-					Namespace: "default",
-				},
+				Name:      "byo-svc-deploy",
+				Namespace: "default",
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](1),
 					Selector: &metav1.LabelSelector{
@@ -81,10 +79,8 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
 
 			svc := &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-mcp-svc",
-					Namespace: "default",
-				},
+				Name:      "my-mcp-svc",
+				Namespace: "default",
 				Spec: corev1.ServiceSpec{
 					Ports: []corev1.ServicePort{
 						{Name: "http", Port: 9090, Protocol: corev1.ProtocolTCP},
@@ -269,10 +265,8 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 
 		BeforeEach(func() {
 			dep := &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "byo-svc-mcp-deploy",
-					Namespace: "default",
-				},
+				Name:      "byo-svc-mcp-deploy",
+				Namespace: "default",
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](1),
 					Selector: &metav1.LabelSelector{
@@ -298,10 +292,8 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
 
 			svc := &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-mcp-svc-multi",
-					Namespace: "default",
-				},
+				Name:      "my-mcp-svc-multi",
+				Namespace: "default",
 				Spec: corev1.ServiceSpec{
 					Ports: []corev1.ServicePort{
 						{Name: "metrics", Port: 9090, Protocol: corev1.ProtocolTCP},
@@ -418,10 +410,8 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 
 		BeforeEach(func() {
 			svc := &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-mcp-svc-port",
-					Namespace: "default",
-				},
+				Name:      "my-mcp-svc-port",
+				Namespace: "default",
 				Spec: corev1.ServiceSpec{
 					Ports: []corev1.ServicePort{
 						{Name: "http", Port: 80, TargetPort: intstr.FromInt32(8080), Protocol: corev1.ProtocolTCP},
@@ -507,8 +497,8 @@ var _ = Describe("resolveServicePort - unit tests", func() {
 
 	It("should return error when Service has no ports", func() {
 		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: "no-ports-svc", Namespace: "default"},
-			Spec:       corev1.ServiceSpec{Selector: map[string]string{"app": "test"}},
+			Name: "no-ports-svc", Namespace: "default",
+			Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "test"}},
 		}
 		fakeClient := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(svc).Build()
 
@@ -527,7 +517,7 @@ var _ = Describe("resolveServicePort - unit tests", func() {
 
 	It("should prefer mcp-named port over others", func() {
 		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: "multi-port-svc", Namespace: "default"},
+			Name: "multi-port-svc", Namespace: "default",
 			Spec: corev1.ServiceSpec{
 				Ports: []corev1.ServicePort{
 					{Name: "metrics", Port: 9090},
@@ -546,7 +536,7 @@ var _ = Describe("resolveServicePort - unit tests", func() {
 
 	It("should fall back to first port when no mcp-named port exists", func() {
 		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: "single-port-svc", Namespace: "default"},
+			Name: "single-port-svc", Namespace: "default",
 			Spec: corev1.ServiceSpec{
 				Ports: []corev1.ServicePort{
 					{Name: "http", Port: 8080},

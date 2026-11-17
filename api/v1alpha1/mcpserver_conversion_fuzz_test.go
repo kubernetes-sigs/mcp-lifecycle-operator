@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
 	v1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
@@ -37,10 +36,8 @@ func FuzzConversionRoundTrip(f *testing.F) {
 		}
 
 		original := &MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: namespace,
-			},
+			Name:      name,
+			Namespace: namespace,
 			Spec: MCPServerSpec{
 				Source: Source{
 					Type: SourceTypeContainerImage,

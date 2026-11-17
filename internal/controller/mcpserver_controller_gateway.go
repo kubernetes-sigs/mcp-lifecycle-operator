@@ -92,10 +92,8 @@ func (r *MCPServerReconciler) reconcileGatewayBinding(
 	}
 
 	desired := &mcpv1alpha1.MCPGatewayBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      bindingName,
-			Namespace: mcpServer.Namespace,
-		},
+		Name:      bindingName,
+		Namespace: mcpServer.Namespace,
 		Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 			MCPServerRef: mcpServer.Name,
 			Provider:     mcpServer.Spec.Gateway.Provider,

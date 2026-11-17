@@ -159,8 +159,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 
 	It("should admit the gateway namespace for a gateway-routed server with no IngressFrom", func() {
 		gwConfig := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: "gw-cfg-resolvable", Namespace: "default"},
-			Data:       map[string]string{gatewayConfigKeyNamespace: "gateway-system"},
+			Name: "gw-cfg-resolvable", Namespace: "default",
+			Data: map[string]string{gatewayConfigKeyNamespace: "gateway-system"},
 		}
 		Expect(k8sClient.Create(ctx, gwConfig)).To(Succeed())
 		defer func() { _ = k8sClient.Delete(ctx, gwConfig) }()
@@ -240,8 +240,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 
 	It("should admit both the operator and the gateway for a gateway-routed server", func() {
 		gwConfig := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: "gw-cfg-operator", Namespace: "default"},
-			Data:       map[string]string{gatewayConfigKeyNamespace: "gateway-system"},
+			Name: "gw-cfg-operator", Namespace: "default",
+			Data: map[string]string{gatewayConfigKeyNamespace: "gateway-system"},
 		}
 		Expect(k8sClient.Create(ctx, gwConfig)).To(Succeed())
 		defer func() { _ = k8sClient.Delete(ctx, gwConfig) }()

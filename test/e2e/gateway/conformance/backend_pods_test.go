@@ -31,10 +31,8 @@ import (
 
 func probeTestPod(name, namespace string) *corev1.Pod {
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name, Namespace: namespace,
-			Labels: map[string]string{mcpcontroller.LabelKeyMCPServer: "backend"},
-		},
+		Name: name, Namespace: namespace,
+		Labels: map[string]string{mcpcontroller.LabelKeyMCPServer: "backend"},
 		Status: corev1.PodStatus{
 			Phase:      corev1.PodRunning,
 			Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
