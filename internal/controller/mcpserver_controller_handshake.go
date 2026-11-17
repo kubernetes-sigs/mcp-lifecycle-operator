@@ -307,9 +307,8 @@ func capabilityDiffMessage(old, new *mcpv1beta1.MCPServerCapabilities) string {
 	if oldCaps.Prompts != newCaps.Prompts {
 		diffs = append(diffs, fmt.Sprintf("prompts: %v->%v", oldCaps.Prompts, newCaps.Prompts))
 	}
-	if oldCaps.Logging != newCaps.Logging { //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
-		diffs = append(diffs, fmt.Sprintf("logging: %v->%v", oldCaps.Logging, newCaps.Logging)) //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
-	}
+	// v1 storage drops the deprecated logging capability. Comparing it would
+	// report a change after every fresh handshake that detects logging support.
 	if oldCaps.Completions != newCaps.Completions {
 		diffs = append(diffs, fmt.Sprintf("completions: %v->%v", oldCaps.Completions, newCaps.Completions))
 	}

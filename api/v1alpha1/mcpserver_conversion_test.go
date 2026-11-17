@@ -29,8 +29,36 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 
+	v1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	v1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
+
+func TestAlphaConversionThroughV1Hub(t *testing.T) {
+	original := &MCPServer{
+		APIVersion: GroupVersion.String(),
+		Kind:       MCPServerKind,
+		Name:       "alpha",
+		Namespace:  "default",
+		Spec: MCPServerSpec{
+			Source: Source{Type: SourceTypeContainerImage, ContainerImage: &ContainerImageSource{Ref: "example:v1"}},
+			Config: ServerConfig{Port: 8080},
+		},
+	}
+	stored := &v1.MCPServer{}
+	if err := original.ConvertTo(stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.APIVersion != v1.GroupVersion.String() || stored.Kind != v1.MCPServerKind {
+		t.Fatalf("conversion returned wrong GVK: %s %s", stored.APIVersion, stored.Kind)
+	}
+	converted := &MCPServer{}
+	if err := converted.ConvertFrom(stored); err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(original, converted); diff != "" {
+		t.Fatalf("alpha conversion through v1 changed object (-want +got):\n%s", diff)
+	}
+}
 
 func TestConversionRoundTrip_MinimalSpec(t *testing.T) {
 	original := &MCPServer{
@@ -50,12 +78,12 @@ func TestConversionRoundTrip_MinimalSpec(t *testing.T) {
 	}
 
 	hub := &v1beta1.MCPServer{}
-	if err := original.ConvertTo(hub); err != nil {
+	if err := original.convertToBeta(hub); err != nil {
 		t.Fatalf("ConvertTo failed: %v", err)
 	}
 
 	roundTripped := &MCPServer{}
-	if err := roundTripped.ConvertFrom(hub); err != nil {
+	if err := roundTripped.convertFromBeta(hub); err != nil {
 		t.Fatalf("ConvertFrom failed: %v", err)
 	}
 
@@ -236,7 +264,7 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 	}
 
 	hub := &v1beta1.MCPServer{}
-	if err := original.ConvertTo(hub); err != nil {
+	if err := original.convertToBeta(hub); err != nil {
 		t.Fatalf("ConvertTo failed: %v", err)
 	}
 
@@ -246,7 +274,7 @@ func TestConversionRoundTrip_FullyPopulated(t *testing.T) {
 	}
 
 	roundTripped := &MCPServer{}
-	if err := roundTripped.ConvertFrom(hub); err != nil {
+	if err := roundTripped.convertFromBeta(hub); err != nil {
 		t.Fatalf("ConvertFrom failed: %v", err)
 	}
 
@@ -273,12 +301,12 @@ func TestConversion_HandshakeRetryCountDroppedInHub(t *testing.T) {
 	}
 
 	hub := &v1beta1.MCPServer{}
-	if err := original.ConvertTo(hub); err != nil {
+	if err := original.convertToBeta(hub); err != nil {
 		t.Fatalf("ConvertTo failed: %v", err)
 	}
 
 	roundTripped := &MCPServer{}
-	if err := roundTripped.ConvertFrom(hub); err != nil {
+	if err := roundTripped.convertFromBeta(hub); err != nil {
 		t.Fatalf("ConvertFrom failed: %v", err)
 	}
 
@@ -310,7 +338,7 @@ func TestConversionRoundTrip_NilOptionalFields(t *testing.T) {
 	}
 
 	hub := &v1beta1.MCPServer{}
-	if err := original.ConvertTo(hub); err != nil {
+	if err := original.convertToBeta(hub); err != nil {
 		t.Fatalf("ConvertTo failed: %v", err)
 	}
 
@@ -331,7 +359,7 @@ func TestConversionRoundTrip_NilOptionalFields(t *testing.T) {
 	}
 
 	roundTripped := &MCPServer{}
-	if err := roundTripped.ConvertFrom(hub); err != nil {
+	if err := roundTripped.convertFromBeta(hub); err != nil {
 		t.Fatalf("ConvertFrom failed: %v", err)
 	}
 
@@ -358,7 +386,7 @@ func TestConversionRoundTrip_ServerInfoWithNilCapabilities(t *testing.T) {
 	}
 
 	hub := &v1beta1.MCPServer{}
-	if err := original.ConvertTo(hub); err != nil {
+	if err := original.convertToBeta(hub); err != nil {
 		t.Fatalf("ConvertTo failed: %v", err)
 	}
 
@@ -367,7 +395,7 @@ func TestConversionRoundTrip_ServerInfoWithNilCapabilities(t *testing.T) {
 	}
 
 	roundTripped := &MCPServer{}
-	if err := roundTripped.ConvertFrom(hub); err != nil {
+	if err := roundTripped.convertFromBeta(hub); err != nil {
 		t.Fatalf("ConvertFrom failed: %v", err)
 	}
 
@@ -406,12 +434,12 @@ func TestConversionRoundTrip_HubToSpoke_NoConditions(t *testing.T) {
 	}
 
 	spoke := &MCPServer{}
-	if err := spoke.ConvertFrom(hub); err != nil {
+	if err := spoke.convertFromBeta(hub); err != nil {
 		t.Fatalf("ConvertFrom failed: %v", err)
 	}
 
 	hubRoundTripped := &v1beta1.MCPServer{}
-	if err := spoke.ConvertTo(hubRoundTripped); err != nil {
+	if err := spoke.convertToBeta(hubRoundTripped); err != nil {
 		t.Fatalf("ConvertTo failed: %v", err)
 	}
 
@@ -459,7 +487,7 @@ func TestConversionRoundTrip_HubToSpoke_WithConditions(t *testing.T) {
 	}
 
 	spoke := &MCPServer{}
-	if err := spoke.ConvertFrom(hub); err != nil {
+	if err := spoke.convertFromBeta(hub); err != nil {
 		t.Fatalf("ConvertFrom failed: %v", err)
 	}
 
@@ -469,7 +497,7 @@ func TestConversionRoundTrip_HubToSpoke_WithConditions(t *testing.T) {
 	}
 
 	hubRoundTripped := &v1beta1.MCPServer{}
-	if err := spoke.ConvertTo(hubRoundTripped); err != nil {
+	if err := spoke.convertToBeta(hubRoundTripped); err != nil {
 		t.Fatalf("ConvertTo failed: %v", err)
 	}
 
@@ -506,7 +534,7 @@ func TestConversion_HubToSpoke_VerifiedUnknownNoAvailable(t *testing.T) {
 	}
 
 	spoke := &MCPServer{}
-	if err := spoke.ConvertFrom(hub); err != nil {
+	if err := spoke.convertFromBeta(hub); err != nil {
 		t.Fatalf("ConvertFrom failed: %v", err)
 	}
 
@@ -586,7 +614,7 @@ func TestConversion_ReadyConditionSplit(t *testing.T) {
 			}
 
 			hub := &v1beta1.MCPServer{}
-			if err := original.ConvertTo(hub); err != nil {
+			if err := original.convertToBeta(hub); err != nil {
 				t.Fatalf("ConvertTo failed: %v", err)
 			}
 
@@ -634,7 +662,7 @@ func TestConversionRoundTrip_ZeroReplicas(t *testing.T) {
 	}
 
 	hub := &v1beta1.MCPServer{}
-	if err := original.ConvertTo(hub); err != nil {
+	if err := original.convertToBeta(hub); err != nil {
 		t.Fatalf("ConvertTo failed: %v", err)
 	}
 
@@ -643,7 +671,7 @@ func TestConversionRoundTrip_ZeroReplicas(t *testing.T) {
 	}
 
 	roundTripped := &MCPServer{}
-	if err := roundTripped.ConvertFrom(hub); err != nil {
+	if err := roundTripped.convertFromBeta(hub); err != nil {
 		t.Fatalf("ConvertFrom failed: %v", err)
 	}
 
@@ -722,12 +750,12 @@ func TestConversionRoundTrip_ReadyConditionReasons(t *testing.T) {
 			}
 
 			hub := &v1beta1.MCPServer{}
-			if err := original.ConvertTo(hub); err != nil {
+			if err := original.convertToBeta(hub); err != nil {
 				t.Fatalf("ConvertTo failed: %v", err)
 			}
 
 			roundTripped := &MCPServer{}
-			if err := roundTripped.ConvertFrom(hub); err != nil {
+			if err := roundTripped.convertFromBeta(hub); err != nil {
 				t.Fatalf("ConvertFrom failed: %v", err)
 			}
 
@@ -760,14 +788,14 @@ func TestConversionRoundTrip_DeploymentStrategy(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			original := &MCPServer{Spec: MCPServerSpec{Runtime: RuntimeConfig{Strategy: strategy}}}
 			hub := &v1beta1.MCPServer{}
-			if err := original.ConvertTo(hub); err != nil {
+			if err := original.convertToBeta(hub); err != nil {
 				t.Fatal(err)
 			}
 			if diff := cmp.Diff(strategy, hub.Spec.Runtime.Strategy); diff != "" {
 				t.Fatal(diff)
 			}
 			roundTrip := &MCPServer{}
-			if err := roundTrip.ConvertFrom(hub); err != nil {
+			if err := roundTrip.convertFromBeta(hub); err != nil {
 				t.Fatal(err)
 			}
 			if diff := cmp.Diff(strategy, roundTrip.Spec.Runtime.Strategy); diff != "" {

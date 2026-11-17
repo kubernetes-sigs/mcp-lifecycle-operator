@@ -28,15 +28,18 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
@@ -922,7 +925,8 @@ var _ = Describe("MCPServer Controller - MCP Handshake Validation", func() {
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Tools).To(BeTrue())
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Resources).To(BeTrue())
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Prompts).To(BeFalse())
-		Expect(mcpServer.Status.ServerInfo.Capabilities.Logging).To(BeTrue()) //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
+		// The v1 storage schema omits deprecated logging, including on v1beta1 reads.
+		Expect(mcpServer.Status.ServerInfo.Capabilities.Logging).To(BeFalse()) //nolint:staticcheck // v1 conversion intentionally drops this field
 		Expect(mcpServer.Status.ServerInfo.Capabilities.Completions).To(BeFalse())
 	})
 
@@ -1149,6 +1153,22 @@ var _ = Describe("capabilityDiffMessage", func() {
 })
 
 var _ = Describe("capabilityChangeMessage", func() {
+	It("ignores deprecated logging after a v1 storage round trip", func() {
+		fresh := &mcpv1beta1.MCPServer{
+			Status: mcpv1beta1.MCPServerStatus{
+				ServerInfo: &mcpv1beta1.MCPServerInfo{
+					Capabilities: &mcpv1beta1.MCPServerCapabilities{Tools: true, Logging: true}, //nolint:staticcheck // verify deprecated field does not create a false change
+				},
+			},
+		}
+		stored := &mcpv1.MCPServer{}
+		Expect(fresh.ConvertTo(stored)).To(Succeed())
+		read := &mcpv1beta1.MCPServer{}
+		Expect(read.ConvertFrom(stored)).To(Succeed())
+		Expect(read.Status.ServerInfo.Capabilities.Logging).To(BeFalse()) //nolint:staticcheck // v1 intentionally omits logging
+		Expect(capabilityChangeMessage(read, fresh.Status.ServerInfo)).To(BeEmpty())
+	})
+
 	It("should return empty when serverInfo is nil", func() {
 		mcpServer := &mcpv1beta1.MCPServer{
 			Status: mcpv1beta1.MCPServerStatus{
@@ -1831,9 +1851,13 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 			Scheme: k8sClient.Scheme(),
 			MCPDialer: func(_ context.Context, _ string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
 				dialCount++
-				return &mcpv1beta1.MCPServerInfo{Name: "test"}, nil
+				return &mcpv1beta1.MCPServerInfo{
+					Name:         "test",
+					Capabilities: &mcpv1beta1.MCPServerCapabilities{Tools: true, Logging: true}, //nolint:staticcheck // verify deprecated capability does not trigger a false change
+				}, nil
 			},
 			APIReader: k8sClient,
+			Recorder:  events.NewFakeRecorder(testRecorderBuffer),
 		}
 
 		By("Initial reconciliation creates deployment")
@@ -1865,6 +1889,7 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		Expect(dialCount).To(Equal(1))
 
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
+		Expect(mcpServer.Status.ServerInfo.Capabilities.Logging).To(BeFalse()) //nolint:staticcheck // v1 storage omits deprecated logging
 		verifiedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeVerified)
 		Expect(verifiedCondition).NotTo(BeNil())
 		Expect(verifiedCondition.Status).To(Equal(metav1.ConditionTrue))
@@ -1881,6 +1906,8 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dialCount).To(Equal(0))
+		beforeChanges := testutil.ToFloat64(capabilityChangesTotal.WithLabelValues(resourceName, "default"))
+		_ = drainEvents(reconciler.Recorder.(*events.FakeRecorder).Events)
 
 		By("Rotating the CA bundle Secret content")
 		Expect(k8sClient.Get(ctx, client.ObjectKey{
@@ -1901,6 +1928,10 @@ var _ = Describe("MCPServer Controller - TLS Handshake", func() {
 		storedVal, ok = reconciler.tlsCABundleHashes.Load(hashKey)
 		Expect(ok).To(BeTrue())
 		Expect(storedVal.(string)).NotTo(Equal(originalHash))
+		Expect(testutil.ToFloat64(capabilityChangesTotal.WithLabelValues(resourceName, "default"))).To(Equal(beforeChanges))
+		for _, event := range drainEvents(reconciler.Recorder.(*events.FakeRecorder).Events) {
+			Expect(event).NotTo(ContainSubstring(EventReasonCapabilityChanged))
+		}
 
 		By("Cleaning up Secret")
 		Expect(k8sClient.Delete(ctx, caSecret)).To(Succeed())

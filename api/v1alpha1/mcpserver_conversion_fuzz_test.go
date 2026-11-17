@@ -66,12 +66,12 @@ func FuzzConversionRoundTrip(f *testing.F) {
 		}
 
 		hub := &v1beta1.MCPServer{}
-		if err := original.ConvertTo(hub); err != nil {
+		if err := original.convertToBeta(hub); err != nil {
 			t.Fatalf("ConvertTo failed: %v", err)
 		}
 
 		roundTripped := &MCPServer{}
-		if err := roundTripped.ConvertFrom(hub); err != nil {
+		if err := roundTripped.convertFromBeta(hub); err != nil {
 			t.Fatalf("ConvertFrom failed: %v", err)
 		}
 

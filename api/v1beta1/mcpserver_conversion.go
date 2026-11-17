@@ -16,5 +16,43 @@ limitations under the License.
 
 package v1beta1
 
-// Hub marks MCPServer v1beta1 as the hub (storage) version for conversion.
-func (*MCPServer) Hub() {}
+import (
+	"encoding/json"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/conversion"
+
+	v1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
+)
+
+var _ conversion.Convertible = &MCPServer{}
+
+// ConvertTo converts the beta representation to the v1 storage version. The
+// schemas have the same JSON shape except for the deprecated logging status
+// capability, which is intentionally absent from v1.
+func (src *MCPServer) ConvertTo(dstRaw conversion.Hub) error {
+	dst := dstRaw.(*v1.MCPServer)
+	if err := convertMCPServer(src, dst); err != nil {
+		return err
+	}
+	dst.TypeMeta = metav1.TypeMeta{APIVersion: v1.GroupVersion.String(), Kind: v1.MCPServerKind}
+	return nil
+}
+
+// ConvertFrom converts the v1 storage version to the beta representation.
+func (dst *MCPServer) ConvertFrom(srcRaw conversion.Hub) error {
+	src := srcRaw.(*v1.MCPServer)
+	if err := convertMCPServer(src, dst); err != nil {
+		return err
+	}
+	dst.TypeMeta = metav1.TypeMeta{APIVersion: GroupVersion.String(), Kind: MCPServerKind}
+	return nil
+}
+
+func convertMCPServer(src, dst any) error {
+	data, err := json.Marshal(src)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, dst)
+}

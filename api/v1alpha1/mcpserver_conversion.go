@@ -26,11 +26,34 @@ import (
 
 var _ conversion.Convertible = &MCPServer{}
 
-// ConvertTo converts this MCPServer (v1alpha1) to the Hub version (v1beta1).
-//
-//nolint:dupl // ConvertTo/ConvertFrom are symmetric by design
+// ConvertTo converts v1alpha1 through the existing beta compatibility mapping
+// to the v1 storage version.
 func (src *MCPServer) ConvertTo(dstRaw conversion.Hub) error {
-	dst := dstRaw.(*v1beta1.MCPServer)
+	intermediate := &v1beta1.MCPServer{}
+	if err := src.convertToBeta(intermediate); err != nil {
+		return err
+	}
+	return intermediate.ConvertTo(dstRaw)
+}
+
+// ConvertFrom converts v1 through beta to preserve the established alpha
+// condition and field compatibility behavior.
+func (dst *MCPServer) ConvertFrom(srcRaw conversion.Hub) error {
+	intermediate := &v1beta1.MCPServer{}
+	if err := intermediate.ConvertFrom(srcRaw); err != nil {
+		return err
+	}
+	if err := dst.convertFromBeta(intermediate); err != nil {
+		return err
+	}
+	dst.TypeMeta = metav1.TypeMeta{APIVersion: GroupVersion.String(), Kind: MCPServerKind}
+	return nil
+}
+
+// convertToBeta retains the v1alpha1 to v1beta1 compatibility mapping.
+//
+//nolint:dupl // beta conversion directions are symmetric by design
+func (src *MCPServer) convertToBeta(dst *v1beta1.MCPServer) error {
 
 	dst.ObjectMeta = src.ObjectMeta
 
@@ -60,11 +83,10 @@ func (src *MCPServer) ConvertTo(dstRaw conversion.Hub) error {
 	return nil
 }
 
-// ConvertFrom converts from the Hub version (v1beta1) to this version (v1alpha1).
+// convertFromBeta retains the v1beta1 to v1alpha1 compatibility mapping.
 //
-//nolint:dupl // ConvertTo/ConvertFrom are symmetric by design
-func (dst *MCPServer) ConvertFrom(srcRaw conversion.Hub) error {
-	src := srcRaw.(*v1beta1.MCPServer)
+//nolint:dupl // beta conversion directions are symmetric by design
+func (dst *MCPServer) convertFromBeta(src *v1beta1.MCPServer) error {
 
 	dst.ObjectMeta = src.ObjectMeta
 
