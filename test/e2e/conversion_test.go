@@ -40,7 +40,7 @@ import (
 // TestConversionWebhookRoundTrip exercises the deployed conversion webhook
 // (not the in-process conversion functions unit-tested in the api package):
 // a v1alpha1 MCPServer is applied with a typed v1alpha1 client, then re-fetched
-// at v1beta1 (the storage version). It asserts the spec round-trips and that the
+// at v1beta1 (a served spoke version). It asserts the spec round-trips and that the
 // controller reconciles the converted object identically to a native v1beta1 one.
 func TestConversionWebhookRoundTrip(t *testing.T) {
 	t.Parallel()
@@ -60,7 +60,7 @@ func TestConversionWebhookRoundTrip(t *testing.T) {
 			r := cfg.Client().Resources()
 
 			// Build and apply a v1alpha1 object. The API server stores it as
-			// v1beta1, invoking the deployed conversion webhook on write.
+			// v1, invoking the deployed conversion webhook on write.
 			alpha := &mcpv1alpha1.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
 				Spec: mcpv1alpha1.MCPServerSpec{
@@ -112,10 +112,9 @@ func TestConversionWebhookRoundTrip(t *testing.T) {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
 
-			// The object is stored as v1beta1, so a Get at v1alpha1 goes through
-			// the webhook (v1beta1 -> v1alpha1). This is the only path that
-			// exercises the reverse conversion; a v1beta1 Get reads storage
-			// directly and would let a regression here pass unnoticed.
+			// The object is stored as v1, so a Get at v1alpha1 goes through
+			// the webhook (v1 -> v1alpha1). The v1beta1 Get above exercises
+			// the separate v1 -> v1beta1 conversion path.
 			alpha := &mcpv1alpha1.MCPServer{}
 			if err := r.Get(ctx, name, ns, alpha); err != nil {
 				t.Fatalf("failed to get MCPServer at v1alpha1: %v", err)
@@ -137,7 +136,7 @@ func TestConversionWebhookRoundTrip(t *testing.T) {
 			if !slices.Equal(alpha.Spec.Config.Arguments, wantArgs) {
 				t.Errorf("arguments not preserved: got %v, want %v", alpha.Spec.Config.Arguments, wantArgs)
 			}
-			t.Logf("v1beta1 object read back at v1alpha1 with equivalent spec (image=%s port=%d args=%v)",
+			t.Logf("v1 object read back at v1alpha1 with equivalent spec (image=%s port=%d args=%v)",
 				alpha.Spec.Source.ContainerImage.Ref, alpha.Spec.Config.Port, alpha.Spec.Config.Arguments)
 			return ctx
 		}).
@@ -204,7 +203,7 @@ func TestConversionV1beta1OnlyFieldPreserved(t *testing.T) {
 			t.Logf("created v1beta1 MCPServer %s/%s with spec.gateway.provider=%s", ns, name, provider)
 			return ctx
 		}).
-		Assess("spec.gateway is persisted and served at the v1beta1 storage version", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("spec.gateway is persisted and served at v1beta1", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
 

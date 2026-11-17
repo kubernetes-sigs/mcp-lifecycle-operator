@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/env"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	f "github.com/kubernetes-sigs/mcp-lifecycle-operator/test/e2e/framework"
@@ -47,10 +48,13 @@ func TestMain(m *testing.M) {
 
 	testenv = env.NewWithConfig(cfg)
 
-	// Register MCPServer types (both versions) so the client can work with
-	// them: v1beta1 is the storage version used by the bulk of the suite, and
-	// v1alpha1 is needed by the conversion test to exercise the deployed webhook.
+	// Register all served MCPServer versions. v1 is the storage version;
+	// v1beta1 remains in use by the bulk of the suite, and v1alpha1 exercises
+	// the deployed conversion webhook.
 	scheme := cfg.Client().Resources().GetScheme()
+	if err := mcpv1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
 	if err := mcpv1beta1.AddToScheme(scheme); err != nil {
 		panic(err)
 	}
