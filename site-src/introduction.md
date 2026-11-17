@@ -191,6 +191,6 @@ With `workloadRef`, the operator observes the existing workload instead of creat
 - **Get Started**: Follow the [Quickstart Guide](guides/quickstart.md)
 - **Examples**: Check out the [examples directory](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/tree/main/examples)
 - **API Reference**: See the [API documentation](reference/index.md) for all available fields
-- **Managed Example**: See the [complete managed MCPServer sample](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/blob/main/config/samples/mcp_v1beta1_mcpserver_complete.yaml)
+- **Managed Example**: See the [complete managed MCPServer sample](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/blob/main/config/samples/mcp_v1_mcpserver_complete.yaml)
 - **Contributing**: Read the [Contributing Guide](contributing/index.md) to get involved
 - **Community**: Join [SIG Apps](https://github.com/kubernetes/community/blob/main/sig-apps/README.md) meetings and discussions

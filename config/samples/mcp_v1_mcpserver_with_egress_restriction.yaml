@@ -1,0 +1,35 @@
+apiVersion: mcp.x-k8s.io/v1
+kind: MCPServer
+metadata:
+  labels:
+    app.kubernetes.io/name: mcp-lifecycle-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: mcpserver-restricted-egress
+spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: quay.io/containers/kubernetes_mcp_server:latest
+  config:
+    port: 8080
+  network:
+    egressTo:
+      - ipBlock:
+          cidr: 10.0.0.0/8
+    egressPorts:
+      - port: 443
+        protocol: TCP
+    # dnsEgressPeer scopes the automatically-added DNS (port 53) egress
+    # rule to the cluster's DNS provider instead of allowing DNS lookups
+    # to any destination. Only takes effect because egressTo/egressPorts
+    # above already activate egress restrictions.
+    # The selectors below target CoreDNS on vanilla Kubernetes; adjust
+    # them for your cluster's DNS implementation (for example, OpenShift
+    # uses a different namespace and labels).
+    dnsEgressPeer:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns

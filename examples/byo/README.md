@@ -6,7 +6,7 @@ This example creates a Deployment and Service to represent those existing resour
 
 ## Deploy and verify
 
-With the operator and its current `v1beta1` CRD installed, run from the repository root:
+With the operator and its `v1` MCPServer CRD installed, run from the repository root:
 
 ```bash
 kubectl apply -f examples/byo/mcpserver.yaml

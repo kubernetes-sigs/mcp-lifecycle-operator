@@ -151,7 +151,7 @@ data:
   # section-name: mcps  # Discovered when exactly one wildcard listener exists
   # prefix: example_   # Omit to generate a prefix from the server identity
 ---
-apiVersion: mcp.x-k8s.io/v1beta1
+apiVersion: mcp.x-k8s.io/v1
 kind: MCPServer
 metadata:
   name: example-mcp-server

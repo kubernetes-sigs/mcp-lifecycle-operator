@@ -1,0 +1,26 @@
+# Restricting ingress to an operand MCP server.
+#
+# By default the operator's managed NetworkPolicy leaves ingress OPEN: any pod in
+# any namespace can reach the server port. On a multi-tenant cluster that permits
+# lateral movement. Set spec.network.ingressFrom (below) to admit only the peers
+# that must reach the server. Each MCPServer reports its effective posture in the
+# NetworkPolicyRestricted status condition.
+apiVersion: mcp.x-k8s.io/v1
+kind: MCPServer
+metadata:
+  labels:
+    app.kubernetes.io/name: mcp-lifecycle-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: mcpserver-restricted-ingress
+spec:
+  source:
+    type: ContainerImage
+    containerImage:
+      ref: quay.io/containers/kubernetes_mcp_server:latest
+  config:
+    port: 8080
+  network:
+    ingressFrom:
+      - namespaceSelector:
+          matchLabels:
+            mcp-client: "true"

@@ -54,10 +54,10 @@ if [ ! -f "${CRD_REF_DOCS}" ]; then
 fi
 
 # Keep versions on separate pages: Markdown type anchors collide when both
-# versions are rendered in one file. Prefer the current API for the index,
-# while still supporting historical source refs that only contain v1alpha1.
+# versions are rendered in one file. Prefer v1 for the index, while still
+# supporting historical source refs that contain only older API versions.
 PRIMARY_PAGE=true
-for VERSION in v1beta1 v1alpha1; do
+for VERSION in v1 v1beta1 v1alpha1; do
     if [ ! -d "./api/${VERSION}" ]; then
         continue
     fi

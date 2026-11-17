@@ -28,7 +28,7 @@ This design is extensible - any provider can implement its own integration contr
 Add `spec.gateway` to your MCPServer to enable gateway integration:
 
 ```yaml
-apiVersion: mcp.x-k8s.io/v1beta1
+apiVersion: mcp.x-k8s.io/v1
 kind: MCPServer
 metadata:
   name: my-mcp-server
@@ -248,7 +248,7 @@ Both resources are owned by the MCPGatewayBinding, so they are automatically del
 ### MCPServer Configuration
 
 ```yaml
-apiVersion: mcp.x-k8s.io/v1beta1
+apiVersion: mcp.x-k8s.io/v1
 kind: MCPServer
 metadata:
   name: my-mcp-server

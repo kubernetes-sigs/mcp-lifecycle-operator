@@ -38,7 +38,7 @@ spec:
       port: 80
       targetPort: http
 ---
-apiVersion: mcp.x-k8s.io/v1beta1
+apiVersion: mcp.x-k8s.io/v1
 kind: MCPServer
 metadata:
   name: byo-mcp-server
