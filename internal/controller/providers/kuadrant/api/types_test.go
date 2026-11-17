@@ -19,7 +19,6 @@ package api
 import (
 	"testing"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -47,10 +46,8 @@ func TestAddToScheme(t *testing.T) {
 
 func TestMCPServerRegistrationDeepCopyObject(t *testing.T) {
 	reg := &MCPServerRegistration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-		},
+		Name:      "test",
+		Namespace: "default",
 		Spec: MCPServerRegistrationSpec{
 			TargetRef: TargetReference{
 				Group: "gateway.networking.k8s.io",
@@ -89,12 +86,12 @@ func TestMCPServerRegistrationListDeepCopyObject(t *testing.T) {
 	list := &MCPServerRegistrationList{
 		Items: []MCPServerRegistration{
 			{
-				ObjectMeta: metav1.ObjectMeta{Name: "a"},
-				Spec:       MCPServerRegistrationSpec{Path: "/a"},
+				Name: "a",
+				Spec: MCPServerRegistrationSpec{Path: "/a"},
 			},
 			{
-				ObjectMeta: metav1.ObjectMeta{Name: "b"},
-				Spec:       MCPServerRegistrationSpec{Path: "/b"},
+				Name: "b",
+				Spec: MCPServerRegistrationSpec{Path: "/b"},
 			},
 		},
 	}
@@ -132,10 +129,8 @@ func TestMCPServerRegistrationListDeepCopyIntoNilItems(t *testing.T) {
 
 func TestMCPGatewayExtensionDeepCopyObject(t *testing.T) {
 	ext := &MCPGatewayExtension{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-ext",
-			Namespace: "default",
-		},
+		Name:      "test-ext",
+		Namespace: "default",
 		Spec: MCPGatewayExtensionSpec{
 			PublicHost: "mcp.example.com",
 			TargetRef: TargetReference{
@@ -174,12 +169,12 @@ func TestMCPGatewayExtensionListDeepCopyObject(t *testing.T) {
 	list := &MCPGatewayExtensionList{
 		Items: []MCPGatewayExtension{
 			{
-				ObjectMeta: metav1.ObjectMeta{Name: "a"},
-				Spec:       MCPGatewayExtensionSpec{PublicHost: "a.example.com"},
+				Name: "a",
+				Spec: MCPGatewayExtensionSpec{PublicHost: "a.example.com"},
 			},
 			{
-				ObjectMeta: metav1.ObjectMeta{Name: "b"},
-				Spec:       MCPGatewayExtensionSpec{PublicHost: "b.example.com"},
+				Name: "b",
+				Spec: MCPGatewayExtensionSpec{PublicHost: "b.example.com"},
 			},
 		},
 	}

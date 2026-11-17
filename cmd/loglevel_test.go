@@ -27,9 +27,7 @@ import (
 	uzap "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -206,10 +204,8 @@ func reconcileLogLevel(t *testing.T, initialLevel zapcore.Level, configLevel str
 
 	atomicLevel := uzap.NewAtomicLevelAt(initialLevel)
 	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "mcp-lifecycle-operator-config",
-			Namespace: "system",
-		},
+		Name:      "mcp-lifecycle-operator-config",
+		Namespace: "system",
 		Data: map[string]string{
 			"log-level": configLevel,
 		},
@@ -222,10 +218,8 @@ func reconcileLogLevel(t *testing.T, initialLevel zapcore.Level, configLevel str
 	}
 
 	if _, err := reconciler.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Namespace: "system",
-			Name:      "mcp-lifecycle-operator-config",
-		},
+		Namespace: "system",
+		Name:      "mcp-lifecycle-operator-config",
 	}); err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
@@ -272,10 +266,8 @@ func TestLogLevelReconciler_Idempotent(t *testing.T) {
 
 	atomicLevel := uzap.NewAtomicLevelAt(uzap.DebugLevel)
 	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "mcp-lifecycle-operator-config",
-			Namespace: "system",
-		},
+		Name:      "mcp-lifecycle-operator-config",
+		Namespace: "system",
 		Data: map[string]string{
 			"log-level": "debug",
 		},
@@ -287,7 +279,7 @@ func TestLogLevelReconciler_Idempotent(t *testing.T) {
 		key:         "log-level",
 	}
 
-	req := reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "system", Name: "mcp-lifecycle-operator-config"}}
+	req := reconcile.Request{Namespace: "system", Name: "mcp-lifecycle-operator-config"}
 	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
 		t.Fatalf("first Reconcile() error = %v", err)
 	}
@@ -313,10 +305,8 @@ func TestLogLevelReconciler_NotFound(t *testing.T) {
 	}
 
 	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Namespace: "system",
-			Name:      "missing-config",
-		},
+		Namespace: "system",
+		Name:      "missing-config",
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
@@ -341,10 +331,8 @@ func TestLogLevelReconciler_GetError(t *testing.T) {
 	}
 
 	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Namespace: "system",
-			Name:      "mcp-lifecycle-operator-config",
-		},
+		Namespace: "system",
+		Name:      "mcp-lifecycle-operator-config",
 	})
 	if !errors.Is(err, getErr) {
 		t.Fatalf("Reconcile() error = %v, want %v", err, getErr)
@@ -359,11 +347,9 @@ func TestLogLevelReconciler_MissingKey(t *testing.T) {
 
 	atomicLevel := uzap.NewAtomicLevelAt(uzap.InfoLevel)
 	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "mcp-lifecycle-operator-config",
-			Namespace: "system",
-		},
-		Data: map[string]string{},
+		Name:      "mcp-lifecycle-operator-config",
+		Namespace: "system",
+		Data:      map[string]string{},
 	}
 
 	reconciler := &logLevelReconciler{
@@ -373,10 +359,8 @@ func TestLogLevelReconciler_MissingKey(t *testing.T) {
 	}
 
 	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Namespace: "system",
-			Name:      "mcp-lifecycle-operator-config",
-		},
+		Namespace: "system",
+		Name:      "mcp-lifecycle-operator-config",
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)

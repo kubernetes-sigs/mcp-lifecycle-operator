@@ -27,8 +27,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
@@ -103,10 +101,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 		BeforeEach(func() {
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-test-cm",
-					Namespace: "default",
-				},
+				Name:      "hash-test-cm",
+				Namespace: "default",
 				Data: map[string]string{
 					"key1": "value1",
 				},
@@ -117,9 +113,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "hash-test-cm",
-						},
+						Name: "hash-test-cm",
 					},
 				},
 			}
@@ -178,10 +172,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 		BeforeEach(func() {
 			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-test-secret",
-					Namespace: "default",
-				},
+				Name:      "hash-test-secret",
+				Namespace: "default",
 				StringData: map[string]string{
 					"password": "s3cret",
 				},
@@ -194,10 +186,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 					Name: "DB_PASSWORD",
 					ValueFrom: &corev1.EnvVarSource{
 						SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "hash-test-secret",
-							},
-							Key: "password",
+							Name: "hash-test-secret",
+							Key:  "password",
 						},
 					},
 				},
@@ -257,10 +247,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 		BeforeEach(func() {
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-change-cm",
-					Namespace: "default",
-				},
+				Name:      "hash-change-cm",
+				Namespace: "default",
 				Data: map[string]string{
 					"key1": "original-value",
 				},
@@ -271,9 +259,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "hash-change-cm",
-						},
+						Name: "hash-change-cm",
 					},
 				},
 			}
@@ -357,10 +343,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 		BeforeEach(func() {
 			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-change-secret",
-					Namespace: "default",
-				},
+				Name:      "hash-change-secret",
+				Namespace: "default",
 				StringData: map[string]string{
 					"token": "original-token",
 				},
@@ -371,9 +355,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					SecretRef: &corev1.SecretEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "hash-change-secret",
-						},
+						Name: "hash-change-secret",
 					},
 				},
 			}
@@ -457,10 +439,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 		BeforeEach(func() {
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-deterministic-cm",
-					Namespace: "default",
-				},
+				Name:      "hash-deterministic-cm",
+				Namespace: "default",
 				Data: map[string]string{
 					"key1": "value1",
 					"key2": "value2",
@@ -472,9 +452,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "hash-deterministic-cm",
-						},
+						Name: "hash-deterministic-cm",
 					},
 				},
 			}
@@ -551,18 +529,14 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-confighash-missing-ref",
-					Namespace: "default",
-				},
+				Name:      "test-confighash-missing-ref",
+				Namespace: "default",
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								ConfigMapRef: &corev1.ConfigMapEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "nonexistent-configmap",
-									},
+									Name: "nonexistent-configmap",
 								},
 							},
 						},
@@ -586,10 +560,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 		BeforeEach(func() {
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-storage-cm",
-					Namespace: "default",
-				},
+				Name:      "hash-storage-cm",
+				Namespace: "default",
 				Data: map[string]string{
 					"config.yaml": "key: value",
 				},
@@ -603,9 +575,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 					Source: mcpv1beta1.StorageSource{
 						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "hash-storage-cm",
-							},
+							Name: "hash-storage-cm",
 						},
 					},
 				},
@@ -665,10 +635,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 		BeforeEach(func() {
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-both-cm",
-					Namespace: "default",
-				},
+				Name:      "hash-both-cm",
+				Namespace: "default",
 				Data: map[string]string{
 					"key1": "cm-value",
 				},
@@ -676,10 +644,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
 			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-both-secret",
-					Namespace: "default",
-				},
+				Name:      "hash-both-secret",
+				Namespace: "default",
 				StringData: map[string]string{
 					"token": "secret-value",
 				},
@@ -690,16 +656,12 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "hash-both-cm",
-						},
+						Name: "hash-both-cm",
 					},
 				},
 				{
 					SecretRef: &corev1.SecretEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "hash-both-secret",
-						},
+						Name: "hash-both-secret",
 					},
 				},
 			}
@@ -787,10 +749,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 		BeforeEach(func() {
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-binary-cm",
-					Namespace: "default",
-				},
+				Name:      "hash-binary-cm",
+				Namespace: "default",
 				BinaryData: map[string][]byte{
 					"cert.pem": []byte("original-binary-data"),
 				},
@@ -801,9 +761,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "hash-binary-cm",
-						},
+						Name: "hash-binary-cm",
 					},
 				},
 			}
@@ -885,10 +843,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 		BeforeEach(func() {
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-empty-cm",
-					Namespace: "default",
-				},
+				Name:      "hash-empty-cm",
+				Namespace: "default",
 			}
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
@@ -896,9 +852,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "hash-empty-cm",
-						},
+						Name: "hash-empty-cm",
 					},
 				},
 			}
@@ -980,10 +934,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 		BeforeEach(func() {
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-annot-cm",
-					Namespace: "default",
-				},
+				Name:      "hash-annot-cm",
+				Namespace: "default",
 				Data: map[string]string{
 					"key1": "value1",
 				},
@@ -994,9 +946,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "hash-annot-cm",
-						},
+						Name: "hash-annot-cm",
 					},
 				},
 			}
@@ -1077,10 +1027,8 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 
 		BeforeEach(func() {
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "hash-removal-cm",
-					Namespace: "default",
-				},
+				Name:      "hash-removal-cm",
+				Namespace: "default",
 				Data: map[string]string{
 					"key1": "value1",
 				},
@@ -1091,9 +1039,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "hash-removal-cm",
-						},
+						Name: "hash-removal-cm",
 					},
 				},
 			}

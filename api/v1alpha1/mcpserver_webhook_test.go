@@ -42,10 +42,8 @@ func testContext() context.Context {
 
 func newMCPServer(imageRef string) *MCPServer {
 	return &MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-		},
+		Name:      "test",
+		Namespace: "default",
 		Spec: MCPServerSpec{
 			Source: Source{
 				Type: SourceTypeContainerImage,
@@ -105,9 +103,8 @@ func TestValidateUpdate_AlphaReferenceLossWarning(t *testing.T) {
 			if tc.create {
 				operation = admissionv1.Create
 			}
-			ctx := admission.NewContextWithRequest(testContext(), admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
-				Kind: alphaKind, RequestKind: tc.requestKind, Operation: operation, DryRun: new(tc.dryRun),
-			}})
+			ctx := admission.NewContextWithRequest(testContext(), admission.Request{
+				Kind: alphaKind, RequestKind: tc.requestKind, Operation: operation, DryRun: new(tc.dryRun)})
 			var err error
 			var warnings admission.Warnings
 			if tc.create {
@@ -206,9 +203,9 @@ func TestValidateCreate_MaxStorageMountsExceeded(t *testing.T) {
 	}
 	mcpServer := newMCPServer("ghcr.io/mcp/server:v1")
 	mcpServer.Spec.Config.Storage = []StorageMount{
-		{Path: "/a", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "a"}}}},
-		{Path: "/b", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "b"}}}},
-		{Path: "/c", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "c"}}}},
+		{Path: "/a", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{Name: "a"}}},
+		{Path: "/b", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{Name: "b"}}},
+		{Path: "/c", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{Name: "c"}}},
 	}
 	_, err := v.ValidateCreate(testContext(), mcpServer)
 	require.Error(t, err)
@@ -224,7 +221,7 @@ func TestValidateCreate_MaxStorageMountsWithinLimit(t *testing.T) {
 	}
 	mcpServer := newMCPServer("ghcr.io/mcp/server:v1")
 	mcpServer.Spec.Config.Storage = []StorageMount{
-		{Path: "/a", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "a"}}}},
+		{Path: "/a", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{Name: "a"}}},
 	}
 	_, err := v.ValidateCreate(testContext(), mcpServer)
 	assert.NoError(t, err)
@@ -265,8 +262,8 @@ func TestValidateCreate_CombinedViolations(t *testing.T) {
 	}
 	mcpServer := newMCPServer("docker.io/bad/server:latest")
 	mcpServer.Spec.Config.Storage = []StorageMount{
-		{Path: "/a", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "a"}}}},
-		{Path: "/b", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "b"}}}},
+		{Path: "/a", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{Name: "a"}}},
+		{Path: "/b", Source: StorageSource{Type: StorageTypeConfigMap, ConfigMap: &corev1.ConfigMapVolumeSource{Name: "b"}}},
 	}
 	_, err := v.ValidateCreate(testContext(), mcpServer)
 	require.Error(t, err)
@@ -320,10 +317,8 @@ func TestValidateCreate_NoContainerImage(t *testing.T) {
 		},
 	}
 	mcpServer := &MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "default",
-		},
+		Name:      "test",
+		Namespace: "default",
 		Spec: MCPServerSpec{
 			Source: Source{Type: SourceTypeContainerImage},
 			Config: ServerConfig{Port: 8080},

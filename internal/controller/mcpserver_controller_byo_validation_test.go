@@ -105,7 +105,7 @@ var _ = Describe("BYO workload mixed selector", func() {
 	It("should require serviceRef rather than broaden a mixed workload selector", func() {
 		ctx := context.Background()
 		dep := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Name: "mixed-selector-workload", Namespace: "default"},
+			Name: "mixed-selector-workload", Namespace: "default",
 			Spec: appsv1.DeploymentSpec{
 				Selector: &metav1.LabelSelector{
 					MatchLabels:      map[string]string{"app": "mcp"},
@@ -133,7 +133,7 @@ var _ = Describe("BYO workload mixed selector", func() {
 		Expect(accepted.Message).To(ContainSubstring("serviceRef"))
 		Expect(errors.IsNotFound(k8sClient.Get(ctx, req.NamespacedName, &corev1.Service{}))).To(BeTrue())
 
-		svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "mixed-selector-service", Namespace: "default"}, Spec: corev1.ServiceSpec{
+		svc := &corev1.Service{Name: "mixed-selector-service", Namespace: "default", Spec: corev1.ServiceSpec{
 			Selector: map[string]string{"app": "mcp", "version": "v2"}, Ports: []corev1.ServicePort{{Port: 8080}},
 		}}
 		Expect(k8sClient.Create(ctx, svc)).To(Succeed())

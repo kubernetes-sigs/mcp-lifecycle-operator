@@ -157,11 +157,9 @@ func (r *MCPServerReconciler) createNetworkPolicy(
 	egressRules := buildEgressRules(mcpServer)
 
 	return &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      mcpServer.Name,
-			Namespace: mcpServer.Namespace,
-			Labels:    labels,
-		},
+		Name:      mcpServer.Name,
+		Namespace: mcpServer.Namespace,
+		Labels:    labels,
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{
 				MatchLabels: managedWorkloadSelector(mcpServer.Name),

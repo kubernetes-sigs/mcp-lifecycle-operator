@@ -32,15 +32,15 @@ import (
 
 var _ = Describe("BYO availability from workload status", func() {
 	daemonSet := func(status appsv1.DaemonSetStatus) client.Object {
-		return &appsv1.DaemonSet{ObjectMeta: metav1.ObjectMeta{Name: "status-ds", Namespace: "default", Generation: 2}, Status: status}
+		return &appsv1.DaemonSet{Name: "status-ds", Namespace: "default", Generation: 2, Status: status}
 	}
 	statefulSet := func(replicas int32, status appsv1.StatefulSetStatus) client.Object {
-		return &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "status-sts", Namespace: "default", Generation: 2}, Spec: appsv1.StatefulSetSpec{Replicas: &replicas}, Status: status}
+		return &appsv1.StatefulSet{Name: "status-sts", Namespace: "default", Generation: 2, Spec: appsv1.StatefulSetSpec{Replicas: &replicas}, Status: status}
 	}
 	deployment := func(replicas int32, observed int64) client.Object {
 		return &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Name: "status-deployment", Namespace: "default", Generation: 2},
-			Spec:       appsv1.DeploymentSpec{Replicas: &replicas},
+			Name: "status-deployment", Namespace: "default", Generation: 2,
+			Spec: appsv1.DeploymentSpec{Replicas: &replicas},
 			Status: appsv1.DeploymentStatus{
 				ObservedGeneration: observed, ReadyReplicas: 1, AvailableReplicas: 1,
 				Conditions: []appsv1.DeploymentCondition{{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionTrue}},

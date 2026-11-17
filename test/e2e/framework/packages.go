@@ -24,7 +24,6 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"sigs.k8s.io/e2e-framework/pkg/env"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
@@ -169,7 +168,7 @@ func WithNamespaceManagement(testenv env.Environment, prefix string) {
 		MustDiscoverOperatorOnce(ctx, cfg, t)
 
 		ns := envconf.RandomName(prefix, 16)
-		nsObj := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
+		nsObj := &corev1.Namespace{Name: ns}
 		if err := cfg.Client().Resources().Create(ctx, nsObj); err != nil {
 			return ctx, err
 		}
@@ -186,7 +185,7 @@ func WithNamespaceManagement(testenv env.Environment, prefix string) {
 		if t.Failed() {
 			DumpDiagnostics(ctx, t, cfg, ns)
 		}
-		nsObj := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
+		nsObj := &corev1.Namespace{Name: ns}
 		if err := cfg.Client().Resources().Delete(ctx, nsObj); err != nil {
 			t.Logf("failed to delete namespace %s: %v", ns, err)
 		}

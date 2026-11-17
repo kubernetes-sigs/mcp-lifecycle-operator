@@ -27,7 +27,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -65,10 +64,8 @@ var _ = Describe("MCPServer Metrics", func() {
 
 	It("should record Accepted and Ready condition metrics on successful reconcile", func() {
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: namespace,
-			},
+			Name:      resourceName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -97,10 +94,8 @@ var _ = Describe("MCPServer Metrics", func() {
 
 	It("should record validation failure metrics when config is invalid", func() {
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: namespace,
-			},
+			Name:      resourceName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -116,9 +111,7 @@ var _ = Describe("MCPServer Metrics", func() {
 							Source: mcpv1beta1.StorageSource{
 								Type: mcpv1beta1.StorageTypeConfigMap,
 								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "nonexistent-configmap",
-									},
+									Name: "nonexistent-configmap",
 								},
 							},
 						},
@@ -148,10 +141,8 @@ var _ = Describe("MCPServer Metrics", func() {
 
 	It("should record reconcile phase durations", func() {
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: namespace,
-			},
+			Name:      resourceName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -175,10 +166,8 @@ var _ = Describe("MCPServer Metrics", func() {
 
 	It("should cleanup metrics when MCPServer is deleted", func() {
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: namespace,
-			},
+			Name:      resourceName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -194,9 +183,7 @@ var _ = Describe("MCPServer Metrics", func() {
 							Source: mcpv1beta1.StorageSource{
 								Type: mcpv1beta1.StorageTypeConfigMap,
 								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "nonexistent-configmap",
-									},
+									Name: "nonexistent-configmap",
 								},
 							},
 						},
@@ -226,10 +213,8 @@ var _ = Describe("MCPServer Metrics", func() {
 		depFailName := "metrics-dep-fail"
 		depFailNN := types.NamespacedName{Name: depFailName, Namespace: namespace}
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      depFailName,
-				Namespace: namespace,
-			},
+			Name:      depFailName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -275,10 +260,8 @@ var _ = Describe("MCPServer Metrics", func() {
 		svcFailName := "metrics-svc-fail"
 		svcFailNN := types.NamespacedName{Name: svcFailName, Namespace: namespace}
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      svcFailName,
-				Namespace: namespace,
-			},
+			Name:      svcFailName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -324,10 +307,8 @@ var _ = Describe("MCPServer Metrics", func() {
 		hsSuccessName := "metrics-hs-ok"
 		hsSuccessNN := types.NamespacedName{Name: hsSuccessName, Namespace: namespace}
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      hsSuccessName,
-				Namespace: namespace,
-			},
+			Name:      hsSuccessName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -369,10 +350,8 @@ var _ = Describe("MCPServer Metrics", func() {
 		hsFailName := "metrics-hs-fail"
 		hsFailNN := types.NamespacedName{Name: hsFailName, Namespace: namespace}
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      hsFailName,
-				Namespace: namespace,
-			},
+			Name:      hsFailName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -414,10 +393,8 @@ var _ = Describe("MCPServer Metrics", func() {
 		hsAuthName := "metrics-hs-auth"
 		hsAuthNN := types.NamespacedName{Name: hsAuthName, Namespace: namespace}
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      hsAuthName,
-				Namespace: namespace,
-			},
+			Name:      hsAuthName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -457,10 +434,8 @@ var _ = Describe("MCPServer Metrics", func() {
 		capChangeName := "metrics-cap-change"
 		capChangeNN := types.NamespacedName{Name: capChangeName, Namespace: namespace}
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      capChangeName,
-				Namespace: namespace,
-			},
+			Name:      capChangeName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -535,10 +510,8 @@ var _ = Describe("MCPServer Metrics", func() {
 		hsSkipName := "metrics-hs-skip"
 		hsSkipNN := types.NamespacedName{Name: hsSkipName, Namespace: namespace}
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      hsSkipName,
-				Namespace: namespace,
-			},
+			Name:      hsSkipName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,
@@ -584,10 +557,8 @@ var _ = Describe("MCPServer Metrics", func() {
 		capNilName := "metrics-cap-nil"
 		capNilNN := types.NamespacedName{Name: capNilName, Namespace: namespace}
 		resource := &mcpv1beta1.MCPServer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      capNilName,
-				Namespace: namespace,
-			},
+			Name:      capNilName,
+			Namespace: namespace,
 			Spec: mcpv1beta1.MCPServerSpec{
 				Source: mcpv1beta1.Source{
 					Type: mcpv1beta1.SourceTypeContainerImage,

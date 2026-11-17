@@ -25,7 +25,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -86,10 +85,8 @@ var _ = Describe("MCPServer Controller - Namespace Termination", func() {
 		It("should skip reconciliation when the namespace is terminating", func() {
 			By("Creating a namespace with a finalizer")
 			ns := &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       namespaceName,
-					Finalizers: []string{"test.finalizer/block-deletion"},
-				},
+				Name:       namespaceName,
+				Finalizers: []string{"test.finalizer/block-deletion"},
 			}
 			Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
@@ -148,7 +145,7 @@ var _ = Describe("MCPServer Controller - Namespace Termination", func() {
 
 			reconciler := &MCPServerReconciler{Client: interceptedClient, Scheme: k8sClient.Scheme(), APIReader: interceptedClient}
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: "test-ns-gone", Namespace: "default"},
+				Name: "test-ns-gone", Namespace: "default",
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
@@ -171,7 +168,7 @@ var _ = Describe("MCPServer Controller - Namespace Termination", func() {
 
 			reconciler := &MCPServerReconciler{Client: interceptedClient, Scheme: k8sClient.Scheme(), APIReader: interceptedClient}
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: "test-ns-err", Namespace: "default"},
+				Name: "test-ns-err", Namespace: "default",
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("transient API error"))

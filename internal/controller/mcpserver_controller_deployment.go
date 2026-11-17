@@ -324,11 +324,9 @@ func (r *MCPServerReconciler) createDeployment(mcpServer *mcpv1beta1.MCPServer) 
 	container.VolumeMounts = volumeMounts
 
 	deployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      mcpServer.Name,
-			Namespace: mcpServer.Namespace,
-			Labels:    labels,
-		},
+		Name:      mcpServer.Name,
+		Namespace: mcpServer.Namespace,
+		Labels:    labels,
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
 			Strategy: defaultDeploymentStrategy(mcpServer.Spec.Runtime.Strategy),
@@ -457,10 +455,8 @@ func defaultContainerResources() corev1.ResourceRequirements {
 // The controller-level MCP handshake provides the semantic protocol validation.
 func defaultMCPReadinessProbe(port int32) *corev1.Probe {
 	return withProbeDefaults(&corev1.Probe{
-		ProbeHandler: corev1.ProbeHandler{
-			TCPSocket: &corev1.TCPSocketAction{
-				Port: intstr.FromInt32(port),
-			},
+		TCPSocket: &corev1.TCPSocketAction{
+			Port: intstr.FromInt32(port),
 		},
 	})
 }

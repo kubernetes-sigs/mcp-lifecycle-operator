@@ -182,7 +182,7 @@ func PrewarmImages(images ...string) env.Func {
 	return func(ctx context.Context, cfg *envconf.Config) (context.Context, error) {
 		r := cfg.Client().Resources()
 
-		nsObj := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: prewarmNs}}
+		nsObj := &corev1.Namespace{Name: prewarmNs}
 		if err := r.Delete(ctx, nsObj); err == nil {
 			_ = wait.For(
 				conditions.New(r).ResourceDeleted(nsObj),
@@ -190,7 +190,7 @@ func PrewarmImages(images ...string) env.Func {
 				wait.WithContext(ctx),
 			)
 		}
-		nsObj = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: prewarmNs}}
+		nsObj = &corev1.Namespace{Name: prewarmNs}
 		if err := r.Create(ctx, nsObj); err != nil {
 			return ctx, fmt.Errorf("creating prewarm namespace: %w", err)
 		}
@@ -206,10 +206,8 @@ func PrewarmImages(images ...string) env.Func {
 
 		for i, img := range images {
 			ds := &appsv1.DaemonSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      fmt.Sprintf("prewarm-%d", i),
-					Namespace: prewarmNs,
-				},
+				Name:      fmt.Sprintf("prewarm-%d", i),
+				Namespace: prewarmNs,
 			}
 			err := wait.For(
 				conditions.New(r).ResourceMatch(ds, func(obj k8s.Object) bool {
@@ -267,10 +265,8 @@ func cleanupPrewarmNamespace(ctx context.Context, r *resources.Resources, nsObj 
 func prewarmDaemonSet(name, namespace, image string) *appsv1.DaemonSet {
 	labels := map[string]string{"app": name}
 	return &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		Name:      name,
+		Namespace: namespace,
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{

@@ -31,7 +31,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -110,8 +109,8 @@ var _ = Describe("buildTLSTransport", func() {
 	It("should load CA bundle and verify the cert is in the pool", func() {
 		caPEM, expectedCert := generateSelfSignedCAPEM()
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-ca", Namespace: "test-ns"},
-			Data:       map[string][]byte{"ca.crt": caPEM},
+			Name: "my-ca", Namespace: "test-ns",
+			Data: map[string][]byte{"ca.crt": caPEM},
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 
@@ -139,8 +138,8 @@ var _ = Describe("buildTLSTransport", func() {
 	It("should not include system CAs when CA bundle is set", func() {
 		caPEM, _ := generateSelfSignedCAPEM()
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-ca", Namespace: "test-ns"},
-			Data:       map[string][]byte{"ca.crt": caPEM},
+			Name: "my-ca", Namespace: "test-ns",
+			Data: map[string][]byte{"ca.crt": caPEM},
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 
@@ -164,8 +163,8 @@ var _ = Describe("buildTLSTransport", func() {
 
 	It("should error when ca.crt key is missing from Secret", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "bad-secret", Namespace: "test-ns"},
-			Data:       map[string][]byte{"wrong-key": []byte("data")},
+			Name: "bad-secret", Namespace: "test-ns",
+			Data: map[string][]byte{"wrong-key": []byte("data")},
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 		_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1beta1.TLSClientConfig{
@@ -178,8 +177,8 @@ var _ = Describe("buildTLSTransport", func() {
 
 	It("should error when PEM data is invalid", func() {
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "bad-pem", Namespace: "test-ns"},
-			Data:       map[string][]byte{"ca.crt": []byte("not-a-valid-pem")},
+			Name: "bad-pem", Namespace: "test-ns",
+			Data: map[string][]byte{"ca.crt": []byte("not-a-valid-pem")},
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 		_, err := buildTLSTransport(context.Background(), c, "test-ns", &mcpv1beta1.TLSClientConfig{
@@ -274,8 +273,8 @@ var _ = Describe("computeTLSCABundleHash", func() {
 		sch := runtime.NewScheme()
 		Expect(corev1.AddToScheme(sch)).To(Succeed())
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "ca-bundle", Namespace: "default"},
-			Data:       map[string][]byte{"ca.crt": []byte("test-ca-data")},
+			Name: "ca-bundle", Namespace: "default",
+			Data: map[string][]byte{"ca.crt": []byte("test-ca-data")},
 		}
 		cli := fake.NewClientBuilder().WithScheme(sch).WithObjects(secret).Build()
 		cfg := &mcpv1beta1.TLSClientConfig{
@@ -293,8 +292,8 @@ var _ = Describe("computeTLSCABundleHash", func() {
 		sch := runtime.NewScheme()
 		Expect(corev1.AddToScheme(sch)).To(Succeed())
 		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "ca-bundle", Namespace: "default"},
-			Data:       map[string][]byte{"ca.crt": []byte("original-ca")},
+			Name: "ca-bundle", Namespace: "default",
+			Data: map[string][]byte{"ca.crt": []byte("original-ca")},
 		}
 		cli := fake.NewClientBuilder().WithScheme(sch).WithObjects(secret).Build()
 		cfg := &mcpv1beta1.TLSClientConfig{

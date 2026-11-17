@@ -91,11 +91,9 @@ func ExecProbeInPod(ctx context.Context, t *testing.T, cfg *envconf.Config,
 	}
 
 	pod.Spec.EphemeralContainers = append(pod.Spec.EphemeralContainers, corev1.EphemeralContainer{
-		EphemeralContainerCommon: corev1.EphemeralContainerCommon{
-			Name:    ecName,
-			Image:   BusyboxImage,
-			Command: []string{"sleep", "3600"},
-		},
+		Name:    ecName,
+		Image:   BusyboxImage,
+		Command: []string{"sleep", "3600"},
 	})
 	if _, err := cs.CoreV1().Pods(namespace).UpdateEphemeralContainers(
 		ctx, podName, pod, metav1.UpdateOptions{}); err != nil {
@@ -103,7 +101,7 @@ func ExecProbeInPod(ctx context.Context, t *testing.T, cfg *envconf.Config,
 	}
 
 	// Wait for the ephemeral container to start before exec-ing into it.
-	podObj := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: namespace}}
+	podObj := &corev1.Pod{Name: podName, Namespace: namespace}
 	if err := wait.For(
 		conditions.New(cfg.Client().Resources(namespace)).ResourceMatch(podObj, func(obj k8s.Object) bool {
 			p := obj.(*corev1.Pod)

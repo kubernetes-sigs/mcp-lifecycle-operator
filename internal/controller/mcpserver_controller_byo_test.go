@@ -40,10 +40,8 @@ import (
 
 func newTestBYOMCPServer(name string, workloadRef *mcpv1beta1.WorkloadReference, serviceRef *mcpv1beta1.ServiceReference) *mcpv1beta1.MCPServer {
 	server := &mcpv1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
+		Name:      name,
+		Namespace: "default",
 		Spec: mcpv1beta1.MCPServerSpec{
 			Config: mcpv1beta1.ServerConfig{
 				Port: 8080,
@@ -79,10 +77,8 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 
 		BeforeEach(func() {
 			dep := &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-mcp-deploy",
-					Namespace: "default",
-				},
+				Name:      "my-mcp-deploy",
+				Namespace: "default",
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](2),
 					Selector: &metav1.LabelSelector{
@@ -166,7 +162,7 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			Expect(server.Status.WorkloadName).To(Equal("Deployment/my-mcp-deploy"))
 			Expect(server.Status.WorkloadSummary).To(Equal("BYO:Deployment/my-mcp-deploy"))
 			baseline := server.Status
-			Expect(k8sClient.Delete(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "my-mcp-deploy", Namespace: "default"}})).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &appsv1.Deployment{Name: "my-mcp-deploy", Namespace: "default"})).To(Succeed())
 
 			_, err = r.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
@@ -287,10 +283,8 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 
 		BeforeEach(func() {
 			ds := &appsv1.DaemonSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-mcp-ds",
-					Namespace: "default",
-				},
+				Name:      "my-mcp-ds",
+				Namespace: "default",
 				Spec: appsv1.DaemonSetSpec{
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "my-mcp-ds"},
@@ -369,10 +363,8 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 
 		BeforeEach(func() {
 			sts := &appsv1.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-mcp-sts",
-					Namespace: "default",
-				},
+				Name:      "my-mcp-sts",
+				Namespace: "default",
 				Spec: appsv1.StatefulSetSpec{
 					Replicas: ptr.To[int32](3),
 					Selector: &metav1.LabelSelector{
@@ -500,10 +492,8 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 
 		BeforeEach(func() {
 			dep := &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "expr-only-deploy",
-					Namespace: "default",
-				},
+				Name:      "expr-only-deploy",
+				Namespace: "default",
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](1),
 					Selector: &metav1.LabelSelector{
@@ -578,10 +568,8 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 
 		BeforeEach(func() {
 			dep := &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "not-ready-deploy",
-					Namespace: "default",
-				},
+				Name:      "not-ready-deploy",
+				Namespace: "default",
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](3),
 					Selector: &metav1.LabelSelector{
@@ -656,10 +644,8 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 
 		BeforeEach(func() {
 			dep := &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "zero-scale-deploy",
-					Namespace: "default",
-				},
+				Name:      "zero-scale-deploy",
+				Namespace: "default",
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](0),
 					Selector: &metav1.LabelSelector{
@@ -732,10 +718,8 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 
 		BeforeEach(func() {
 			ds := &appsv1.DaemonSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "init-ds",
-					Namespace: "default",
-				},
+				Name:      "init-ds",
+				Namespace: "default",
 				Spec: appsv1.DaemonSetSpec{
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "init-ds"},
@@ -810,10 +794,8 @@ var _ = Describe("MCPServer Controller - BYO Combined", func() {
 
 		BeforeEach(func() {
 			dep := &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "combined-deploy",
-					Namespace: "default",
-				},
+				Name:      "combined-deploy",
+				Namespace: "default",
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](2),
 					Selector: &metav1.LabelSelector{
@@ -839,10 +821,8 @@ var _ = Describe("MCPServer Controller - BYO Combined", func() {
 			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
 
 			svc := &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "combined-svc",
-					Namespace: "default",
-				},
+				Name:      "combined-svc",
+				Namespace: "default",
 				Spec: corev1.ServiceSpec{
 					Ports: []corev1.ServicePort{
 						{Name: "mcp", Port: 5000, Protocol: corev1.ProtocolTCP},
@@ -920,10 +900,8 @@ var _ = Describe("MCPServer Controller - BYO Combined", func() {
 
 		BeforeEach(func() {
 			server := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: mcpv1beta1.MCPServerSpec{
 					Source: mcpv1beta1.Source{
 						Type: mcpv1beta1.SourceTypeContainerImage,

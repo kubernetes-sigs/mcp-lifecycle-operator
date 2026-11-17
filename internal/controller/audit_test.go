@@ -25,7 +25,6 @@ import (
 	"github.com/go-logr/logr/funcr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
@@ -33,12 +32,10 @@ import (
 
 func newTestMCPServerForAudit(name string) *mcpv1beta1.MCPServer {
 	return &mcpv1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			Namespace:       "test-ns",
-			Generation:      3,
-			ResourceVersion: "12345",
-		},
+		Name:            name,
+		Namespace:       "test-ns",
+		Generation:      3,
+		ResourceVersion: "12345",
 		Spec: mcpv1beta1.MCPServerSpec{
 			Config: mcpv1beta1.ServerConfig{
 				Port: 8080,

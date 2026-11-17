@@ -64,7 +64,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 		{
 			name: "https listener",
 			gateway: &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"},
+				Name: "gw", Namespace: "default",
 				Spec: gatewayv1.GatewaySpec{
 					Listeners: []gatewayv1.Listener{
 						{Name: "https", Protocol: gatewayv1.HTTPSProtocolType, Port: 443},
@@ -72,7 +72,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 				},
 			},
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default"},
+				Name: "route", Namespace: "default",
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef:  gatewayv1.ParentReference{Name: "gw", Namespace: &ns},
@@ -86,7 +86,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 		{
 			name: "http listener",
 			gateway: &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"},
+				Name: "gw", Namespace: "default",
 				Spec: gatewayv1.GatewaySpec{
 					Listeners: []gatewayv1.Listener{
 						{Name: "http", Protocol: gatewayv1.HTTPProtocolType, Port: 80},
@@ -94,7 +94,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 				},
 			},
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default"},
+				Name: "route", Namespace: "default",
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef:  gatewayv1.ParentReference{Name: "gw", Namespace: &ns},
@@ -108,7 +108,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 		{
 			name: "matches sectionName listener",
 			gateway: &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"},
+				Name: "gw", Namespace: "default",
 				Spec: gatewayv1.GatewaySpec{
 					Listeners: []gatewayv1.Listener{
 						{Name: "http", Protocol: gatewayv1.HTTPProtocolType, Port: 80},
@@ -117,7 +117,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 				},
 			},
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default"},
+				Name: "route", Namespace: "default",
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef: gatewayv1.ParentReference{
@@ -135,7 +135,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 		{
 			name: "skips non-matching gateway",
 			gateway: &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "other-gw", Namespace: "default"},
+				Name: "other-gw", Namespace: "default",
 				Spec: gatewayv1.GatewaySpec{
 					Listeners: []gatewayv1.Listener{
 						{Name: "https", Protocol: gatewayv1.HTTPSProtocolType, Port: 443},
@@ -143,7 +143,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 				},
 			},
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default"},
+				Name: "route", Namespace: "default",
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef:  gatewayv1.ParentReference{Name: "other-gw", Namespace: &ns},
@@ -157,7 +157,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 		{
 			name: "skips non-matching namespace",
 			gateway: &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "other-ns"},
+				Name: "gw", Namespace: "other-ns",
 				Spec: gatewayv1.GatewaySpec{
 					Listeners: []gatewayv1.Listener{
 						{Name: "https", Protocol: gatewayv1.HTTPSProtocolType, Port: 443},
@@ -165,7 +165,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 				},
 			},
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default"},
+				Name: "route", Namespace: "default",
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef: gatewayv1.ParentReference{
@@ -183,7 +183,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 			name:    "no parents returns http",
 			gateway: nil,
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default"},
+				Name: "route", Namespace: "default",
 			},
 			gwName: "gw", gwNamespace: "default",
 			want: "http",
@@ -191,7 +191,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 		{
 			name: "skips non-accepted parent",
 			gateway: &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"},
+				Name: "gw", Namespace: "default",
 				Spec: gatewayv1.GatewaySpec{
 					Listeners: []gatewayv1.Listener{
 						{Name: "https", Protocol: gatewayv1.HTTPSProtocolType, Port: 443},
@@ -199,7 +199,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 				},
 			},
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default"},
+				Name: "route", Namespace: "default",
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{
 						{
@@ -225,7 +225,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 			name:    "gateway not found returns http",
 			gateway: nil,
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default"},
+				Name: "route", Namespace: "default",
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef:  gatewayv1.ParentReference{Name: "gw", Namespace: &ns},
@@ -239,7 +239,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 		{
 			name: "sectionName matches http listener",
 			gateway: &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"},
+				Name: "gw", Namespace: "default",
 				Spec: gatewayv1.GatewaySpec{
 					Listeners: []gatewayv1.Listener{
 						{Name: "web", Protocol: gatewayv1.HTTPProtocolType, Port: 80},
@@ -247,7 +247,7 @@ func TestSchemeFromAcceptedRoute(t *testing.T) {
 				},
 			},
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default"},
+				Name: "route", Namespace: "default",
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef: gatewayv1.ParentReference{
@@ -292,7 +292,7 @@ func TestSchemeFromAcceptedRoute_TransientError(t *testing.T) {
 
 	ns := gatewayv1.Namespace("default")
 	route := &gatewayv1.HTTPRoute{
-		ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default"},
+		Name: "route", Namespace: "default",
 		Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 			Parents: []gatewayv1.RouteParentStatus{{
 				ParentRef:  gatewayv1.ParentReference{Name: "gw", Namespace: &ns},
@@ -336,7 +336,7 @@ func TestGatewayAddress(t *testing.T) {
 		{
 			name: "prefers Hostname over IPAddress",
 			gateway: &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"},
+				Name: "gw", Namespace: "default",
 				Status: gatewayv1.GatewayStatus{
 					Addresses: []gatewayv1.GatewayStatusAddress{
 						{Type: ptr.To(gatewayv1.IPAddressType), Value: "10.0.0.1"},
@@ -350,7 +350,7 @@ func TestGatewayAddress(t *testing.T) {
 		{
 			name: "falls back to IPAddress when no Hostname",
 			gateway: &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"},
+				Name: "gw", Namespace: "default",
 				Status: gatewayv1.GatewayStatus{
 					Addresses: []gatewayv1.GatewayStatusAddress{
 						{Type: ptr.To(gatewayv1.IPAddressType), Value: "10.0.0.1"},
@@ -363,7 +363,7 @@ func TestGatewayAddress(t *testing.T) {
 		{
 			name: "returns empty when no addresses",
 			gateway: &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"},
+				Name: "gw", Namespace: "default",
 			},
 			gwName: "gw", gwNamespace: "default",
 			want: "",
@@ -377,7 +377,7 @@ func TestGatewayAddress(t *testing.T) {
 		{
 			name: "nil type defaults to IPAddress",
 			gateway: &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "default"},
+				Name: "gw", Namespace: "default",
 				Status: gatewayv1.GatewayStatus{
 					Addresses: []gatewayv1.GatewayStatusAddress{
 						{Value: "10.0.0.2"},
@@ -491,7 +491,7 @@ func TestIsHTTPRouteAccepted(t *testing.T) {
 		{
 			name: "accepted and resolved refs",
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default", Generation: 1},
+				Name: "route", Namespace: "default", Generation: 1,
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef: gatewayv1.ParentReference{Name: "gw", Namespace: &ns},
@@ -508,7 +508,7 @@ func TestIsHTTPRouteAccepted(t *testing.T) {
 		{
 			name: "accepted but refs not resolved",
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default", Generation: 1},
+				Name: "route", Namespace: "default", Generation: 1,
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef: gatewayv1.ParentReference{Name: "gw", Namespace: &ns},
@@ -524,7 +524,7 @@ func TestIsHTTPRouteAccepted(t *testing.T) {
 		{
 			name: "not accepted",
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default", Generation: 1},
+				Name: "route", Namespace: "default", Generation: 1,
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef: gatewayv1.ParentReference{Name: "gw", Namespace: &ns},
@@ -541,7 +541,7 @@ func TestIsHTTPRouteAccepted(t *testing.T) {
 		{
 			name: "stale generation ignored",
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default", Generation: 2},
+				Name: "route", Namespace: "default", Generation: 2,
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef: gatewayv1.ParentReference{Name: "gw", Namespace: &ns},
@@ -558,7 +558,7 @@ func TestIsHTTPRouteAccepted(t *testing.T) {
 		{
 			name: "different gateway name",
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default", Generation: 1},
+				Name: "route", Namespace: "default", Generation: 1,
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef: gatewayv1.ParentReference{Name: "other-gw", Namespace: &ns},
@@ -575,7 +575,7 @@ func TestIsHTTPRouteAccepted(t *testing.T) {
 		{
 			name: "different gateway namespace",
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default", Generation: 1},
+				Name: "route", Namespace: "default", Generation: 1,
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef: gatewayv1.ParentReference{Name: "gw", Namespace: namespacePtr("other-ns")},
@@ -592,7 +592,7 @@ func TestIsHTTPRouteAccepted(t *testing.T) {
 		{
 			name: "no parents",
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default"},
+				Name: "route", Namespace: "default",
 			},
 			gwName: "gw", gwNamespace: "default",
 			want: false,
@@ -600,7 +600,7 @@ func TestIsHTTPRouteAccepted(t *testing.T) {
 		{
 			name: "nil namespace defaults to route namespace",
 			route: &gatewayv1.HTTPRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "default", Generation: 1},
+				Name: "route", Namespace: "default", Generation: 1,
 				Status: gatewayv1.HTTPRouteStatus{RouteStatus: gatewayv1.RouteStatus{
 					Parents: []gatewayv1.RouteParentStatus{{
 						ParentRef: gatewayv1.ParentReference{Name: "gw"},
@@ -633,7 +633,7 @@ func TestUpdateBindingStatus(t *testing.T) {
 
 	t.Run("sets condition and URL", func(t *testing.T) {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "default", Generation: 1},
+			Name: "b", Namespace: "default", Generation: 1,
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(binding).WithObjects(binding).Build()
 
@@ -655,7 +655,7 @@ func TestUpdateBindingStatus(t *testing.T) {
 
 	t.Run("skips update when unchanged", func(t *testing.T) {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "default", Generation: 1},
+			Name: "b", Namespace: "default", Generation: 1,
 			Status: mcpv1alpha1.MCPGatewayBindingStatus{
 				URL: "http://example.com/mcp",
 				Conditions: []metav1.Condition{{
@@ -714,7 +714,7 @@ func TestEnsureBindingAnnotations(t *testing.T) {
 
 	t.Run("patches when annotation is absent", func(t *testing.T) {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "default"},
+			Name: "b", Namespace: "default",
 		}
 		patches := 0
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).
@@ -747,11 +747,9 @@ func TestEnsureBindingAnnotations(t *testing.T) {
 
 	t.Run("patches when annotation value differs", func(t *testing.T) {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        "b",
-				Namespace:   "default",
-				Annotations: map[string]string{AnnotationGatewayRef: "old-ns/old-gw"},
-			},
+			Name:        "b",
+			Namespace:   "default",
+			Annotations: map[string]string{AnnotationGatewayRef: "old-ns/old-gw"},
 		}
 		patches := 0
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).
@@ -777,13 +775,11 @@ func TestEnsureBindingAnnotations(t *testing.T) {
 
 	t.Run("no-op when annotations already match", func(t *testing.T) {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "b",
-				Namespace: "default",
-				Annotations: map[string]string{
-					AnnotationGatewayRef:   "ns/gw",
-					AnnotationExtensionRef: "ns/ext",
-				},
+			Name:      "b",
+			Namespace: "default",
+			Annotations: map[string]string{
+				AnnotationGatewayRef:   "ns/gw",
+				AnnotationExtensionRef: "ns/ext",
 			},
 		}
 		patches := 0
@@ -807,7 +803,7 @@ func TestEnsureBindingAnnotations(t *testing.T) {
 
 	t.Run("returns error when patch fails", func(t *testing.T) {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "default"},
+			Name: "b", Namespace: "default",
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).
 			WithInterceptorFuncs(interceptor.Funcs{
@@ -841,8 +837,8 @@ func TestFindBindingsForService(t *testing.T) {
 	}
 	binding := func(name, namespace, provider, service string) client.Object {
 		return &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Annotations: map[string]string{AnnotationServiceRef: service}},
-			Spec:       mcpv1alpha1.MCPGatewayBindingSpec{Provider: provider},
+			Name: name, Namespace: namespace, Annotations: map[string]string{AnnotationServiceRef: service},
+			Spec: mcpv1alpha1.MCPGatewayBindingSpec{Provider: provider},
 		}
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
@@ -852,7 +848,7 @@ func TestFindBindingsForService(t *testing.T) {
 		binding("other-namespace", "other", "httproute", "tenant/backend"),
 	).Build()
 	// WatchesMetadata delivers this type, not a typed Service.
-	service := &metav1.PartialObjectMetadata{ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "tenant"}}
+	service := &metav1.PartialObjectMetadata{Name: "backend", Namespace: "tenant"}
 	requests := FindBindingsForService(context.Background(), c, "httproute", service)
 	if len(requests) != 1 || requests[0].Name != "matching" || requests[0].Namespace != "tenant" {
 		t.Fatalf("expected only matching tenant/provider binding, got %v", requests)
@@ -871,12 +867,12 @@ func TestResolveAndRecordBackendServiceMissingDependency(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding := &mcpv1alpha1.MCPGatewayBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "binding", Namespace: "default"},
-		Spec:       mcpv1alpha1.MCPGatewayBindingSpec{Provider: "httproute"},
+		Name: "binding", Namespace: "default",
+		Spec: mcpv1alpha1.MCPGatewayBindingSpec{Provider: "httproute"},
 	}
 	server := &mcpv1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{Name: "server", Namespace: "default"},
-		Spec:       mcpv1beta1.MCPServerSpec{ServiceRef: &mcpv1beta1.ServiceReference{Name: "backend"}},
+		Name: "server", Namespace: "default",
+		Spec: mcpv1beta1.MCPServerSpec{ServiceRef: &mcpv1beta1.ServiceReference{Name: "backend"}},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).Build()
 	endpoint, err := ResolveAndRecordBackendService(ctx, c, c, binding, server)
@@ -887,8 +883,8 @@ func TestResolveAndRecordBackendServiceMissingDependency(t *testing.T) {
 		t.Fatalf("lost Service identity: %+v", endpoint)
 	}
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "default"},
-		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "mcp", Port: 9090}}},
+		Name: "backend", Namespace: "default",
+		Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "mcp", Port: 9090}}},
 	}
 	requests := FindBindingsForService(ctx, c, "httproute", svc)
 	if len(requests) != 1 || requests[0].NamespacedName != client.ObjectKeyFromObject(binding) {

@@ -53,10 +53,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		BeforeEach(func() {
 			// Create ConfigMap first
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-configmap",
-					Namespace: "default",
-				},
+				Name:      "test-configmap",
+				Namespace: "default",
 				Data: map[string]string{
 					"config.yaml": "test: value",
 				},
@@ -70,9 +68,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 					Source: mcpv1beta1.StorageSource{
 						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "test-configmap",
-							},
+							Name: "test-configmap",
 						},
 					},
 				},
@@ -140,10 +136,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		BeforeEach(func() {
 			// Create Secret first
 			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-secret",
-					Namespace: "default",
-				},
+				Name:      "test-secret",
+				Namespace: "default",
 				StringData: map[string]string{
 					"token": "secret-value",
 				},
@@ -225,10 +219,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		BeforeEach(func() {
 			// Create ConfigMap
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-multi-configmap",
-					Namespace: "default",
-				},
+				Name:      "test-multi-configmap",
+				Namespace: "default",
 				Data: map[string]string{
 					"config.yaml": "test: value",
 				},
@@ -237,10 +229,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 			// Create Secret
 			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-multi-secret",
-					Namespace: "default",
-				},
+				Name:      "test-multi-secret",
+				Namespace: "default",
 				StringData: map[string]string{
 					"token": "secret-value",
 				},
@@ -254,9 +244,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 					Source: mcpv1beta1.StorageSource{
 						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "test-multi-configmap",
-							},
+							Name: "test-multi-configmap",
 						},
 					},
 				},
@@ -350,10 +338,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		BeforeEach(func() {
 			// Create ConfigMap
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-configmap-rw",
-					Namespace: "default",
-				},
+				Name:      "test-configmap-rw",
+				Namespace: "default",
 				Data: map[string]string{
 					"config.yaml": "test: value",
 				},
@@ -368,9 +354,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 					Source: mcpv1beta1.StorageSource{
 						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "test-configmap-rw",
-							},
+							Name: "test-configmap-rw",
 						},
 					},
 				},
@@ -564,10 +548,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 		BeforeEach(func() {
 			// Create ConfigMap
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-mixed-configmap",
-					Namespace: "default",
-				},
+				Name:      "test-mixed-configmap",
+				Namespace: "default",
 				Data: map[string]string{
 					"config.yaml": "test: value",
 				},
@@ -581,9 +563,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 					Source: mcpv1beta1.StorageSource{
 						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "test-mixed-configmap",
-							},
+							Name: "test-mixed-configmap",
 						},
 					},
 				},
@@ -675,9 +655,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 					Source: mcpv1beta1.StorageSource{
 						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "nonexistent-configmap",
-							},
+							Name: "nonexistent-configmap",
 						},
 					},
 				},
@@ -794,9 +772,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 					Source: mcpv1beta1.StorageSource{
 						Type: mcpv1beta1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "optional-configmap",
-							},
+							Name:     "optional-configmap",
 							Optional: new(true),
 						},
 					},
@@ -1041,11 +1017,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Storage: []mcpv1beta1.StorageMount{
@@ -1082,11 +1056,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Storage: []mcpv1beta1.StorageMount{
@@ -1123,11 +1095,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
@@ -1135,8 +1105,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 								Name: "MY_VAR",
 								ValueFrom: &corev1.EnvVarSource{
 									ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{Name: "missing-cm"},
-										Key:                  "key1",
+										Name: "missing-cm",
+										Key:  "key1",
 									},
 								},
 							},
@@ -1167,11 +1137,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
@@ -1179,8 +1147,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 								Name: "SECRET_VAR",
 								ValueFrom: &corev1.EnvVarSource{
 									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{Name: "missing-secret"},
-										Key:                  "key1",
+										Name: "missing-secret",
+										Key:  "key1",
 									},
 								},
 							},
@@ -1212,11 +1180,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 			optional := true
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
@@ -1224,9 +1190,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 								Name: "MY_VAR",
 								ValueFrom: &corev1.EnvVarSource{
 									ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{Name: "missing-cm"},
-										Key:                  "key1",
-										Optional:             &optional,
+										Name:     "missing-cm",
+										Key:      "key1",
+										Optional: &optional,
 									},
 								},
 							},
@@ -1253,11 +1219,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 
 			optional := true
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
@@ -1265,9 +1229,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 								Name: "SECRET_VAR",
 								ValueFrom: &corev1.EnvVarSource{
 									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{Name: "missing-secret"},
-										Key:                  "key1",
-										Optional:             &optional,
+										Name:     "missing-secret",
+										Key:      "key1",
+										Optional: &optional,
 									},
 								},
 							},
@@ -1293,11 +1257,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
@@ -1344,11 +1306,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Storage: []mcpv1beta1.StorageMount{
@@ -1357,9 +1317,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 								Source: mcpv1beta1.StorageSource{
 									Type: mcpv1beta1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "test-config",
-										},
+										Name: "test-config",
 									},
 								},
 							},
@@ -1406,11 +1364,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Storage: []mcpv1beta1.StorageMount{
@@ -1465,19 +1421,15 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								ConfigMapRef: &corev1.ConfigMapEnvSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "test-config",
-									},
+									Name: "test-config",
 								},
 							},
 						},
@@ -1522,11 +1474,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Env: []corev1.EnvVar{
@@ -1534,10 +1484,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 								Name: "MY_SECRET",
 								ValueFrom: &corev1.EnvVarSource{
 									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "test-secret",
-										},
-										Key: "key",
+										Name: "test-secret",
+										Key:  "key",
 									},
 								},
 							},
@@ -1583,11 +1531,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Storage: []mcpv1beta1.StorageMount{
@@ -1596,9 +1542,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 								Source: mcpv1beta1.StorageSource{
 									Type: mcpv1beta1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "test-config",
-										},
+										Name: "test-config",
 									},
 								},
 							},
@@ -1644,11 +1588,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Storage: []mcpv1beta1.StorageMount{
@@ -1657,9 +1599,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 								Source: mcpv1beta1.StorageSource{
 									Type: mcpv1beta1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "test-config",
-										},
+										Name: "test-config",
 									},
 								},
 							},
@@ -1705,11 +1645,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{
 						Storage: []mcpv1beta1.StorageMount{
@@ -1718,9 +1656,7 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 								Source: mcpv1beta1.StorageSource{
 									Type: mcpv1beta1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "test-config",
-										},
+										Name: "test-config",
 									},
 								},
 							},
@@ -1745,8 +1681,8 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
 			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "valid-ca", Namespace: "default"},
-				Data:       map[string][]byte{"ca.crt": caPEM},
+				Name: "valid-ca", Namespace: "default",
+				Data: map[string][]byte{"ca.crt": caPEM},
 			}
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 			reconciler := &MCPServerReconciler{
@@ -1756,11 +1692,9 @@ var _ = Describe("MCPServer Controller - Storage Mounts", func() {
 			}
 
 			mcpServer := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-server",
-					Namespace:  "default",
-					Generation: 1,
-				},
+				Name:       "test-server",
+				Namespace:  "default",
+				Generation: 1,
 				Spec: mcpv1beta1.MCPServerSpec{
 					Config: mcpv1beta1.ServerConfig{Port: 8080},
 					Transport: &mcpv1beta1.TransportConfig{

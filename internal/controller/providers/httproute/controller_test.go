@@ -126,12 +126,12 @@ func TestApplyHTTPRoute(t *testing.T) {
 
 	newBinding := func() *mcpv1alpha1.MCPGatewayBinding {
 		return &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: testNamespace, UID: "binding-uid"},
+			Name: "b", Namespace: testNamespace, UID: "binding-uid",
 		}
 	}
 	newRoute := func() *gatewayv1.HTTPRoute {
 		return &gatewayv1.HTTPRoute{
-			ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: testNamespace},
+			Name: "route", Namespace: testNamespace,
 			Spec: gatewayv1.HTTPRouteSpec{
 				Hostnames: []gatewayv1.Hostname{"mcp.example.com"},
 			},
@@ -228,10 +228,8 @@ func (failReader) Get(context.Context, client.ObjectKey, client.Object, ...clien
 
 func newTestMCPServer(name string) *mcpv1beta1.MCPServer {
 	return &mcpv1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: testNamespace,
-		},
+		Name:      name,
+		Namespace: testNamespace,
 		Spec: mcpv1beta1.MCPServerSpec{
 			Source: mcpv1beta1.Source{
 				Type: mcpv1beta1.SourceTypeContainerImage,
@@ -249,26 +247,24 @@ func newTestMCPServer(name string) *mcpv1beta1.MCPServer {
 func setHTTPRouteAccepted(ctx context.Context, route *gatewayv1.HTTPRoute) {
 	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(route), route)).To(Succeed())
 	route.Status = gatewayv1.HTTPRouteStatus{
-		RouteStatus: gatewayv1.RouteStatus{
-			Parents: []gatewayv1.RouteParentStatus{
-				{
-					ParentRef:      route.Spec.ParentRefs[0],
-					ControllerName: "gateway.example.com/controller",
-					Conditions: []metav1.Condition{
-						{
-							Type:               string(gatewayv1.RouteConditionAccepted),
-							Status:             metav1.ConditionTrue,
-							Reason:             "Accepted",
-							LastTransitionTime: metav1.Now(),
-							ObservedGeneration: route.Generation,
-						},
-						{
-							Type:               string(gatewayv1.RouteConditionResolvedRefs),
-							Status:             metav1.ConditionTrue,
-							Reason:             "ResolvedRefs",
-							LastTransitionTime: metav1.Now(),
-							ObservedGeneration: route.Generation,
-						},
+		Parents: []gatewayv1.RouteParentStatus{
+			{
+				ParentRef:      route.Spec.ParentRefs[0],
+				ControllerName: "gateway.example.com/controller",
+				Conditions: []metav1.Condition{
+					{
+						Type:               string(gatewayv1.RouteConditionAccepted),
+						Status:             metav1.ConditionTrue,
+						Reason:             "Accepted",
+						LastTransitionTime: metav1.Now(),
+						ObservedGeneration: route.Generation,
+					},
+					{
+						Type:               string(gatewayv1.RouteConditionResolvedRefs),
+						Status:             metav1.ConditionTrue,
+						Reason:             "ResolvedRefs",
+						LastTransitionTime: metav1.Now(),
+						ObservedGeneration: route.Generation,
 					},
 				},
 			},
@@ -302,21 +298,17 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 	createConfigMap := func(data map[string]string) {
 		cm := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      configMapName,
-				Namespace: testNamespace,
-			},
-			Data: data,
+			Name:      configMapName,
+			Namespace: testNamespace,
+			Data:      data,
 		}
 		Expect(k8sClient.Create(ctx, cm)).To(Succeed())
 	}
 
 	createBinding := func(provider string) {
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      bindingName,
-				Namespace: testNamespace,
-			},
+			Name:      bindingName,
+			Namespace: testNamespace,
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: mcpServerName,
 				Provider:     provider,
@@ -328,10 +320,10 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 	AfterEach(func() {
 		for _, obj := range []client.Object{
-			&gatewayv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
-			&mcpv1alpha1.MCPGatewayBinding{ObjectMeta: metav1.ObjectMeta{Name: bindingName, Namespace: testNamespace}},
-			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: configMapName, Namespace: testNamespace}},
-			&mcpv1beta1.MCPServer{ObjectMeta: metav1.ObjectMeta{Name: mcpServerName, Namespace: testNamespace}},
+			&gatewayv1.HTTPRoute{Name: bindingName, Namespace: testNamespace},
+			&mcpv1alpha1.MCPGatewayBinding{Name: bindingName, Namespace: testNamespace},
+			&corev1.ConfigMap{Name: configMapName, Namespace: testNamespace},
+			&mcpv1beta1.MCPServer{Name: mcpServerName, Namespace: testNamespace},
 		} {
 			_ = k8sClient.Delete(ctx, obj)
 		}
@@ -344,8 +336,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, server)).To(Succeed()) })
 		generation := server.Generation
 		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: "watched-backend", Namespace: testNamespace},
-			Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 8080}}},
+			Name: "watched-backend", Namespace: testNamespace,
+			Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 8080}}},
 		}
 		Expect(k8sClient.Create(ctx, svc)).To(Succeed())
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, svc)).To(Succeed()) })
@@ -430,7 +422,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		}
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: "external-mcp", Namespace: testNamespace},
+			Name: "external-mcp", Namespace: testNamespace,
 			Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{
 				{Name: "metrics", Port: 2112},
 				{Name: "mcp", Port: 9090, TargetPort: intstr.FromInt32(8080)},
@@ -447,7 +439,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		createBinding(ProviderName)
 
 		r := newReconciler()
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace}})
+		_, err := r.Reconcile(ctx, reconcile.Request{Name: bindingName, Namespace: testNamespace})
 		Expect(err).NotTo(HaveOccurred())
 		route := &gatewayv1.HTTPRoute{}
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bindingName, Namespace: testNamespace}, route)).To(Succeed())
@@ -470,7 +462,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		result, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -505,7 +497,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		setHTTPRouteAccepted(ctx, route)
 
 		result, err = r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.RequeueAfter).To(BeNumerically(">", 0))
@@ -527,7 +519,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -539,7 +531,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		By("matching that binding from a Gateway event without any ConfigMap read")
 		mapper := &Reconciler{Client: k8sClient, APIReader: failReader{}, Scheme: k8sClient.Scheme()}
 		requests := mapper.findBindingsForGateway(ctx, &gatewayv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{Name: testGatewayName, Namespace: testGatewayNS},
+			Name: testGatewayName, Namespace: testGatewayNS,
 		})
 		Expect(requests).To(HaveLen(1))
 		Expect(requests[0].Name).To(Equal(bindingName))
@@ -548,7 +540,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 	It("should return early when binding not found", func() {
 		r := newReconciler()
 		result, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: "nonexistent-binding", Namespace: testNamespace},
+			Name: "nonexistent-binding", Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result).To(Equal(reconcile.Result{}))
@@ -561,10 +553,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		})
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      bindingName,
-				Namespace: testNamespace,
-			},
+			Name:      bindingName,
+			Namespace: testNamespace,
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: "nonexistent",
 				Provider:     ProviderName,
@@ -575,7 +565,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		result, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result).To(Equal(reconcile.Result{}))
@@ -591,7 +581,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -610,7 +600,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -634,7 +624,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -646,7 +636,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		setHTTPRouteAccepted(ctx, route)
 
 		_, err = r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -667,7 +657,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := newReconciler()
 			_, err := r.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+				Name: bindingName, Namespace: testNamespace,
 			})
 			Expect(err).NotTo(HaveOccurred())
 
@@ -699,7 +689,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -708,7 +698,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		setHTTPRouteAccepted(ctx, route)
 
 		result, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.RequeueAfter).To(BeNumerically(">", 0))
@@ -732,7 +722,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -741,7 +731,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		setHTTPRouteAccepted(ctx, route)
 
 		_, err = r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -766,7 +756,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -785,7 +775,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -799,7 +789,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(k8sClient.Update(ctx, cm)).To(Succeed())
 
 		_, err = r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -817,7 +807,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -832,7 +822,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(metav1.GetControllerOf(route)).To(BeNil())
 
 		_, err = r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -853,7 +843,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -871,7 +861,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -885,7 +875,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		createConfigMap(map[string]string{"some-key": "some-value"})
 
 		_, err = r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -901,10 +891,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		createMCPServer()
 
 		binding := &mcpv1alpha1.MCPGatewayBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      bindingName,
-				Namespace: testNamespace,
-			},
+			Name:      bindingName,
+			Namespace: testNamespace,
 			Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 				MCPServerRef: mcpServerName,
 				Provider:     ProviderName,
@@ -914,7 +902,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -935,7 +923,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -944,18 +932,16 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		By("setting only Accepted=True without ResolvedRefs")
 		route.Status = gatewayv1.HTTPRouteStatus{
-			RouteStatus: gatewayv1.RouteStatus{
-				Parents: []gatewayv1.RouteParentStatus{
-					{
-						ParentRef:      route.Spec.ParentRefs[0],
-						ControllerName: "gateway.example.com/controller",
-						Conditions: []metav1.Condition{
-							{
-								Type:               string(gatewayv1.RouteConditionAccepted),
-								Status:             metav1.ConditionTrue,
-								Reason:             "Accepted",
-								LastTransitionTime: metav1.Now(),
-							},
+			Parents: []gatewayv1.RouteParentStatus{
+				{
+					ParentRef:      route.Spec.ParentRefs[0],
+					ControllerName: "gateway.example.com/controller",
+					Conditions: []metav1.Condition{
+						{
+							Type:               string(gatewayv1.RouteConditionAccepted),
+							Status:             metav1.ConditionTrue,
+							Reason:             "Accepted",
+							LastTransitionTime: metav1.Now(),
 						},
 					},
 				},
@@ -964,7 +950,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(k8sClient.Status().Update(ctx, route)).To(Succeed())
 
 		result, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.RequeueAfter).To(BeNumerically(">", 0))
@@ -987,7 +973,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1000,7 +986,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		Expect(k8sClient.Delete(ctx, cm)).To(Succeed())
 
 		_, err = r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1014,17 +1000,15 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		createBinding(ProviderName)
 
 		foreignRoute := &gatewayv1.HTTPRoute{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      bindingName,
-				Namespace: testNamespace,
-				OwnerReferences: []metav1.OwnerReference{
-					{
-						APIVersion: "v1",
-						Kind:       "ConfigMap",
-						Name:       "foreign-owner",
-						UID:        "foreign-uid",
-						Controller: ptr.To(true), //nolint:modernize // new(bool) yields false, not true
-					},
+			Name:      bindingName,
+			Namespace: testNamespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "v1",
+					Kind:       "ConfigMap",
+					Name:       "foreign-owner",
+					UID:        "foreign-uid",
+					Controller: ptr.To(true), //nolint:modernize // new(bool) yields false, not true
 				},
 			},
 			Spec: gatewayv1.HTTPRouteSpec{},
@@ -1034,7 +1018,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		By("reconciling without a ConfigMap to trigger setNotRegistered")
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1050,10 +1034,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := newReconciler()
 			cm := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      configMapName,
-					Namespace: testNamespace,
-				},
+				Name:      configMapName,
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
 			Expect(requests).To(HaveLen(1))
@@ -1067,10 +1049,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			// WatchesMetadata delivers a *metav1.PartialObjectMetadata, not a full
 			// ConfigMap. The handler must map using only name/namespace.
 			partial := &metav1.PartialObjectMetadata{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      configMapName,
-					Namespace: testNamespace,
-				},
+				Name:      configMapName,
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForConfigMap(ctx, partial)
 			Expect(requests).To(HaveLen(1))
@@ -1082,10 +1062,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := newReconciler()
 			cm := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "unrelated-cm",
-					Namespace: testNamespace,
-				},
+				Name:      "unrelated-cm",
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
 			Expect(requests).To(BeEmpty())
@@ -1096,10 +1074,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := newReconciler()
 			cm := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      configMapName,
-					Namespace: testNamespace,
-				},
+				Name:      configMapName,
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForConfigMap(ctx, cm)
 			Expect(requests).To(BeEmpty())
@@ -1111,12 +1087,10 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 		// annotation that Reconcile stamps, without creating any ConfigMap.
 		createAnnotatedBinding := func(provider, gatewayRef string) {
 			binding := &mcpv1alpha1.MCPGatewayBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      bindingName,
-					Namespace: testNamespace,
-					Annotations: map[string]string{
-						providers.AnnotationGatewayRef: gatewayRef,
-					},
+				Name:      bindingName,
+				Namespace: testNamespace,
+				Annotations: map[string]string{
+					providers.AnnotationGatewayRef: gatewayRef,
 				},
 				Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 					MCPServerRef: mcpServerName,
@@ -1142,10 +1116,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testGatewayName,
-					Namespace: testGatewayNS,
-				},
+				Name:      testGatewayName,
+				Namespace: testGatewayNS,
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
 			Expect(requests).To(HaveLen(1))
@@ -1157,10 +1129,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "other-gateway",
-					Namespace: testGatewayNS,
-				},
+				Name:      "other-gateway",
+				Namespace: testGatewayNS,
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
 			Expect(requests).To(BeEmpty())
@@ -1171,10 +1141,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testGatewayName,
-					Namespace: "other-ns",
-				},
+				Name:      testGatewayName,
+				Namespace: "other-ns",
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
 			Expect(requests).To(BeEmpty())
@@ -1185,10 +1153,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := mapperReconciler()
 			gw := &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testGatewayName,
-					Namespace: testGatewayNS,
-				},
+				Name:      testGatewayName,
+				Namespace: testGatewayNS,
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
 			Expect(requests).To(BeEmpty())
@@ -1206,10 +1172,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := newReconciler()
 			gw := &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testGatewayName,
-					Namespace: testGatewayNS,
-				},
+				Name:      testGatewayName,
+				Namespace: testGatewayNS,
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
 			Expect(requests).To(BeEmpty())
@@ -1222,10 +1186,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := newReconciler()
 			server := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      mcpServerName,
-					Namespace: testNamespace,
-				},
+				Name:      mcpServerName,
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForMCPServer(ctx, server)
 			Expect(requests).To(HaveLen(1))
@@ -1237,10 +1199,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := newReconciler()
 			server := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "other-server",
-					Namespace: testNamespace,
-				},
+				Name:      "other-server",
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForMCPServer(ctx, server)
 			Expect(requests).To(BeEmpty())
@@ -1251,10 +1211,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := newReconciler()
 			server := &mcpv1beta1.MCPServer{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      mcpServerName,
-					Namespace: testNamespace,
-				},
+				Name:      mcpServerName,
+				Namespace: testNamespace,
 			}
 			requests := r.findBindingsForMCPServer(ctx, server)
 			Expect(requests).To(BeEmpty())
@@ -1264,10 +1222,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 	Describe("findBindingsForGateway (unstamped binding)", func() {
 		It("should skip bindings with no gateway-ref annotation", func() {
 			binding := &mcpv1alpha1.MCPGatewayBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      bindingName,
-					Namespace: testNamespace,
-				},
+				Name:      bindingName,
+				Namespace: testNamespace,
 				Spec: mcpv1alpha1.MCPGatewayBindingSpec{
 					MCPServerRef: mcpServerName,
 					Provider:     ProviderName,
@@ -1278,10 +1234,8 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 			r := newReconciler()
 			gw := &gatewayv1.Gateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testGatewayName,
-					Namespace: testGatewayNS,
-				},
+				Name:      testGatewayName,
+				Namespace: testGatewayNS,
 			}
 			requests := r.findBindingsForGateway(ctx, gw)
 			Expect(requests).To(BeEmpty())
@@ -1310,7 +1264,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 		r := newReconciler()
 		_, err := r.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+			Name: bindingName, Namespace: testNamespace,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1338,7 +1292,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 				AllowedGatewayNamespaces: allowlist,
 			}
 			return r.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: bindingName, Namespace: testNamespace},
+				Name: bindingName, Namespace: testNamespace,
 			})
 		}
 

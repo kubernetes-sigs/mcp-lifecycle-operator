@@ -460,10 +460,8 @@ func (r *Reconciler) reconcileHTTPRoute(
 	}
 
 	httpRoute := &gatewayv1.HTTPRoute{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      binding.Name,
-			Namespace: binding.Namespace,
-		},
+		Name:      binding.Name,
+		Namespace: binding.Namespace,
 		Spec: gatewayv1.HTTPRouteSpec{
 			CommonRouteSpec: gatewayv1.CommonRouteSpec{
 				ParentRefs: []gatewayv1.ParentReference{
@@ -545,10 +543,8 @@ func (r *Reconciler) reconcileMCPServerRegistration(
 	logger := log.FromContext(ctx)
 
 	reg := &kuadrantapi.MCPServerRegistration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      binding.Name,
-			Namespace: binding.Namespace,
-		},
+		Name:      binding.Name,
+		Namespace: binding.Namespace,
 		Spec: kuadrantapi.MCPServerRegistrationSpec{
 			TargetRef: kuadrantapi.TargetReference{
 				Group: gatewayv1.GroupName,

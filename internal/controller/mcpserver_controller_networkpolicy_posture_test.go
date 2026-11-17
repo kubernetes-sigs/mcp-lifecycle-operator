@@ -36,7 +36,7 @@ import (
 // full source/image spec is not needed here.
 func postureTestServer(name string, network *mcpv1beta1.NetworkConfig) *mcpv1beta1.MCPServer {
 	return &mcpv1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: mcpv1beta1.MCPServerSpec{
 			Config:  mcpv1beta1.ServerConfig{Port: 8080},
 			Network: network,

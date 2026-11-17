@@ -83,14 +83,10 @@ func CreateMCPGatewayExtension(ctx context.Context, t *testing.T, cfg *envconf.C
 	t.Helper()
 
 	ext := &kuadrantapi.MCPGatewayExtension{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "mcp.kuadrant.io/v1",
-			Kind:       "MCPGatewayExtension",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		APIVersion: "mcp.kuadrant.io/v1",
+		Kind:       "MCPGatewayExtension",
+		Name:       name,
+		Namespace:  namespace,
 		Spec: kuadrantapi.MCPGatewayExtensionSpec{
 			TargetRef: kuadrantapi.TargetReference{
 				Group:     gatewayv1.GroupName,
@@ -111,7 +107,7 @@ func CreateMCPGatewayExtension(ctx context.Context, t *testing.T, cfg *envconf.C
 
 	t.Cleanup(func() {
 		cleanupExt := &kuadrantapi.MCPGatewayExtension{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+			Name: name, Namespace: namespace,
 		}
 		r := cfg.Client().Resources()
 		if err := r.Get(context.Background(), name, namespace, cleanupExt); err != nil {
@@ -186,10 +182,8 @@ func EnsureMultiListenerGateway(ctx context.Context, t *testing.T, cfg *envconf.
 	}
 
 	gw := &gatewayv1.Gateway{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		Name:      name,
+		Namespace: namespace,
 		Spec: gatewayv1.GatewaySpec{
 			GatewayClassName: gatewayv1.ObjectName(gatewayClassName),
 			Listeners:        gwListeners,
@@ -274,10 +268,8 @@ func EnsureReferenceGrant(ctx context.Context, t *testing.T, cfg *envconf.Config
 		t.Fatalf("failed to register Gateway API v1beta1 types: %v", err)
 	}
 	grant := &gatewayv1beta1.ReferenceGrant{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: gatewayNamespace,
-		},
+		Name:      name,
+		Namespace: gatewayNamespace,
 		Spec: gatewayv1beta1.ReferenceGrantSpec{
 			From: []gatewayv1beta1.ReferenceGrantFrom{
 				{

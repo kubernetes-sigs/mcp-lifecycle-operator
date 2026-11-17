@@ -96,10 +96,8 @@ func drainEvents(ch <-chan string) []string {
 // Callers mutate the returned struct for scenario-specific fields.
 func newTestMCPServer(name string) *mcpv1beta1.MCPServer {
 	return &mcpv1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
+		Name:      name,
+		Namespace: "default",
 		Spec: mcpv1beta1.MCPServerSpec{
 			Source: mcpv1beta1.Source{
 				Type: mcpv1beta1.SourceTypeContainerImage,
@@ -526,7 +524,7 @@ var _ = Describe("MCPServer Controller", func() {
 
 			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: resourceName + "-none", Namespace: "default"},
+				Name: resourceName + "-none", Namespace: "default",
 			})
 			Expect(err).NotTo(HaveOccurred())
 
@@ -1050,22 +1048,22 @@ var _ = Describe("MCPServer Controller", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					SecretRef: &corev1.SecretEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "my-secret"},
+						Name: "my-secret",
 					},
 				},
 				{
 					ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "my-configmap"},
+						Name: "my-configmap",
 					},
 				},
 			}
 			// Create the referenced Secret and ConfigMap so envFrom validation passes
 			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "my-secret", Namespace: "default"},
+				Name: "my-secret", Namespace: "default",
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 			configMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: "my-configmap", Namespace: "default"},
+				Name: "my-configmap", Namespace: "default",
 			}
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
@@ -1080,10 +1078,10 @@ var _ = Describe("MCPServer Controller", func() {
 
 			// Clean up the referenced Secret and ConfigMap
 			Expect(k8sClient.Delete(ctx, &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "my-secret", Namespace: "default"},
+				Name: "my-secret", Namespace: "default",
 			})).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: "my-configmap", Namespace: "default"},
+				Name: "my-configmap", Namespace: "default",
 			})).To(Succeed())
 		})
 
@@ -1159,7 +1157,7 @@ var _ = Describe("MCPServer Controller", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					ConfigMapRef: &corev1.ConfigMapEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-configmap"},
+						Name: "nonexistent-configmap",
 					},
 				},
 			}
@@ -1252,7 +1250,7 @@ var _ = Describe("MCPServer Controller", func() {
 			resource.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 				{
 					SecretRef: &corev1.SecretEnvSource{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-secret"},
+						Name: "nonexistent-secret",
 					},
 				},
 			}
@@ -1372,8 +1370,8 @@ var _ = Describe("MCPServer Controller", func() {
 					Name: "MY_CONFIG_VAR",
 					ValueFrom: &corev1.EnvVarSource{
 						ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-env-configmap"},
-							Key:                  "some-key",
+							Name: "nonexistent-env-configmap",
+							Key:  "some-key",
 						},
 					},
 				},
@@ -1461,8 +1459,8 @@ var _ = Describe("MCPServer Controller", func() {
 					Name: "MY_SECRET_VAR",
 					ValueFrom: &corev1.EnvVarSource{
 						SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{Name: "nonexistent-env-secret"},
-							Key:                  "some-key",
+							Name: "nonexistent-env-secret",
+							Key:  "some-key",
 						},
 					},
 				},

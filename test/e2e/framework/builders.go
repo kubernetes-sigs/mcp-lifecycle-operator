@@ -18,7 +18,6 @@ package framework
 
 import (
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
@@ -158,10 +157,8 @@ func WithServiceRef(ref *mcpv1beta1.ServiceReference) MCPServerOption {
 // Defaults: image=DefaultMCPServerImage, port=8080, args=["--port","8080","--read-only"].
 func NewMCPServer(name, namespace string, opts ...MCPServerOption) *mcpv1beta1.MCPServer {
 	server := &mcpv1beta1.MCPServer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		Name:      name,
+		Namespace: namespace,
 		Spec: mcpv1beta1.MCPServerSpec{
 			Source: mcpv1beta1.Source{
 				Type: mcpv1beta1.SourceTypeContainerImage,

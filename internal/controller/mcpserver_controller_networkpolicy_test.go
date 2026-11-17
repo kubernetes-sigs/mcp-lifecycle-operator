@@ -647,10 +647,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-bad-cidr",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-bad-cidr",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -698,10 +696,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-empty-cidr",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-empty-cidr",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -738,10 +734,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-bad-except",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-bad-except",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -780,10 +774,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-ipblock-podselector",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-ipblock-podselector",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -820,10 +812,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-except-outside",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-except-outside",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -860,10 +850,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-except-wider",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-except-wider",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1006,10 +994,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-egress-bad-cidr",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-egress-bad-cidr",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1049,10 +1035,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-egress-ipblock-ns",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-egress-ipblock-ns",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1313,10 +1297,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-egress-bad-proto",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-egress-bad-proto",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1349,10 +1331,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-egress-port-zero",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-egress-port-zero",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1386,10 +1366,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-egress-endport-named",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-egress-endport-named",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1423,10 +1401,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-egress-endport-less",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-egress-endport-less",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1497,10 +1473,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-egress-bad-name",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-egress-bad-name",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1543,10 +1517,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-egress-empty-peer",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-egress-empty-peer",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1589,10 +1561,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-ingress-empty-peer",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-ingress-empty-peer",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1831,10 +1801,8 @@ var _ = Describe("MCPServer Controller - NetworkPolicy DNS Egress Peer", func() 
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      "test-netpol-dns-empty-peer",
-				Namespace: "default",
-			},
+			Name:      "test-netpol-dns-empty-peer",
+			Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
