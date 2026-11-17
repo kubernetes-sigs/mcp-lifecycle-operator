@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 var _ = Describe("MCPServer Controller - Config Hash", func() {
@@ -53,7 +53,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -121,7 +121,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -196,7 +196,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -267,7 +267,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -363,7 +363,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -460,7 +460,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -528,11 +528,11 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 				APIReader: k8sClient,
 			}
 
-			mcpServer := &mcpv1beta1.MCPServer{
+			mcpServer := &mcpv1.MCPServer{
 				Name:      "test-confighash-missing-ref",
 				Namespace: "default",
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								ConfigMapRef: &corev1.ConfigMapEnvSource{
@@ -569,11 +569,11 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Config.Storage = []mcpv1beta1.StorageMount{
+			resource.Spec.Config.Storage = []mcpv1.StorageMount{
 				{
 					Path: "/etc/config",
-					Source: mcpv1beta1.StorageSource{
-						Type: mcpv1beta1.StorageTypeConfigMap,
+					Source: mcpv1.StorageSource{
+						Type: mcpv1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							Name: "hash-storage-cm",
 						},
@@ -584,7 +584,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -669,7 +669,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -769,7 +769,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -860,7 +860,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -954,7 +954,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -1047,7 +1047,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -1086,7 +1086,7 @@ var _ = Describe("MCPServer Controller - Config Hash", func() {
 			Expect(deployment.Spec.Template.Annotations).To(HaveKey(configHashAnnotation))
 
 			// Remove all ConfigMap references from MCPServer
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			err = k8sClient.Get(ctx, typeNamespacedName, mcpServer)
 			Expect(err).NotTo(HaveOccurred())
 			mcpServer.Spec.Config.EnvFrom = nil

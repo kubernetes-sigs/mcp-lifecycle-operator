@@ -31,7 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
@@ -201,7 +201,7 @@ var _ = Describe("MCPServer Predicate Filtering", Ordered, func() {
 
 		By("Expecting the specific pod failure rather than the generic Deployment message")
 		Eventually(func() string {
-			server := &mcpv1beta1.MCPServer{}
+			server := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, serverKey, server); err != nil {
 				return ""
 			}

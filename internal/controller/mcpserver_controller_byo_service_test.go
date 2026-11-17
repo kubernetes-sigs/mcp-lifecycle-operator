@@ -35,8 +35,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 var _ = Describe("MCPServer Controller - BYO Service", func() {
@@ -90,10 +90,10 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			}
 			Expect(k8sClient.Create(ctx, svc)).To(Succeed())
 
-			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+			server := newTestBYOMCPServer(resourceName, &mcpv1.WorkloadReference{
 				Name: "byo-svc-deploy",
-				Kind: mcpv1beta1.WorkloadKindDeployment,
-			}, &mcpv1beta1.ServiceReference{
+				Kind: mcpv1.WorkloadKindDeployment,
+			}, &mcpv1.ServiceReference{
 				Name: "my-mcp-svc",
 			})
 			server.Spec.Config.Port = 0
@@ -106,7 +106,7 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			if err := k8sClient.Get(ctx, types.NamespacedName{Name: gatewayBindingName(resourceName), Namespace: "default"}, binding); err == nil {
 				Expect(k8sClient.Delete(ctx, binding)).To(Succeed())
 			}
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -132,18 +132,18 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, operatorSvc)
 			Expect(errors.IsNotFound(err)).To(BeTrue(), "no operator-managed Service should be created for BYO service")
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			Expect(mcpServer.Status.ServiceName).To(Equal("my-mcp-svc"))
 		})
 
 		DescribeTable("reverifies changed Service URLs without changing MCPServer generation", func(withGateway bool) {
-			server := &mcpv1beta1.MCPServer{}
+			server := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
 			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
 			if withGateway {
-				server.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute"}
+				server.Spec.Gateway = &mcpv1.GatewaySpec{Provider: "httproute"}
 				Expect(k8sClient.Update(ctx, server)).To(Succeed())
 				Expect(controllerReconciler.reconcileGatewayBinding(ctx, server)).To(Succeed())
 				binding := &mcpv1alpha1.MCPGatewayBinding{}
@@ -158,12 +158,12 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			generation := server.Generation
 			var dialedURLs []string
 			failHandshake := false
-			dialer := func(_ context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+			dialer := func(_ context.Context, url string, _ *http.Transport) (*mcpv1.MCPServerInfo, error) {
 				dialedURLs = append(dialedURLs, url)
 				if failHandshake {
 					return nil, fmt.Errorf("endpoint unavailable")
 				}
-				return &mcpv1beta1.MCPServerInfo{Name: "test-server"}, nil
+				return &mcpv1.MCPServerInfo{Name: "test-server"}, nil
 			}
 			controllerReconciler.MCPDialer = dialer
 			reconcileServer := func() ctrl.Result {
@@ -305,10 +305,10 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			}
 			Expect(k8sClient.Create(ctx, svc)).To(Succeed())
 
-			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+			server := newTestBYOMCPServer(resourceName, &mcpv1.WorkloadReference{
 				Name: "byo-svc-mcp-deploy",
-				Kind: mcpv1beta1.WorkloadKindDeployment,
-			}, &mcpv1beta1.ServiceReference{
+				Kind: mcpv1.WorkloadKindDeployment,
+			}, &mcpv1.ServiceReference{
 				Name: "my-mcp-svc-multi",
 			})
 			server.Spec.Config.Port = 0
@@ -317,7 +317,7 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -339,7 +339,7 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			Expect(mcpServer.Status.ServiceName).To(Equal("my-mcp-svc-multi"))
@@ -358,14 +358,14 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 		}
 
 		BeforeEach(func() {
-			server := newTestBYOMCPServer(resourceName, nil, &mcpv1beta1.ServiceReference{
+			server := newTestBYOMCPServer(resourceName, nil, &mcpv1.ServiceReference{
 				Name: "nonexistent-svc",
 			})
 			Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -383,7 +383,7 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAccepted)
@@ -421,7 +421,7 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			}
 			Expect(k8sClient.Create(ctx, svc)).To(Succeed())
 
-			server := newTestBYOMCPServer(resourceName, nil, &mcpv1beta1.ServiceReference{
+			server := newTestBYOMCPServer(resourceName, nil, &mcpv1.ServiceReference{
 				Name: "my-mcp-svc-port",
 			})
 			server.Spec.Config.Port = 8080
@@ -429,7 +429,7 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -446,9 +446,9 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 		It("should verify the Service port while retaining the container and probe ports", func() {
 			controllerReconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
 			var dialedURL string
-			controllerReconciler.MCPDialer = func(_ context.Context, url string, _ *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+			controllerReconciler.MCPDialer = func(_ context.Context, url string, _ *http.Transport) (*mcpv1.MCPServerInfo, error) {
 				dialedURL = url
-				return &mcpv1beta1.MCPServerInfo{Name: "test-server"}, nil
+				return &mcpv1.MCPServerInfo{Name: "test-server"}, nil
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -472,7 +472,7 @@ var _ = Describe("MCPServer Controller - BYO Service", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			Expect(dialedURL).To(Equal("http://my-mcp-svc-port.default.svc.cluster.local:80/mcp"))

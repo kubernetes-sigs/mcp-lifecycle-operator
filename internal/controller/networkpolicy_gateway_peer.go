@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 const (
@@ -98,7 +98,7 @@ func namespaceNamePeer(namespace string) networkingv1.NetworkPolicyPeer {
 // built without per-implementation knowledge.
 func (r *MCPServerReconciler) gatewayIngressPeers(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) ([]networkingv1.NetworkPolicyPeer, error) {
 	if r.NetworkPolicyDefaultPosture != PostureRestricted {
 		return nil, nil
@@ -147,7 +147,7 @@ func (r *MCPServerReconciler) gatewayIngressPeers(
 // existing policy on a transient blip.
 func (r *MCPServerReconciler) resolveGatewaySourceNamespace(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	dataKey string,
 ) (string, error) {
 	if mcpServer.Spec.Gateway.ConfigRef == "" {

@@ -24,7 +24,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 func operatorSelfPeer(namespace string, podLabels map[string]string) []networkingv1.NetworkPolicyPeer {
@@ -43,7 +43,7 @@ func TestOperatorIngressPeers(t *testing.T) {
 	const operatorNS = "mcp-operator-system"
 	operatorLabels := map[string]string{"control-plane": "controller-manager"}
 
-	userIngress := &mcpv1beta1.NetworkConfig{
+	userIngress := &mcpv1.NetworkConfig{
 		IngressFrom: []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{}}},
 	}
 
@@ -52,7 +52,7 @@ func TestOperatorIngressPeers(t *testing.T) {
 		posture    NetworkPolicyDefaultPosture
 		operatorNS string
 		podLabels  map[string]string
-		server     *mcpv1beta1.MCPServer
+		server     *mcpv1.MCPServer
 		want       []networkingv1.NetworkPolicyPeer
 	}{
 		{

@@ -31,8 +31,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 func acceptedCondition() metav1.Condition {
@@ -870,9 +870,9 @@ func TestResolveAndRecordBackendServiceMissingDependency(t *testing.T) {
 		Name: "binding", Namespace: "default",
 		Spec: mcpv1alpha1.MCPGatewayBindingSpec{Provider: "httproute"},
 	}
-	server := &mcpv1beta1.MCPServer{
+	server := &mcpv1.MCPServer{
 		Name: "server", Namespace: "default",
-		Spec: mcpv1beta1.MCPServerSpec{ServiceRef: &mcpv1beta1.ServiceReference{Name: "backend"}},
+		Spec: mcpv1.MCPServerSpec{ServiceRef: &mcpv1.ServiceReference{Name: "backend"}},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).Build()
 	endpoint, err := ResolveAndRecordBackendService(ctx, c, c, binding, server)

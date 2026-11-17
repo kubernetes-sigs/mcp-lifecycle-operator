@@ -36,7 +36,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 var _ = Describe("MCPServer Controller - reconcileNetworkPolicy", func() {
@@ -55,7 +55,7 @@ var _ = Describe("MCPServer Controller - reconcileNetworkPolicy", func() {
 	})
 
 	AfterEach(func() {
-		resource := &mcpv1beta1.MCPServer{}
+		resource := &mcpv1.MCPServer{}
 		err := k8sClient.Get(ctx, typeNamespacedName, resource)
 		if err == nil {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -63,7 +63,7 @@ var _ = Describe("MCPServer Controller - reconcileNetworkPolicy", func() {
 	})
 
 	It("should create a NetworkPolicy when none exists", func() {
-		mcpServer := &mcpv1beta1.MCPServer{}
+		mcpServer := &mcpv1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 		reconciler := &MCPServerReconciler{
@@ -114,7 +114,7 @@ var _ = Describe("MCPServer Controller - reconcileNetworkPolicy", func() {
 	})
 
 	It("should not error when NetworkPolicy already exists", func() {
-		mcpServer := &mcpv1beta1.MCPServer{}
+		mcpServer := &mcpv1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 		reconciler := &MCPServerReconciler{
@@ -140,7 +140,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Update", func() {
 		}
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -169,7 +169,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Update", func() {
 			Expect(netpol.Spec.Ingress[0].Ports[0].Port.IntValue()).To(Equal(8080))
 
 			By("Updating the port in the MCPServer spec")
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 			mcpServer.Spec.Config.Port = 9090
 			Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
@@ -205,7 +205,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Reconciliation Failures",
 	})
 
 	AfterEach(func() {
-		resource := &mcpv1beta1.MCPServer{}
+		resource := &mcpv1.MCPServer{}
 		err := k8sClient.Get(ctx, typeNamespacedName, resource)
 		if err == nil {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -240,7 +240,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Reconciliation Failures",
 		Expect(err.Error()).To(ContainSubstring("simulated networkpolicy creation failure"))
 
 		By("Verifying status is updated with NetworkPolicyUnavailable")
-		mcpServer := &mcpv1beta1.MCPServer{}
+		mcpServer := &mcpv1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 		acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, "Accepted")
@@ -297,7 +297,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Reconciliation Failures",
 		}
 
 		By("Updating MCPServer spec to trigger NetworkPolicy reconciliation")
-		mcpServer := &mcpv1beta1.MCPServer{}
+		mcpServer := &mcpv1.MCPServer{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 		mcpServer.Spec.Config.Port = 9090
 		Expect(k8sClient.Update(ctx, mcpServer)).To(Succeed())
@@ -344,7 +344,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Reconcile Events", func()
 	})
 
 	AfterEach(func() {
-		resource := &mcpv1beta1.MCPServer{}
+		resource := &mcpv1.MCPServer{}
 		err := k8sClient.Get(ctx, typeNamespacedName, resource)
 		if err == nil {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -583,7 +583,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 
 	It("should populate NetworkPolicy ingress From field when ingressFrom is set", func() {
 		mcpServer := newTestMCPServer("test-netpol-ingress-from")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{
 					NamespaceSelector: &metav1.LabelSelector{
@@ -626,7 +626,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 
 	It("should reject ingressFrom with invalid ipBlock CIDR during validation", func() {
 		mcpServer := newTestMCPServer("test-netpol-bad-cidr")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -675,7 +675,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 
 	It("should reject ingressFrom with empty ipBlock CIDR during validation", func() {
 		mcpServer := newTestMCPServer("test-netpol-empty-cidr")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -712,7 +712,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 
 	It("should reject ingressFrom with invalid ipBlock except CIDR", func() {
 		mcpServer := newTestMCPServer("test-netpol-bad-except")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -750,7 +750,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 
 	It("should reject ingressFrom with ipBlock combined with podSelector", func() {
 		mcpServer := newTestMCPServer("test-netpol-ipblock-podselector")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -790,7 +790,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 
 	It("should reject ingressFrom with ipBlock except outside cidr", func() {
 		mcpServer := newTestMCPServer("test-netpol-except-outside")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -828,7 +828,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 
 	It("should reject ingressFrom with except CIDR wider than parent", func() {
 		mcpServer := newTestMCPServer("test-netpol-except-wider")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -866,7 +866,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 
 	It("should accept valid ingressFrom with ipBlock CIDR", func() {
 		mcpServer := newTestMCPServer("test-netpol-valid-cidr")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -904,7 +904,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Ingress Source Restrictio
 
 	It("should update NetworkPolicy when ingressFrom changes", func() {
 		mcpServer := newTestMCPServer("test-netpol-ingress-update")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{
 					NamespaceSelector: &metav1.LabelSelector{
@@ -973,7 +973,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 
 	It("should reject egressTo with invalid ipBlock CIDR during validation", func() {
 		mcpServer := newTestMCPServer("test-netpol-egress-bad-cidr")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressTo: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -1011,7 +1011,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 
 	It("should reject egressTo with ipBlock combined with namespaceSelector", func() {
 		mcpServer := newTestMCPServer("test-netpol-egress-ipblock-ns")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressTo: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -1051,7 +1051,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 
 	It("should restrict egress to specified destinations with DNS rule when egressTo is set", func() {
 		mcpServer := newTestMCPServer("test-netpol-egress-to")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressTo: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -1104,7 +1104,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		port443 := intstr.FromInt32(443)
 		protocolTCP := corev1.ProtocolTCP
 		mcpServer := newTestMCPServer("test-netpol-egress-ports")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressPorts: []networkingv1.NetworkPolicyPort{
 				{
 					Port:     &port443,
@@ -1174,7 +1174,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		port443 := intstr.FromInt32(443)
 		protocolTCP := corev1.ProtocolTCP
 		mcpServer := newTestMCPServer("test-netpol-egress-both")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressTo: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -1222,7 +1222,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 
 	It("should update egress rules when egressTo changes", func() {
 		mcpServer := newTestMCPServer("test-netpol-egress-update")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressTo: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -1280,7 +1280,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		badProtocol := corev1.Protocol("ICMP")
 		port80 := intstr.FromInt32(80)
 		mcpServer := newTestMCPServer("test-netpol-egress-bad-proto")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressPorts: []networkingv1.NetworkPolicyPort{
 				{Port: &port80, Protocol: &badProtocol},
 			},
@@ -1314,7 +1314,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		badPort := intstr.FromInt32(0)
 		tcp := corev1.ProtocolTCP
 		mcpServer := newTestMCPServer("test-netpol-egress-port-zero")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressPorts: []networkingv1.NetworkPolicyPort{
 				{Port: &badPort, Protocol: &tcp},
 			},
@@ -1349,7 +1349,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		tcp := corev1.ProtocolTCP
 		endPort := int32(9443)
 		mcpServer := newTestMCPServer("test-netpol-egress-endport-named")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressPorts: []networkingv1.NetworkPolicyPort{
 				{Port: &namedPort, Protocol: &tcp, EndPort: &endPort},
 			},
@@ -1384,7 +1384,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		tcp := corev1.ProtocolTCP
 		endPort := int32(80)
 		mcpServer := newTestMCPServer("test-netpol-egress-endport-less")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressPorts: []networkingv1.NetworkPolicyPort{
 				{Port: &port443, Protocol: &tcp, EndPort: &endPort},
 			},
@@ -1419,7 +1419,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		tcp := corev1.ProtocolTCP
 		endPort := int32(9000)
 		mcpServer := newTestMCPServer("test-netpol-egress-valid-range")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressPorts: []networkingv1.NetworkPolicyPort{
 				{Port: &port8000, Protocol: &tcp, EndPort: &endPort},
 			},
@@ -1456,7 +1456,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 		badNamedPort := intstr.FromString("bad_port")
 		tcp := corev1.ProtocolTCP
 		mcpServer := newTestMCPServer("test-netpol-egress-bad-name")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressPorts: []networkingv1.NetworkPolicyPort{
 				{Port: &badNamedPort, Protocol: &tcp},
 			},
@@ -1500,7 +1500,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 
 	It("should reject egressTo with empty peer", func() {
 		mcpServer := newTestMCPServer("test-netpol-egress-empty-peer")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressTo: []networkingv1.NetworkPolicyPeer{
 				{},
 			},
@@ -1544,7 +1544,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Egress Destination Restri
 
 	It("should reject ingressFrom with empty peer", func() {
 		mcpServer := newTestMCPServer("test-netpol-ingress-empty-peer")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{},
 			},
@@ -1580,7 +1580,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy DNS Egress Peer", func() 
 
 	It("should preserve unrestricted DNS egress when dnsEgressPeer is omitted", func() {
 		mcpServer := newTestMCPServer("test-netpol-dns-omitted")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressTo: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -1618,7 +1618,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy DNS Egress Peer", func() 
 
 	It("should scope DNS egress with a namespaceSelector and podSelector", func() {
 		mcpServer := newTestMCPServer("test-netpol-dns-selectors")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressTo: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -1671,7 +1671,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy DNS Egress Peer", func() 
 		port443 := intstr.FromInt32(443)
 		protocolTCP := corev1.ProtocolTCP
 		mcpServer := newTestMCPServer("test-netpol-dns-ipblock")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressPorts: []networkingv1.NetworkPolicyPort{
 				{Port: &port443, Protocol: &protocolTCP},
 			},
@@ -1711,7 +1711,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy DNS Egress Peer", func() 
 
 	It("should update the DNS rule when dnsEgressPeer changes or is removed", func() {
 		mcpServer := newTestMCPServer("test-netpol-dns-update")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressTo: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -1779,7 +1779,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy DNS Egress Peer", func() 
 
 	It("should reject an invalid or empty dnsEgressPeer during validation", func() {
 		mcpServer := newTestMCPServer("test-netpol-dns-empty-peer")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			EgressTo: []networkingv1.NetworkPolicyPeer{
 				{
 					IPBlock: &networkingv1.IPBlock{
@@ -1825,7 +1825,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy DNS Egress Peer", func() 
 
 	It("should leave egress as a single allow-all rule when dnsEgressPeer is set alone", func() {
 		mcpServer := newTestMCPServer("test-netpol-dns-alone")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			DNSEgressPeer: &networkingv1.NetworkPolicyPeer{
 				IPBlock: &networkingv1.IPBlock{
 					CIDR: "10.0.0.53/32",

@@ -28,24 +28,24 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func() {
 	ctx := context.Background()
 
-	reconcileOnce := func(name string) *mcpv1beta1.MCPServer {
+	reconcileOnce := func(name string) *mcpv1.MCPServer {
 		reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{
 			Name: name, Namespace: "default",
 		})
 		Expect(err).NotTo(HaveOccurred())
-		mcpServer := &mcpv1beta1.MCPServer{}
+		mcpServer := &mcpv1.MCPServer{}
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, mcpServer)).To(Succeed())
 		return mcpServer
 	}
 
-	postureCondition := func(mcpServer *mcpv1beta1.MCPServer) *metav1.Condition {
+	postureCondition := func(mcpServer *mcpv1.MCPServer) *metav1.Condition {
 		return meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeNetworkPolicyRestricted)
 	}
 
@@ -53,7 +53,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 		name := "posture-default"
 		Expect(k8sClient.Create(ctx, newTestMCPServer(name))).To(Succeed())
 		defer func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			if k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, mcpServer) == nil {
 				Expect(k8sClient.Delete(ctx, mcpServer)).To(Succeed())
 			}
@@ -81,7 +81,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 	It("reports Restricted when both ingress and egress are restricted", func() {
 		name := "posture-restricted"
 		mcpServer := newTestMCPServer(name)
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"mcp-client": "true"}}},
 			},
@@ -102,7 +102,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 	It("reports EgressUnrestricted when only ingress is restricted", func() {
 		name := "posture-ingress-only"
 		mcpServer := newTestMCPServer(name)
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"mcp-client": "true"}}},
 			},
@@ -121,7 +121,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 		name := "posture-transition"
 		Expect(k8sClient.Create(ctx, newTestMCPServer(name))).To(Succeed())
 		defer func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			if k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, mcpServer) == nil {
 				Expect(k8sClient.Delete(ctx, mcpServer)).To(Succeed())
 			}
@@ -138,9 +138,9 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 		Expect(postureCondition(steady).LastTransitionTime).To(Equal(firstStamp))
 
 		By("restricting both directions")
-		mcpServer := &mcpv1beta1.MCPServer{}
+		mcpServer := &mcpv1.MCPServer{}
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, mcpServer)).To(Succeed())
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"mcp-client": "true"}}},
 			},
@@ -172,7 +172,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 		mcpServer := newTestMCPServer(name)
 		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
 		defer func() {
-			fresh := &mcpv1beta1.MCPServer{}
+			fresh := &mcpv1.MCPServer{}
 			if k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, fresh) == nil {
 				Expect(k8sClient.Delete(ctx, fresh)).To(Succeed())
 			}
@@ -184,7 +184,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 		Expect(postureCondition(got).Reason).To(Equal(ReasonNetworkPolicyUnrestricted))
 
 		By("making the config invalid")
-		mcpServer = &mcpv1beta1.MCPServer{}
+		mcpServer = &mcpv1.MCPServer{}
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, mcpServer)).To(Succeed())
 		mcpServer.Spec.Config.EnvFrom = []corev1.EnvFromSource{
 			{ConfigMapRef: &corev1.ConfigMapEnvSource{
@@ -236,7 +236,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy posture condition", func(
 		name := "posture-non-gating"
 		Expect(k8sClient.Create(ctx, newTestMCPServer(name))).To(Succeed())
 		defer func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			if k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, mcpServer) == nil {
 				Expect(k8sClient.Delete(ctx, mcpServer)).To(Succeed())
 			}

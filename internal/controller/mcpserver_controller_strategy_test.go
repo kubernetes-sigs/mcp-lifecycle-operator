@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 var _ = Describe("Deployment rollout strategy", func() {
@@ -152,15 +152,15 @@ var _ = Describe("Deployment rollout strategy", func() {
 		)
 	})
 
-	DescribeTable("rejects strategy for BYO workloads", func(kind mcpv1beta1.WorkloadKind) {
-		server := newTestBYOMCPServer("strategy-byo", &mcpv1beta1.WorkloadReference{Name: "external", Kind: kind}, nil)
+	DescribeTable("rejects strategy for BYO workloads", func(kind mcpv1.WorkloadKind) {
+		server := newTestBYOMCPServer("strategy-byo", &mcpv1.WorkloadReference{Name: "external", Kind: kind}, nil)
 		server.Spec.Runtime.Strategy = &appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType}
 		err := k8sClient.Create(ctx, server)
 		Expect(errors.IsInvalid(err)).To(BeTrue())
 		Expect(err.Error()).To(ContainSubstring("runtime.strategy must not be set when workloadRef is set"))
 	},
-		Entry("Deployment", mcpv1beta1.WorkloadKindDeployment),
-		Entry("StatefulSet", mcpv1beta1.WorkloadKindStatefulSet),
-		Entry("DaemonSet", mcpv1beta1.WorkloadKindDaemonSet),
+		Entry("Deployment", mcpv1.WorkloadKindDeployment),
+		Entry("StatefulSet", mcpv1.WorkloadKindStatefulSet),
+		Entry("DaemonSet", mcpv1.WorkloadKindDaemonSet),
 	)
 })

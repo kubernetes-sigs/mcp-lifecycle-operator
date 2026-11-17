@@ -41,8 +41,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers"
 )
@@ -226,18 +226,18 @@ func (failReader) Get(context.Context, client.ObjectKey, client.Object, ...clien
 	return nil
 }
 
-func newTestMCPServer(name string) *mcpv1beta1.MCPServer {
-	return &mcpv1beta1.MCPServer{
+func newTestMCPServer(name string) *mcpv1.MCPServer {
+	return &mcpv1.MCPServer{
 		Name:      name,
 		Namespace: testNamespace,
-		Spec: mcpv1beta1.MCPServerSpec{
-			Source: mcpv1beta1.Source{
-				Type: mcpv1beta1.SourceTypeContainerImage,
-				ContainerImage: &mcpv1beta1.ContainerImageSource{
+		Spec: mcpv1.MCPServerSpec{
+			Source: mcpv1.Source{
+				Type: mcpv1.SourceTypeContainerImage,
+				ContainerImage: &mcpv1.ContainerImageSource{
 					Ref: "docker.io/library/test-image:latest",
 				},
 			},
-			Config: mcpv1beta1.ServerConfig{
+			Config: mcpv1.ServerConfig{
 				Port: 8080,
 			},
 		},
@@ -323,7 +323,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			&gatewayv1.HTTPRoute{Name: bindingName, Namespace: testNamespace},
 			&mcpv1alpha1.MCPGatewayBinding{Name: bindingName, Namespace: testNamespace},
 			&corev1.ConfigMap{Name: configMapName, Namespace: testNamespace},
-			&mcpv1beta1.MCPServer{Name: mcpServerName, Namespace: testNamespace},
+			&mcpv1.MCPServer{Name: mcpServerName, Namespace: testNamespace},
 		} {
 			_ = k8sClient.Delete(ctx, obj)
 		}
@@ -331,7 +331,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 	It("should update the backend on a Service event without an MCPServer spec change", func() {
 		server := newTestMCPServer("service-watch-mcp")
-		server.Spec.ServiceRef = &mcpv1beta1.ServiceReference{Name: "watched-backend"}
+		server.Spec.ServiceRef = &mcpv1.ServiceReference{Name: "watched-backend"}
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, server)).To(Succeed()) })
 		generation := server.Generation
@@ -409,11 +409,11 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 
 	DescribeTable("BYO Service route backend", func(mode string) {
 		server := newTestMCPServer(mcpServerName)
-		server.Spec.ServiceRef = &mcpv1beta1.ServiceReference{Name: "external-mcp"}
+		server.Spec.ServiceRef = &mcpv1.ServiceReference{Name: "external-mcp"}
 		expectedPort := int32(9090)
 		if mode != "managed" {
-			server.Spec.Source = mcpv1beta1.Source{}
-			server.Spec.WorkloadRef = &mcpv1beta1.WorkloadReference{Name: "external-workload", Kind: mcpv1beta1.WorkloadKindDeployment}
+			server.Spec.Source = mcpv1.Source{}
+			server.Spec.WorkloadRef = &mcpv1.WorkloadReference{Name: "external-workload", Kind: mcpv1.WorkloadKindDeployment}
 			if mode == "inferred" {
 				server.Spec.Config.Port = 0
 			} else {
@@ -1185,7 +1185,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			createBinding(ProviderName)
 
 			r := newReconciler()
-			server := &mcpv1beta1.MCPServer{
+			server := &mcpv1.MCPServer{
 				Name:      mcpServerName,
 				Namespace: testNamespace,
 			}
@@ -1198,7 +1198,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			createBinding(ProviderName)
 
 			r := newReconciler()
-			server := &mcpv1beta1.MCPServer{
+			server := &mcpv1.MCPServer{
 				Name:      "other-server",
 				Namespace: testNamespace,
 			}
@@ -1210,7 +1210,7 @@ var _ = Describe("HTTPRoute Provider Controller", func() {
 			createBinding("custom-vendor")
 
 			r := newReconciler()
-			server := &mcpv1beta1.MCPServer{
+			server := &mcpv1.MCPServer{
 				Name:      mcpServerName,
 				Namespace: testNamespace,
 			}

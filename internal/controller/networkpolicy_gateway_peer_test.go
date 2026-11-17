@@ -29,18 +29,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
-func gatewayServer(configRef string, network *mcpv1beta1.NetworkConfig) *mcpv1beta1.MCPServer {
+func gatewayServer(configRef string, network *mcpv1.NetworkConfig) *mcpv1.MCPServer {
 	s := postureTestServer("gw-server", network)
-	s.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute", ConfigRef: configRef}
+	s.Spec.Gateway = &mcpv1.GatewaySpec{Provider: "httproute", ConfigRef: configRef}
 	return s
 }
 
-func kuadrantGatewayServer(configRef string, network *mcpv1beta1.NetworkConfig) *mcpv1beta1.MCPServer {
+func kuadrantGatewayServer(configRef string, network *mcpv1.NetworkConfig) *mcpv1.MCPServer {
 	s := postureTestServer("gw-server", network)
-	s.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "kuadrant", ConfigRef: configRef}
+	s.Spec.Gateway = &mcpv1.GatewaySpec{Provider: "kuadrant", ConfigRef: configRef}
 	return s
 }
 
@@ -65,7 +65,7 @@ func TestDefaultIngressRulesGatewayPeer(t *testing.T) {
 
 	tt := []struct {
 		name         string
-		server       *mcpv1beta1.MCPServer
+		server       *mcpv1.MCPServer
 		posture      NetworkPolicyDefaultPosture
 		gatewayPeers []networkingv1.NetworkPolicyPeer
 		want         []networkingv1.NetworkPolicyIngressRule
@@ -88,7 +88,7 @@ func TestDefaultIngressRulesGatewayPeer(t *testing.T) {
 		},
 		{
 			name:         "explicit IngressFrom is honored and the gateway peer is ignored",
-			server:       gatewayServer("gw-config", &mcpv1beta1.NetworkConfig{IngressFrom: userPeer}),
+			server:       gatewayServer("gw-config", &mcpv1.NetworkConfig{IngressFrom: userPeer}),
 			posture:      PostureRestricted,
 			gatewayPeers: peer,
 			want: []networkingv1.NetworkPolicyIngressRule{
@@ -130,7 +130,7 @@ func TestGatewayIngressPeers(t *testing.T) {
 	tt := []struct {
 		name    string
 		posture NetworkPolicyDefaultPosture
-		server  *mcpv1beta1.MCPServer
+		server  *mcpv1.MCPServer
 		objects []client.Object
 		want    []networkingv1.NetworkPolicyPeer
 	}{
@@ -150,7 +150,7 @@ func TestGatewayIngressPeers(t *testing.T) {
 		{
 			name:    "unknown provider stays deny-by-default",
 			posture: PostureRestricted,
-			server: func() *mcpv1beta1.MCPServer {
+			server: func() *mcpv1.MCPServer {
 				s := gatewayServer("gw-config", nil)
 				s.Spec.Gateway.Provider = "unknown"
 				return s
@@ -161,7 +161,7 @@ func TestGatewayIngressPeers(t *testing.T) {
 		{
 			name:    "explicit IngressFrom takes precedence over derivation",
 			posture: PostureRestricted,
-			server: gatewayServer("gw-config", &mcpv1beta1.NetworkConfig{
+			server: gatewayServer("gw-config", &mcpv1.NetworkConfig{
 				IngressFrom: []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{}}},
 			}),
 			objects: []client.Object{configMap("gw-config", map[string]string{gatewayConfigKeyNamespace: gwNamespace})},
@@ -230,7 +230,7 @@ func TestGatewayIngressPeers(t *testing.T) {
 		{
 			name:    "kuadrant explicit IngressFrom takes precedence",
 			posture: PostureRestricted,
-			server: kuadrantGatewayServer("gw-config", &mcpv1beta1.NetworkConfig{
+			server: kuadrantGatewayServer("gw-config", &mcpv1.NetworkConfig{
 				IngressFrom: []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{}}},
 			}),
 			objects: []client.Object{configMap("gw-config", map[string]string{kuadrantConfigKeyExtensionNamespace: extNamespace})},

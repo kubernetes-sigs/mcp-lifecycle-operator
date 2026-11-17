@@ -24,7 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 // operatorIngressPeers returns the ingress peer that keeps the operator's own
@@ -55,7 +55,7 @@ import (
 // namespace or missing pod labels fails closed (nil) rather than open.
 func (r *MCPServerReconciler) operatorIngressPeers(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) []networkingv1.NetworkPolicyPeer {
 	if r.NetworkPolicyDefaultPosture != PostureRestricted {
 		return nil

@@ -32,8 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 )
 
@@ -298,7 +298,7 @@ func EnsureBindingAnnotations(
 // ResolveAndRecordBackendService records the backend Service dependency as well as its
 // resolved port. Recording the name even when the Service is missing lets its
 // creation enqueue the binding without waiting for an unrelated resource change.
-func ResolveAndRecordBackendService(ctx context.Context, c client.Client, reader client.Reader, binding *mcpv1alpha1.MCPGatewayBinding, server *mcpv1beta1.MCPServer) (mcpcontroller.ServiceEndpoint, error) {
+func ResolveAndRecordBackendService(ctx context.Context, c client.Client, reader client.Reader, binding *mcpv1alpha1.MCPGatewayBinding, server *mcpv1.MCPServer) (mcpcontroller.ServiceEndpoint, error) {
 	endpoint, resolveErr := mcpcontroller.ResolveServiceEndpoint(ctx, reader, server)
 	if err := EnsureBindingAnnotations(ctx, c, binding, map[string]string{
 		AnnotationServiceRef: RefKey(server.Namespace, endpoint.Name),

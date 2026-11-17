@@ -33,12 +33,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 func (r *MCPServerReconciler) reconcileNetworkPolicy(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) error {
 	_, err := r.ensureNetworkPolicy(ctx, mcpServer)
 	return err
@@ -49,7 +49,7 @@ func (r *MCPServerReconciler) reconcileNetworkPolicy(
 // posture from the same object instead of rebuilding it via createNetworkPolicy.
 func (r *MCPServerReconciler) ensureNetworkPolicy(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) (*networkingv1.NetworkPolicy, error) {
 	logger := log.FromContext(ctx)
 
@@ -147,7 +147,7 @@ func (r *MCPServerReconciler) ensureNetworkPolicy(
 // client. derivedPeers is nil unless the restricted posture derived at least one
 // source (the operator's own pod, a gateway peer, or both).
 func (r *MCPServerReconciler) createNetworkPolicy(
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	derivedPeers []networkingv1.NetworkPolicyPeer,
 ) *networkingv1.NetworkPolicy {
 	labels := managedWorkloadLabels(mcpServer.Name)
@@ -174,7 +174,7 @@ func (r *MCPServerReconciler) createNetworkPolicy(
 	}
 }
 
-func buildEgressRules(mcpServer *mcpv1beta1.MCPServer) []networkingv1.NetworkPolicyEgressRule {
+func buildEgressRules(mcpServer *mcpv1.MCPServer) []networkingv1.NetworkPolicyEgressRule {
 	hasEgressTo := mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.EgressTo) > 0
 	hasEgressPorts := mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.EgressPorts) > 0
 
@@ -228,7 +228,7 @@ func buildEgressRules(mcpServer *mcpv1beta1.MCPServer) []networkingv1.NetworkPol
 // success path reports from the actually-applied policy via
 // networkPolicyPostureConditionFor.
 func (r *MCPServerReconciler) networkPolicyPostureCondition(
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	generation int64,
 	existingConditions []metav1.Condition,
 ) metav1.Condition {
@@ -240,7 +240,7 @@ func (r *MCPServerReconciler) networkPolicyPostureCondition(
 // already-built NetworkPolicy, so a caller that just reconciled the policy can
 // reuse that object instead of rebuilding it via createNetworkPolicy.
 func (r *MCPServerReconciler) networkPolicyPostureConditionFor(
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	generation int64,
 	existingConditions []metav1.Condition,
 	netpol *networkingv1.NetworkPolicy,
@@ -372,6 +372,6 @@ func hasEgressDestinationRestriction(netpol *networkingv1.NetworkPolicy) bool {
 // DNS egress carve-out: DNSEgressPeer gives the DNS rule a To, which must not make
 // a ports-only application egress read as restricting destinations. It is used
 // only to phrase the posture message accurately.
-func egressDestinationsRestricted(mcpServer *mcpv1beta1.MCPServer) bool {
+func egressDestinationsRestricted(mcpServer *mcpv1.MCPServer) bool {
 	return mcpServer.Spec.Network != nil && len(mcpServer.Spec.Network.EgressTo) > 0
 }

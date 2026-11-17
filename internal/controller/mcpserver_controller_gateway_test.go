@@ -31,8 +31,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
 const testGatewayURL = "https://gateway.example.com/mcp"
@@ -50,7 +50,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Gateway = &mcpv1beta1.GatewaySpec{
+			resource.Spec.Gateway = &mcpv1.GatewaySpec{
 				Provider:  "httproute",
 				ConfigRef: "gw-config",
 			}
@@ -58,14 +58,14 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
 		})
 
 		It("should create an MCPGatewayBinding when spec.gateway is set", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
@@ -90,7 +90,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		It("should delete MCPGatewayBinding when spec.gateway is removed", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
@@ -112,7 +112,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		It("should update MCPGatewayBinding when configRef changes", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
@@ -134,7 +134,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		It("should recreate MCPGatewayBinding when provider changes", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
@@ -170,7 +170,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		It("should be a no-op when spec.gateway is nil and no binding exists", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			mcpServer.Spec.Gateway = nil
@@ -191,21 +191,21 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Gateway = &mcpv1beta1.GatewaySpec{
+			resource.Spec.Gateway = &mcpv1.GatewaySpec{
 				Provider: "httproute",
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
 		})
 
 		It("should return nil when spec.gateway is nil", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 			mcpServer.Spec.Gateway = nil
 
@@ -215,7 +215,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		It("should return BindingNotFound when binding doesn't exist", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
@@ -227,7 +227,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		It("should return NotRegistered when binding exists but Registered condition is missing", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
@@ -245,7 +245,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		It("should return NotRegistered with binding message when Registered=False", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
@@ -278,7 +278,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		It("should return NotRegistered when Registered=True has stale ObservedGeneration", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
@@ -310,7 +310,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		It("should return Registered when binding has Registered=True", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
@@ -356,7 +356,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Gateway = &mcpv1beta1.GatewaySpec{
+			resource.Spec.Gateway = &mcpv1.GatewaySpec{
 				Provider:  "httproute",
 				ConfigRef: "gw-config",
 			}
@@ -370,14 +370,14 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			}, binding); err == nil {
 				_ = k8sClient.Delete(ctx, binding)
 			}
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
 		})
 
 		It("should return error when existing binding is owned by a different controller", func() {
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			reconciler := newReconcilerForTest(k8sClient, k8sClient.Scheme())
@@ -419,14 +419,14 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Gateway = &mcpv1beta1.GatewaySpec{
+			resource.Spec.Gateway = &mcpv1.GatewaySpec{
 				Provider: "httproute",
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -440,7 +440,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			readyCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
@@ -486,7 +486,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered)
@@ -527,7 +527,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 			gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered)
 			Expect(gwCond).NotTo(BeNil())
@@ -579,7 +579,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Gateway = &mcpv1beta1.GatewaySpec{
+			resource.Spec.Gateway = &mcpv1.GatewaySpec{
 				Provider: "httproute",
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -592,7 +592,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			}, binding); err == nil {
 				_ = k8sClient.Delete(ctx, binding)
 			}
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -629,7 +629,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			availableCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
@@ -649,14 +649,14 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 
 		BeforeEach(func() {
 			resource := newTestMCPServer(resourceName)
-			resource.Spec.Gateway = &mcpv1beta1.GatewaySpec{
+			resource.Spec.Gateway = &mcpv1.GatewaySpec{
 				Provider: "httproute",
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -693,7 +693,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 			gwCond := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeGatewayRegistered)
 			Expect(gwCond).NotTo(BeNil())
@@ -701,11 +701,11 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			Expect(mcpServer.Status.GatewayBinding).NotTo(BeNil())
 
 			By("triggering a permanent validation error via missing ConfigMap reference")
-			mcpServer.Spec.Config.Storage = []mcpv1beta1.StorageMount{
+			mcpServer.Spec.Config.Storage = []mcpv1.StorageMount{
 				{
 					Path: "/data",
-					Source: mcpv1beta1.StorageSource{
-						Type: mcpv1beta1.StorageTypeConfigMap,
+					Source: mcpv1.StorageSource{
+						Type: mcpv1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							Name: "nonexistent-cm",
 						},
@@ -750,14 +750,14 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 			}, binding)).To(Succeed())
 
 			By("removing gateway config AND introducing a validation error")
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 			mcpServer.Spec.Gateway = nil
-			mcpServer.Spec.Config.Storage = []mcpv1beta1.StorageMount{
+			mcpServer.Spec.Config.Storage = []mcpv1.StorageMount{
 				{
 					Path: "/data",
-					Source: mcpv1beta1.StorageSource{
-						Type: mcpv1beta1.StorageTypeConfigMap,
+					Source: mcpv1.StorageSource{
+						Type: mcpv1.StorageTypeConfigMap,
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							Name: "nonexistent-cm",
 						},
@@ -783,7 +783,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 
 	Context("applyGatewayStatus", func() {
 		It("should not override Ready reason when already False", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
+			mcpServer := &mcpv1.MCPServer{
 				Name:       "test-apply-gw",
 				Namespace:  "default",
 				Generation: 1,
@@ -817,7 +817,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		It("should override Ready when not already False", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
+			mcpServer := &mcpv1.MCPServer{
 				Name:       "test-apply-gw-override",
 				Namespace:  "default",
 				Generation: 1,
@@ -851,7 +851,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		})
 
 		It("should override mcpURL when gateway provides an address", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
+			mcpServer := &mcpv1.MCPServer{
 				Name:       "test-apply-gw-url",
 				Namespace:  "default",
 				Generation: 1,
@@ -889,7 +889,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 		It("should emit a warning event", func() {
 			reconciler, fr := newReconcilerForTestWithFakeEvents(k8sClient, k8sClient.Scheme())
 
-			mcpServer := &mcpv1beta1.MCPServer{
+			mcpServer := &mcpv1.MCPServer{
 				Name:      "test-emit-gw",
 				Namespace: "default",
 			}
@@ -900,7 +900,7 @@ var _ = Describe("MCPServer Controller - Gateway", func() {
 
 		It("should not panic when recorder is nil", func() {
 			reconciler := &MCPServerReconciler{}
-			mcpServer := &mcpv1beta1.MCPServer{
+			mcpServer := &mcpv1.MCPServer{
 				Name:      "test-emit-gw-nil",
 				Namespace: "default",
 			}
