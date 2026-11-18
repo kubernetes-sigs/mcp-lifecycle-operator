@@ -60,6 +60,14 @@ make migrate-storage
 kubectl apply -k config/storage-migration
 ```
 
+If an earlier `v1beta1` migration left a `mcpservers-v1beta1` request behind, it
+is harmless and separate from the new `mcpservers-v1` request. After checking
+its result, you can remove the stale request:
+
+```bash
+kubectl delete storageversionmigration.migration.k8s.io mcpservers-v1beta1 --ignore-not-found
+```
+
 On clusters with the native `storagemigration.k8s.io/v1` API, create a separate
 one-shot request. The native API identifies the resource by group and resource;
 it does not take a version in `spec.resource`:
