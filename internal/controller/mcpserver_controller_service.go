@@ -32,14 +32,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 // reconcileService creates or updates the Service for the MCPServer.
 // selector is the label selector the Service uses to target pods.
 func (r *MCPServerReconciler) reconcileService(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	selector map[string]string,
 ) error {
 	logger := log.FromContext(ctx)
@@ -120,7 +120,7 @@ func (r *MCPServerReconciler) reconcileService(
 }
 
 // createService creates a Service for the MCPServer using the given selector.
-func (r *MCPServerReconciler) createService(mcpServer *mcpv1beta1.MCPServer, selector map[string]string) *corev1.Service {
+func (r *MCPServerReconciler) createService(mcpServer *mcpv1.MCPServer, selector map[string]string) *corev1.Service {
 	labels := managedWorkloadLabels(mcpServer.Name)
 	targetPort := intstr.FromString(mcpPortName)
 	if mcpServer.Spec.WorkloadRef != nil {
@@ -194,7 +194,7 @@ func resolveServicePort(ctx context.Context, r client.Reader, serviceName, names
 
 // serviceNameFor returns the Service identity even when endpoint resolution or
 // configuration validation fails.
-func serviceNameFor(server *mcpv1beta1.MCPServer) string {
+func serviceNameFor(server *mcpv1.MCPServer) string {
 	if server.Spec.ServiceRef != nil {
 		return server.Spec.ServiceRef.Name
 	}
@@ -204,7 +204,7 @@ func serviceNameFor(server *mcpv1beta1.MCPServer) string {
 // ResolveServiceEndpoint returns the Service name and port used for MCP traffic.
 // Gateway providers use the same resolution as the MCP handshake, including
 // inferred ports on externally managed Services.
-func ResolveServiceEndpoint(ctx context.Context, reader client.Reader, server *mcpv1beta1.MCPServer) (ServiceEndpoint, error) {
+func ResolveServiceEndpoint(ctx context.Context, reader client.Reader, server *mcpv1.MCPServer) (ServiceEndpoint, error) {
 	if server.Spec.ServiceRef == nil {
 		return ServiceEndpoint{Name: serviceNameFor(server), Port: server.Spec.Config.Port}, nil
 	}
@@ -223,7 +223,7 @@ func ResolveServiceEndpoint(ctx context.Context, reader client.Reader, server *m
 // resolves the BYO Service port. Service identity comes from serviceNameFor.
 func (r *MCPServerReconciler) reconcileServiceOrBYO(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	selector map[string]string,
 ) (ServiceEndpoint, error) {
 	if mcpServer.Spec.ServiceRef != nil {
@@ -274,7 +274,7 @@ func (r *MCPServerReconciler) reconcileServiceOrBYO(
 // The function is idempotent: when no managed Service exists there is nothing to do.
 func (r *MCPServerReconciler) cleanupManagedServiceForBYO(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) error {
 	logger := log.FromContext(ctx)
 

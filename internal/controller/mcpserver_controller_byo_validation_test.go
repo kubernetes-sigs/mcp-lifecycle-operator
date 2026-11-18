@@ -30,11 +30,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 var _ = Describe("BYO workload fetch errors", func() {
-	DescribeTable("preserves API error classification and workload identity", func(kind mcpv1beta1.WorkloadKind) {
+	DescribeTable("preserves API error classification and workload identity", func(kind mcpv1.WorkloadKind) {
 		reader := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
 		workload, err := getWorkload(context.Background(), reader, "missing-workload", kind, "default")
 		Expect(workload).To(BeNil())
@@ -42,13 +42,13 @@ var _ = Describe("BYO workload fetch errors", func() {
 		Expect(err.Error()).To(ContainSubstring(string(kind)))
 		Expect(err.Error()).To(ContainSubstring("missing-workload"))
 	},
-		Entry("Deployment", mcpv1beta1.WorkloadKindDeployment),
-		Entry("DaemonSet", mcpv1beta1.WorkloadKindDaemonSet),
-		Entry("StatefulSet", mcpv1beta1.WorkloadKindStatefulSet),
+		Entry("Deployment", mcpv1.WorkloadKindDeployment),
+		Entry("DaemonSet", mcpv1.WorkloadKindDaemonSet),
+		Entry("StatefulSet", mcpv1.WorkloadKindStatefulSet),
 	)
 	It("rejects an unsupported kind as a configuration error", func() {
 		reader := fake.NewClientBuilder().WithScheme(k8sClient.Scheme()).Build()
-		_, err := getWorkload(context.Background(), reader, "anything", mcpv1beta1.WorkloadKind("CronJob"), "default")
+		_, err := getWorkload(context.Background(), reader, "anything", mcpv1.WorkloadKind("CronJob"), "default")
 		Expect(err).To(BeAssignableToTypeOf(&ValidationError{}))
 		Expect(err.Error()).To(ContainSubstring("unsupported workloadRef kind: CronJob"))
 	})
@@ -56,7 +56,7 @@ var _ = Describe("BYO workload fetch errors", func() {
 
 var _ = Describe("BYO port admission", func() {
 	It("should require a container port for a managed workload even with serviceRef", func() {
-		server := newTestBYOMCPServer("managed-byo-service-no-port", nil, &mcpv1beta1.ServiceReference{Name: "external"})
+		server := newTestBYOMCPServer("managed-byo-service-no-port", nil, &mcpv1.ServiceReference{Name: "external"})
 		server.Spec.Config.Port = 0
 		err := k8sClient.Create(context.Background(), server)
 		Expect(errors.IsInvalid(err)).To(BeTrue())
@@ -68,10 +68,10 @@ var _ = Describe("BYO workload mode admission", func() {
 	DescribeTable("should preserve workload management mode on updates", func(byo bool) {
 		ctx := context.Background()
 		name := "immutable-managed-mode"
-		var ref *mcpv1beta1.WorkloadReference
+		var ref *mcpv1.WorkloadReference
 		if byo {
 			name = "immutable-byo-mode"
-			ref = &mcpv1beta1.WorkloadReference{Name: "external", Kind: mcpv1beta1.WorkloadKindDeployment}
+			ref = &mcpv1.WorkloadReference{Name: "external", Kind: mcpv1.WorkloadKindDeployment}
 		}
 		server := newTestBYOMCPServer(name, ref, nil)
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
@@ -81,7 +81,7 @@ var _ = Describe("BYO workload mode admission", func() {
 		server.Labels = map[string]string{"team": "platform"}
 		if byo {
 			server.Spec.WorkloadRef.Name = "another-workload"
-			server.Spec.WorkloadRef.Kind = mcpv1beta1.WorkloadKindStatefulSet
+			server.Spec.WorkloadRef.Kind = mcpv1.WorkloadKindStatefulSet
 		}
 		Expect(k8sClient.Update(ctx, server)).To(Succeed())
 
@@ -89,8 +89,8 @@ var _ = Describe("BYO workload mode admission", func() {
 			server.Spec.WorkloadRef = nil
 			server.Spec.Source = newTestBYOMCPServer("unused", nil, nil).Spec.Source
 		} else {
-			server.Spec.Source = mcpv1beta1.Source{}
-			server.Spec.WorkloadRef = &mcpv1beta1.WorkloadReference{Name: "external", Kind: mcpv1beta1.WorkloadKindDeployment}
+			server.Spec.Source = mcpv1.Source{}
+			server.Spec.WorkloadRef = &mcpv1.WorkloadReference{Name: "external", Kind: mcpv1.WorkloadKindDeployment}
 		}
 		err := k8sClient.Update(ctx, server)
 		Expect(errors.IsInvalid(err)).To(BeTrue())
@@ -119,7 +119,7 @@ var _ = Describe("BYO workload mixed selector", func() {
 		}
 		Expect(k8sClient.Create(ctx, dep)).To(Succeed())
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, dep)).To(Succeed()) })
-		server := newTestBYOMCPServer("mixed-selector-server", &mcpv1beta1.WorkloadReference{Name: dep.Name, Kind: mcpv1beta1.WorkloadKindDeployment}, nil)
+		server := newTestBYOMCPServer("mixed-selector-server", &mcpv1.WorkloadReference{Name: dep.Name, Kind: mcpv1.WorkloadKindDeployment}, nil)
 		Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, server)).To(Succeed()) })
 		r := newReconcilerForTest(k8sClient, k8sClient.Scheme())
@@ -138,7 +138,7 @@ var _ = Describe("BYO workload mixed selector", func() {
 		}}
 		Expect(k8sClient.Create(ctx, svc)).To(Succeed())
 		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, svc)).To(Succeed()) })
-		server.Spec.ServiceRef = &mcpv1beta1.ServiceReference{Name: svc.Name}
+		server.Spec.ServiceRef = &mcpv1.ServiceReference{Name: svc.Name}
 		Expect(k8sClient.Update(ctx, server)).To(Succeed())
 		_, err = r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())

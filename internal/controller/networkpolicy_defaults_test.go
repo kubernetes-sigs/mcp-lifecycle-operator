@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 func TestParseDefaultPosture(t *testing.T) {
@@ -77,8 +77,8 @@ func TestDefaultIngressRules(t *testing.T) {
 		PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "caller"}},
 	}
 
-	newServer := func(network *mcpv1beta1.NetworkConfig) *mcpv1beta1.MCPServer {
-		s := &mcpv1beta1.MCPServer{}
+	newServer := func(network *mcpv1.NetworkConfig) *mcpv1.MCPServer {
+		s := &mcpv1.MCPServer{}
 		s.Spec.Config.Port = port
 		s.Spec.Network = network
 		return s
@@ -86,7 +86,7 @@ func TestDefaultIngressRules(t *testing.T) {
 
 	tt := []struct {
 		name    string
-		server  *mcpv1beta1.MCPServer
+		server  *mcpv1.MCPServer
 		posture NetworkPolicyDefaultPosture
 		want    []networkingv1.NetworkPolicyIngressRule
 	}{
@@ -104,7 +104,7 @@ func TestDefaultIngressRules(t *testing.T) {
 		},
 		{
 			name:    "open, network without IngressFrom -> port-only rule",
-			server:  newServer(&mcpv1beta1.NetworkConfig{}),
+			server:  newServer(&mcpv1.NetworkConfig{}),
 			posture: PostureOpen,
 			want:    []networkingv1.NetworkPolicyIngressRule{portRule()},
 		},
@@ -116,13 +116,13 @@ func TestDefaultIngressRules(t *testing.T) {
 		},
 		{
 			name:    "restricted, network without IngressFrom -> deny (empty rules)",
-			server:  newServer(&mcpv1beta1.NetworkConfig{}),
+			server:  newServer(&mcpv1.NetworkConfig{}),
 			posture: PostureRestricted,
 			want:    []networkingv1.NetworkPolicyIngressRule{},
 		},
 		{
 			name:    "restricted, IngressFrom set -> honored (port + source)",
-			server:  newServer(&mcpv1beta1.NetworkConfig{IngressFrom: []networkingv1.NetworkPolicyPeer{userPeer}}),
+			server:  newServer(&mcpv1.NetworkConfig{IngressFrom: []networkingv1.NetworkPolicyPeer{userPeer}}),
 			posture: PostureRestricted,
 			want: []networkingv1.NetworkPolicyIngressRule{{
 				Ports: portRule().Ports,
@@ -131,7 +131,7 @@ func TestDefaultIngressRules(t *testing.T) {
 		},
 		{
 			name:    "open, IngressFrom set -> honored (port + source)",
-			server:  newServer(&mcpv1beta1.NetworkConfig{IngressFrom: []networkingv1.NetworkPolicyPeer{userPeer}}),
+			server:  newServer(&mcpv1.NetworkConfig{IngressFrom: []networkingv1.NetworkPolicyPeer{userPeer}}),
 			posture: PostureOpen,
 			want: []networkingv1.NetworkPolicyIngressRule{{
 				Ports: portRule().Ports,
@@ -173,7 +173,7 @@ func TestRestrictedPostureReportingComposition(t *testing.T) {
 
 	tt := []struct {
 		name       string
-		network    *mcpv1beta1.NetworkConfig
+		network    *mcpv1.NetworkConfig
 		wantStatus metav1.ConditionStatus
 		wantReason string
 	}{
@@ -185,7 +185,7 @@ func TestRestrictedPostureReportingComposition(t *testing.T) {
 		},
 		{
 			name: "egress restricted too: both restricted",
-			network: &mcpv1beta1.NetworkConfig{
+			network: &mcpv1.NetworkConfig{
 				EgressTo: []networkingv1.NetworkPolicyPeer{
 					{IPBlock: &networkingv1.IPBlock{CIDR: "10.0.0.0/8"}},
 				},

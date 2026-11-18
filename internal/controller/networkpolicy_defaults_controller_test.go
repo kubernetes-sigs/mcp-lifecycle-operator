@@ -27,7 +27,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingress)", func() {
@@ -74,7 +74,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 
 	It("should honor IngressFrom unchanged under restricted posture", func() {
 		mcpServer := newTestMCPServer("test-netpol-restricted-ingress")
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{
 					NamespaceSelector: &metav1.LabelSelector{
@@ -136,7 +136,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 
 		By("Adding a source and reconciling again")
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(mcpServer), mcpServer)).To(Succeed())
-		mcpServer.Spec.Network = &mcpv1beta1.NetworkConfig{
+		mcpServer.Spec.Network = &mcpv1.NetworkConfig{
 			IngressFrom: []networkingv1.NetworkPolicyPeer{
 				{
 					PodSelector: &metav1.LabelSelector{
@@ -166,7 +166,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 		defer func() { _ = k8sClient.Delete(ctx, gwConfig) }()
 
 		mcpServer := newTestMCPServer("test-netpol-gw-resolvable")
-		mcpServer.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-cfg-resolvable"}
+		mcpServer.Spec.Gateway = &mcpv1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-cfg-resolvable"}
 		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
 		defer func() { _ = k8sClient.Delete(ctx, mcpServer) }()
 
@@ -191,7 +191,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 
 	It("should stay deny-by-default for a gateway-routed server whose gateway config cannot be resolved", func() {
 		mcpServer := newTestMCPServer("test-netpol-gw-unresolvable")
-		mcpServer.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-cfg-absent"}
+		mcpServer.Spec.Gateway = &mcpv1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-cfg-absent"}
 		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
 		defer func() { _ = k8sClient.Delete(ctx, mcpServer) }()
 
@@ -251,7 +251,7 @@ var _ = Describe("MCPServer Controller - NetworkPolicy Restricted Posture (ingre
 		reconciler.OperatorPodLabels = map[string]string{"control-plane": "controller-manager"}
 
 		mcpServer := newTestMCPServer("test-netpol-operator-and-gw")
-		mcpServer.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-cfg-operator"}
+		mcpServer.Spec.Gateway = &mcpv1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-cfg-operator"}
 		Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
 		defer func() { _ = k8sClient.Delete(ctx, mcpServer) }()
 

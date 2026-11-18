@@ -24,7 +24,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 // NetworkPolicyDefaultPosture selects the operand NetworkPolicy content emitted
@@ -75,7 +75,7 @@ func ParseDefaultPosture(value string) (NetworkPolicyDefaultPosture, error) {
 // derivedPeers is consulted only under PostureRestricted; it is resolved by the
 // caller (which has API access) and is nil whenever no peer applies.
 func defaultIngressRules(
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	posture NetworkPolicyDefaultPosture,
 	derivedPeers []networkingv1.NetworkPolicyPeer,
 ) []networkingv1.NetworkPolicyIngressRule {
@@ -109,7 +109,7 @@ func defaultIngressRules(
 
 // ingressPorts returns the single-port allow-list (server port, TCP) shared by
 // every non-deny ingress rule.
-func ingressPorts(mcpServer *mcpv1beta1.MCPServer) []networkingv1.NetworkPolicyPort {
+func ingressPorts(mcpServer *mcpv1.MCPServer) []networkingv1.NetworkPolicyPort {
 	port := intstr.FromInt32(mcpServer.Spec.Config.Port)
 	protocol := corev1.ProtocolTCP
 	return []networkingv1.NetworkPolicyPort{

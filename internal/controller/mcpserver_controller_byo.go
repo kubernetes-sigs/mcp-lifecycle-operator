@@ -26,7 +26,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 // workloadObservation contains only the information shared reconciliation needs.
@@ -40,14 +40,14 @@ type workloadObservation struct {
 
 // getWorkload reads the native resource once. Fetch failures remain errors so
 // validation can report them through Accepted rather than a partial observation.
-func getWorkload(ctx context.Context, reader client.Reader, name string, kind mcpv1beta1.WorkloadKind, namespace string) (client.Object, error) {
+func getWorkload(ctx context.Context, reader client.Reader, name string, kind mcpv1.WorkloadKind, namespace string) (client.Object, error) {
 	var obj client.Object
 	switch kind {
-	case mcpv1beta1.WorkloadKindDeployment:
+	case mcpv1.WorkloadKindDeployment:
 		obj = &appsv1.Deployment{}
-	case mcpv1beta1.WorkloadKindDaemonSet:
+	case mcpv1.WorkloadKindDaemonSet:
 		obj = &appsv1.DaemonSet{}
-	case mcpv1beta1.WorkloadKindStatefulSet:
+	case mcpv1.WorkloadKindStatefulSet:
 		obj = &appsv1.StatefulSet{}
 	default:
 		return nil, &ValidationError{Reason: ReasonInvalid, Message: fmt.Sprintf("unsupported workloadRef kind: %s", kind)}
@@ -75,7 +75,7 @@ func workloadSelector(obj client.Object) *metav1.LabelSelector {
 // observeWorkload derives a small common result directly from native status.
 // Each kind owns its availability policy and message; Deployment reuses the
 // same condition handling as operator-managed workloads.
-func (r *MCPServerReconciler) observeWorkload(ctx context.Context, server *mcpv1beta1.MCPServer, obj client.Object, acceptedCondition metav1.Condition) (workloadObservation, error) {
+func (r *MCPServerReconciler) observeWorkload(ctx context.Context, server *mcpv1.MCPServer, obj client.Object, acceptedCondition metav1.Condition) (workloadObservation, error) {
 	observation := workloadObservation{selector: workloadSelector(obj)}
 	switch w := obj.(type) {
 	case *appsv1.Deployment:
@@ -95,7 +95,7 @@ func (r *MCPServerReconciler) observeWorkload(ctx context.Context, server *mcpv1
 
 // workloadProgressCondition distinguishes unobserved and stale status from a
 // current workload snapshot. Callers handle intentional scale-to-zero first.
-func workloadProgressCondition(server *mcpv1beta1.MCPServer, kind string, generation, observedGeneration int64) (metav1.Condition, bool) {
+func workloadProgressCondition(server *mcpv1.MCPServer, kind string, generation, observedGeneration int64) (metav1.Condition, bool) {
 	if observedGeneration == 0 {
 		return newAvailableCondition(metav1.ConditionUnknown, ReasonInitializing,
 			fmt.Sprintf("Waiting for BYO %s to report status", kind), server.Generation, server.Status.Conditions), true
@@ -110,7 +110,7 @@ func workloadProgressCondition(server *mcpv1beta1.MCPServer, kind string, genera
 // daemonSetAvailability uses numberAvailable to respect minReadySeconds. Partial
 // availability permits verification while unavailable and unscheduled pods remain
 // visible in the message. DaemonSets cannot be intentionally scaled to zero.
-func daemonSetAvailability(server *mcpv1beta1.MCPServer, ds *appsv1.DaemonSet) metav1.Condition {
+func daemonSetAvailability(server *mcpv1.MCPServer, ds *appsv1.DaemonSet) metav1.Condition {
 	if condition, pending := workloadProgressCondition(server, "DaemonSet", ds.Generation, ds.Status.ObservedGeneration); pending {
 		return condition
 	}
@@ -129,7 +129,7 @@ func daemonSetAvailability(server *mcpv1beta1.MCPServer, ds *appsv1.DaemonSet) m
 
 // statefulSetAvailability uses availableReplicas to respect minReadySeconds and
 // reports rollout progress separately from the presence of an available instance.
-func statefulSetAvailability(server *mcpv1beta1.MCPServer, sts *appsv1.StatefulSet) metav1.Condition {
+func statefulSetAvailability(server *mcpv1.MCPServer, sts *appsv1.StatefulSet) metav1.Condition {
 	desired := ptr.Deref(sts.Spec.Replicas, 1)
 	if desired == 0 {
 		return newAvailableCondition(metav1.ConditionTrue, ReasonScaledToZero,
@@ -154,7 +154,7 @@ func statefulSetAvailability(server *mcpv1beta1.MCPServer, sts *appsv1.StatefulS
 // workload, then performs the MCP handshake against the resolved endpoint.
 func (r *MCPServerReconciler) reconcileBYO(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	acceptedCondition metav1.Condition,
 	workload client.Object,
 ) (ctrl.Result, error) {

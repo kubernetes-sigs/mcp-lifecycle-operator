@@ -34,16 +34,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 )
 
-func newTestBYOMCPServer(name string, workloadRef *mcpv1beta1.WorkloadReference, serviceRef *mcpv1beta1.ServiceReference) *mcpv1beta1.MCPServer {
-	server := &mcpv1beta1.MCPServer{
+func newTestBYOMCPServer(name string, workloadRef *mcpv1.WorkloadReference, serviceRef *mcpv1.ServiceReference) *mcpv1.MCPServer {
+	server := &mcpv1.MCPServer{
 		Name:      name,
 		Namespace: "default",
-		Spec: mcpv1beta1.MCPServerSpec{
-			Config: mcpv1beta1.ServerConfig{
+		Spec: mcpv1.MCPServerSpec{
+			Config: mcpv1.ServerConfig{
 				Port: 8080,
 			},
 		},
@@ -51,9 +51,9 @@ func newTestBYOMCPServer(name string, workloadRef *mcpv1beta1.WorkloadReference,
 	if workloadRef != nil {
 		server.Spec.WorkloadRef = workloadRef
 	} else {
-		server.Spec.Source = mcpv1beta1.Source{
-			Type: mcpv1beta1.SourceTypeContainerImage,
-			ContainerImage: &mcpv1beta1.ContainerImageSource{
+		server.Spec.Source = mcpv1.Source{
+			Type: mcpv1.SourceTypeContainerImage,
+			ContainerImage: &mcpv1.ContainerImageSource{
 				Ref: "docker.io/library/test-image:latest",
 			},
 		}
@@ -104,15 +104,15 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
 
-			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+			server := newTestBYOMCPServer(resourceName, &mcpv1.WorkloadReference{
 				Name: "my-mcp-deploy",
-				Kind: mcpv1beta1.WorkloadKindDeployment,
+				Kind: mcpv1.WorkloadKindDeployment,
 			}, nil)
 			Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -138,7 +138,7 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, operatorDep)
 			Expect(errors.IsNotFound(err)).To(BeTrue(), "no operator-managed Deployment should be created for BYO workload")
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
@@ -157,7 +157,7 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			req := reconcile.Request{NamespacedName: typeNamespacedName}
 			_, err := r.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			server := &mcpv1beta1.MCPServer{}
+			server := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
 			Expect(server.Status.WorkloadName).To(Equal("Deployment/my-mcp-deploy"))
 			Expect(server.Status.WorkloadSummary).To(Equal("BYO:Deployment/my-mcp-deploy"))
@@ -189,9 +189,9 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			Expect(svc.Spec.Ports[0].TargetPort).To(Equal(intstr.FromInt32(8080)), "BYO pods have no named container port")
 		})
 		It("should register a BYO workload with a gateway and publish its address", func() {
-			server := &mcpv1beta1.MCPServer{}
+			server := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
-			server.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-config"}
+			server.Spec.Gateway = &mcpv1.GatewaySpec{Provider: "httproute", ConfigRef: "gw-config"}
 			Expect(k8sClient.Update(ctx, server)).To(Succeed())
 			r := newReconcilerForTest(k8sClient, k8sClient.Scheme())
 			req := reconcile.Request{NamespacedName: typeNamespacedName}
@@ -228,14 +228,14 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			req := reconcile.Request{NamespacedName: typeNamespacedName}
 			_, err := r.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			server := &mcpv1beta1.MCPServer{}
+			server := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, server)).To(Succeed())
 			Expect(meta.FindStatusCondition(server.Status.Conditions, ConditionTypeVerified).Status).To(Equal(metav1.ConditionTrue))
 			Expect(server.Status.Address).NotTo(BeNil())
 
 			expectedReason := ReasonServiceUnavailable
 			if gatewayFailure {
-				server.Spec.Gateway = &mcpv1beta1.GatewaySpec{Provider: "httproute"}
+				server.Spec.Gateway = &mcpv1.GatewaySpec{Provider: "httproute"}
 				expectedReason = ReasonGatewayNotRegistered
 			} else {
 				server.Spec.Config.Port++ // Force an update of the managed Service.
@@ -308,15 +308,15 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			ds.Status.CurrentNumberScheduled = ds.Status.DesiredNumberScheduled
 			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
 
-			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+			server := newTestBYOMCPServer(resourceName, &mcpv1.WorkloadReference{
 				Name: "my-mcp-ds",
-				Kind: mcpv1beta1.WorkloadKindDaemonSet,
+				Kind: mcpv1.WorkloadKindDaemonSet,
 			}, nil)
 			Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -338,7 +338,7 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
@@ -389,15 +389,15 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			sts.Status.UpdatedReplicas = sts.Status.ReadyReplicas
 			Expect(k8sClient.Status().Update(ctx, sts)).To(Succeed())
 
-			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+			server := newTestBYOMCPServer(resourceName, &mcpv1.WorkloadReference{
 				Name: "my-mcp-sts",
-				Kind: mcpv1beta1.WorkloadKindStatefulSet,
+				Kind: mcpv1.WorkloadKindStatefulSet,
 			}, nil)
 			Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -419,7 +419,7 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
@@ -443,15 +443,15 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 		}
 
 		BeforeEach(func() {
-			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+			server := newTestBYOMCPServer(resourceName, &mcpv1.WorkloadReference{
 				Name: "nonexistent-deploy",
-				Kind: mcpv1beta1.WorkloadKindDeployment,
+				Kind: mcpv1.WorkloadKindDeployment,
 			}, nil)
 			Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -465,7 +465,7 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAccepted)
@@ -516,15 +516,15 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			}
 			Expect(k8sClient.Create(ctx, dep)).To(Succeed())
 
-			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+			server := newTestBYOMCPServer(resourceName, &mcpv1.WorkloadReference{
 				Name: "expr-only-deploy",
-				Kind: mcpv1beta1.WorkloadKindDeployment,
+				Kind: mcpv1.WorkloadKindDeployment,
 			}, nil)
 			Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -542,7 +542,7 @@ var _ = Describe("MCPServer Controller - BYO Workload", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			acceptedCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAccepted)
@@ -593,15 +593,15 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			dep.Status.Conditions = []appsv1.DeploymentCondition{{Type: appsv1.DeploymentAvailable, Status: corev1.ConditionFalse, Message: "waiting for replicas"}}
 			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
 
-			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+			server := newTestBYOMCPServer(resourceName, &mcpv1.WorkloadReference{
 				Name: "not-ready-deploy",
-				Kind: mcpv1beta1.WorkloadKindDeployment,
+				Kind: mcpv1.WorkloadKindDeployment,
 			}, nil)
 			Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -623,7 +623,7 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
@@ -667,15 +667,15 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			dep.Status.Replicas = 0
 			Expect(k8sClient.Status().Update(ctx, dep)).To(Succeed())
 
-			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+			server := newTestBYOMCPServer(resourceName, &mcpv1.WorkloadReference{
 				Name: "zero-scale-deploy",
-				Kind: mcpv1beta1.WorkloadKindDeployment,
+				Kind: mcpv1.WorkloadKindDeployment,
 			}, nil)
 			Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -697,7 +697,7 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
@@ -739,15 +739,15 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			ds.Status.ObservedGeneration = ds.Generation
 			Expect(k8sClient.Status().Update(ctx, ds)).To(Succeed())
 
-			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+			server := newTestBYOMCPServer(resourceName, &mcpv1.WorkloadReference{
 				Name: "init-ds",
-				Kind: mcpv1beta1.WorkloadKindDaemonSet,
+				Kind: mcpv1.WorkloadKindDaemonSet,
 			}, nil)
 			Expect(k8sClient.Create(ctx, server)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -769,7 +769,7 @@ var _ = Describe("MCPServer Controller - BYO not-ready workload", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			availableCondition := meta.FindStatusCondition(mcpServer.Status.Conditions, ConditionTypeAvailable)
@@ -832,10 +832,10 @@ var _ = Describe("MCPServer Controller - BYO Combined", func() {
 			}
 			Expect(k8sClient.Create(ctx, svc)).To(Succeed())
 
-			server := newTestBYOMCPServer(resourceName, &mcpv1beta1.WorkloadReference{
+			server := newTestBYOMCPServer(resourceName, &mcpv1.WorkloadReference{
 				Name: "combined-deploy",
-				Kind: mcpv1beta1.WorkloadKindDeployment,
-			}, &mcpv1beta1.ServiceReference{
+				Kind: mcpv1.WorkloadKindDeployment,
+			}, &mcpv1.ServiceReference{
 				Name: "combined-svc",
 			})
 			server.Spec.Config.Port = 0
@@ -844,7 +844,7 @@ var _ = Describe("MCPServer Controller - BYO Combined", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -874,7 +874,7 @@ var _ = Describe("MCPServer Controller - BYO Combined", func() {
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, operatorSvc)
 			Expect(errors.IsNotFound(err)).To(BeTrue(), "no operator-managed Service should be created")
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			Expect(mcpServer.Status.WorkloadName).To(Equal("Deployment/combined-deploy"))
@@ -899,17 +899,17 @@ var _ = Describe("MCPServer Controller - BYO Combined", func() {
 		}
 
 		BeforeEach(func() {
-			server := &mcpv1beta1.MCPServer{
+			server := &mcpv1.MCPServer{
 				Name:      resourceName,
 				Namespace: "default",
-				Spec: mcpv1beta1.MCPServerSpec{
-					Source: mcpv1beta1.Source{
-						Type: mcpv1beta1.SourceTypeContainerImage,
-						ContainerImage: &mcpv1beta1.ContainerImageSource{
+				Spec: mcpv1.MCPServerSpec{
+					Source: mcpv1.Source{
+						Type: mcpv1.SourceTypeContainerImage,
+						ContainerImage: &mcpv1.ContainerImageSource{
 							Ref: "docker.io/library/compat-image:v1",
 						},
 					},
-					Config: mcpv1beta1.ServerConfig{
+					Config: mcpv1.ServerConfig{
 						Port: 8080,
 					},
 				},
@@ -918,7 +918,7 @@ var _ = Describe("MCPServer Controller - BYO Combined", func() {
 		})
 
 		AfterEach(func() {
-			resource := &mcpv1beta1.MCPServer{}
+			resource := &mcpv1.MCPServer{}
 			if err := k8sClient.Get(ctx, typeNamespacedName, resource); err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
@@ -947,7 +947,7 @@ var _ = Describe("MCPServer Controller - BYO Combined", func() {
 			svc := &corev1.Service{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, svc)).To(Succeed())
 
-			mcpServer := &mcpv1beta1.MCPServer{}
+			mcpServer := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, mcpServer)).To(Succeed())
 
 			Expect(mcpServer.Status.DeploymentName).To(Equal(resourceName))

@@ -23,14 +23,14 @@ import (
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 func auditLog(ctx context.Context) logr.Logger {
 	return log.FromContext(ctx).WithName("audit")
 }
 
-func auditFields(mcpServer *mcpv1beta1.MCPServer) []any {
+func auditFields(mcpServer *mcpv1.MCPServer) []any {
 	return []any{
 		"mcpserver", mcpServer.Name,
 		keyNamespace, mcpServer.Namespace,
@@ -39,7 +39,7 @@ func auditFields(mcpServer *mcpv1beta1.MCPServer) []any {
 	}
 }
 
-func auditHandshakeAttempt(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, url string) {
+func auditHandshakeAttempt(ctx context.Context, mcpServer *mcpv1.MCPServer, url string) {
 	auditLog(ctx).Info("audit",
 		append(auditFields(mcpServer),
 			"operation", "HandshakeAttempt",
@@ -48,7 +48,7 @@ func auditHandshakeAttempt(ctx context.Context, mcpServer *mcpv1beta1.MCPServer,
 	)
 }
 
-func auditHandshakeSuccess(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, url string, info *mcpv1beta1.MCPServerInfo, duration time.Duration) {
+func auditHandshakeSuccess(ctx context.Context, mcpServer *mcpv1.MCPServer, url string, info *mcpv1.MCPServerInfo, duration time.Duration) {
 	fields := append(auditFields(mcpServer),
 		"operation", "HandshakeSuccess",
 		"url", url,
@@ -64,7 +64,7 @@ func auditHandshakeSuccess(ctx context.Context, mcpServer *mcpv1beta1.MCPServer,
 	auditLog(ctx).Info("audit", fields...)
 }
 
-func auditHandshakeFailed(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, url string, err error, duration time.Duration) {
+func auditHandshakeFailed(ctx context.Context, mcpServer *mcpv1.MCPServer, url string, err error, duration time.Duration) {
 	auditLog(ctx).Info("audit",
 		append(auditFields(mcpServer),
 			"operation", "HandshakeFailed",
@@ -75,7 +75,7 @@ func auditHandshakeFailed(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, 
 	)
 }
 
-func auditHandshakeAuthSkip(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, url string, err error) {
+func auditHandshakeAuthSkip(ctx context.Context, mcpServer *mcpv1.MCPServer, url string, err error) {
 	auditLog(ctx).Info("audit",
 		append(auditFields(mcpServer),
 			"operation", "HandshakeAuthSkip",
@@ -85,7 +85,7 @@ func auditHandshakeAuthSkip(ctx context.Context, mcpServer *mcpv1beta1.MCPServer
 	)
 }
 
-func auditHandshakeRetriesExhausted(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, retries int, max int) {
+func auditHandshakeRetriesExhausted(ctx context.Context, mcpServer *mcpv1.MCPServer, retries int, max int) {
 	auditLog(ctx).Info("audit",
 		append(auditFields(mcpServer),
 			"operation", "HandshakeRetriesExhausted",
@@ -95,7 +95,7 @@ func auditHandshakeRetriesExhausted(ctx context.Context, mcpServer *mcpv1beta1.M
 	)
 }
 
-func auditCapabilityChange(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, diff string) {
+func auditCapabilityChange(ctx context.Context, mcpServer *mcpv1.MCPServer, diff string) {
 	auditLog(ctx).Info("audit",
 		append(auditFields(mcpServer),
 			"operation", "CapabilityChange",
@@ -104,7 +104,7 @@ func auditCapabilityChange(ctx context.Context, mcpServer *mcpv1beta1.MCPServer,
 	)
 }
 
-func auditNetworkPolicyCreated(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, netpolName string, hasIngressRestriction bool, hasEgressRestriction bool) {
+func auditNetworkPolicyCreated(ctx context.Context, mcpServer *mcpv1.MCPServer, netpolName string, hasIngressRestriction bool, hasEgressRestriction bool) {
 	auditLog(ctx).Info("audit",
 		append(auditFields(mcpServer),
 			"operation", "NetworkPolicyCreated",
@@ -115,7 +115,7 @@ func auditNetworkPolicyCreated(ctx context.Context, mcpServer *mcpv1beta1.MCPSer
 	)
 }
 
-func auditNetworkPolicyUpdated(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, netpolName string) {
+func auditNetworkPolicyUpdated(ctx context.Context, mcpServer *mcpv1.MCPServer, netpolName string) {
 	auditLog(ctx).Info("audit",
 		append(auditFields(mcpServer),
 			"operation", "NetworkPolicyUpdated",
@@ -124,7 +124,7 @@ func auditNetworkPolicyUpdated(ctx context.Context, mcpServer *mcpv1beta1.MCPSer
 	)
 }
 
-func auditConfigurationRejected(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, reason string, message string) {
+func auditConfigurationRejected(ctx context.Context, mcpServer *mcpv1.MCPServer, reason string, message string) {
 	auditLog(ctx).Info("audit",
 		append(auditFields(mcpServer),
 			"operation", "ConfigurationRejected",
@@ -134,7 +134,7 @@ func auditConfigurationRejected(ctx context.Context, mcpServer *mcpv1beta1.MCPSe
 	)
 }
 
-func auditOwnershipViolation(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, resource string, resourceKind string, existingOwner string) {
+func auditOwnershipViolation(ctx context.Context, mcpServer *mcpv1.MCPServer, resource string, resourceKind string, existingOwner string) {
 	auditLog(ctx).Info("audit",
 		append(auditFields(mcpServer),
 			"operation", "OwnershipViolation",

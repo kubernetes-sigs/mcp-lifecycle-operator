@@ -30,7 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 // ValidationError represents a permanent configuration validation error.
@@ -49,7 +49,7 @@ func (e *ValidationError) Error() string {
 // ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateConfigAndResolveWorkload(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) (workload client.Object, err error) {
 	if mcpServer.Spec.WorkloadRef != nil {
 		workload, err = r.validateWorkloadRef(ctx, mcpServer)
@@ -196,12 +196,12 @@ func (r *MCPServerReconciler) validateCABundleSecret(
 // Configuration errors are ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateStorageMount(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
-	storage mcpv1beta1.StorageMount,
+	mcpServer *mcpv1.MCPServer,
+	storage mcpv1.StorageMount,
 	index int,
 ) error {
 	switch storage.Source.Type {
-	case mcpv1beta1.StorageTypeConfigMap:
+	case mcpv1.StorageTypeConfigMap:
 		if storage.Source.ConfigMap == nil {
 			return &ValidationError{
 				Reason:  ReasonInvalid,
@@ -221,7 +221,7 @@ func (r *MCPServerReconciler) validateStorageMount(
 		return r.validateReferencedConfigMap(ctx, mcpServer.Namespace, storage.Source.ConfigMap.Name,
 			fmt.Sprintf("ConfigMap '%s'", storage.Source.ConfigMap.Name))
 
-	case mcpv1beta1.StorageTypeSecret:
+	case mcpv1.StorageTypeSecret:
 		if storage.Source.Secret == nil {
 			return &ValidationError{
 				Reason:  ReasonInvalid,
@@ -241,7 +241,7 @@ func (r *MCPServerReconciler) validateStorageMount(
 		return r.validateReferencedSecret(ctx, mcpServer.Namespace, storage.Source.Secret.SecretName,
 			fmt.Sprintf("Secret '%s'", storage.Source.Secret.SecretName))
 
-	case mcpv1beta1.StorageTypeEmptyDir:
+	case mcpv1.StorageTypeEmptyDir:
 		// Validate EmptyDir configuration is present
 		if storage.Source.EmptyDir == nil {
 			return &ValidationError{
@@ -264,7 +264,7 @@ func (r *MCPServerReconciler) validateStorageMount(
 // Configuration errors are ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateEnvFrom(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	envFrom corev1.EnvFromSource,
 	index int,
 ) error {
@@ -291,7 +291,7 @@ func (r *MCPServerReconciler) validateEnvFrom(
 // Configuration errors are ValidationErrors; transient API failures are returned for retry.
 func (r *MCPServerReconciler) validateEnvValueFrom(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	env corev1.EnvVar,
 	index int,
 ) error {
@@ -342,7 +342,7 @@ func classifyAPIError(resourceDesc string, namespace string, err error) error {
 // snapshot used for its Service selector and availability during reconciliation.
 func (r *MCPServerReconciler) validateWorkloadRef(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) (client.Object, error) {
 	ref := mcpServer.Spec.WorkloadRef
 	desc := fmt.Sprintf("referenced %s %q", ref.Kind, ref.Name)
@@ -370,7 +370,7 @@ func (r *MCPServerReconciler) validateWorkloadRef(
 // validateServiceRef checks that the referenced BYO Service exists.
 func (r *MCPServerReconciler) validateServiceRef(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) error {
 	ref := mcpServer.Spec.ServiceRef
 	svc := &corev1.Service{}

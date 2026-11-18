@@ -29,9 +29,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
+	acv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1/applyconfiguration/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
-	acv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1/applyconfiguration/api/v1beta1"
 )
 
 const gatewayBindingSuffix = "-gateway-binding"
@@ -47,7 +47,7 @@ func gatewayBindingName(mcpServerName string) string {
 
 func (r *MCPServerReconciler) cleanupGatewayBindingIfRemoved(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) {
 	if mcpServer.Spec.Gateway != nil {
 		return
@@ -69,7 +69,7 @@ func (r *MCPServerReconciler) cleanupGatewayBindingIfRemoved(
 
 func (r *MCPServerReconciler) reconcileGatewayBinding(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -140,7 +140,7 @@ func (r *MCPServerReconciler) reconcileGatewayBinding(
 
 type gatewayStatus struct {
 	condition      metav1.Condition
-	bindingStatus  *mcpv1beta1.GatewayBindingStatus
+	bindingStatus  *mcpv1.GatewayBindingStatus
 	gatewayAddress string
 	err            error
 }
@@ -150,7 +150,7 @@ type gatewayStatus struct {
 // gateway provides one. Returns the (possibly updated) availableCondition and
 // mcpURL. Extracting this from Reconcile keeps cyclomatic complexity down.
 func (r *MCPServerReconciler) applyGatewayStatus(
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	gwStatus *gatewayStatus,
 	availableCondition metav1.Condition,
 	mcpURL string,
@@ -182,7 +182,7 @@ func (r *MCPServerReconciler) applyGatewayStatus(
 // applyGatewayStatusToAC sets the gateway-related conditions and binding
 // status on the apply-configuration status builder.
 func applyGatewayStatusToAC(
-	status *acv1beta1.MCPServerStatusApplyConfiguration,
+	status *acv1.MCPServerStatusApplyConfiguration,
 	gwStatus *gatewayStatus,
 	acceptedCondition, availableCondition, verifiedCondition metav1.Condition,
 ) {
@@ -202,7 +202,7 @@ func applyGatewayStatusToAC(
 	)
 	if gwStatus.bindingStatus != nil {
 		status.WithGatewayBinding(
-			acv1beta1.GatewayBindingStatus().
+			acv1.GatewayBindingStatus().
 				WithName(gwStatus.bindingStatus.Name).
 				WithProvider(gwStatus.bindingStatus.Provider),
 		)
@@ -211,7 +211,7 @@ func applyGatewayStatusToAC(
 
 func (r *MCPServerReconciler) reconcileGatewayCondition(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) *gatewayStatus {
 	if mcpServer.Spec.Gateway == nil {
 		return nil
@@ -246,7 +246,7 @@ func (r *MCPServerReconciler) reconcileGatewayCondition(
 		}
 	}
 
-	bs := &mcpv1beta1.GatewayBindingStatus{
+	bs := &mcpv1.GatewayBindingStatus{
 		Name:     binding.Name,
 		Provider: binding.Spec.Provider,
 	}

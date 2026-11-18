@@ -46,9 +46,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
+	acv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1/applyconfiguration/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
-	acv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1/applyconfiguration/api/v1beta1"
 )
 
 const (
@@ -199,7 +199,7 @@ type MCPServerReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
 	Recorder  events.EventRecorder
-	MCPDialer func(ctx context.Context, url string, transport *http.Transport) (*mcpv1beta1.MCPServerInfo, error) // nil = use real MCP handshake
+	MCPDialer func(ctx context.Context, url string, transport *http.Transport) (*mcpv1.MCPServerInfo, error) // nil = use real MCP handshake
 	APIReader client.Reader
 	// ClusterDomain is the DNS domain used for in-cluster Service names. When
 	// empty, DefaultClusterDomain is used for backwards compatibility.
@@ -288,7 +288,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	logger := log.FromContext(ctx)
 
 	// Fetch the MCPServer instance
-	mcpServer := &mcpv1beta1.MCPServer{}
+	mcpServer := &mcpv1.MCPServer{}
 	if err := r.Get(ctx, req.NamespacedName, mcpServer); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("MCPServer resource not found, ignoring since object must be deleted")
@@ -423,8 +423,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return r.reconcileEndpoint(ctx, mcpServer, acceptedCondition, availableCondition, status, endpoint, &networkPolicyCondition)
 }
 
-func serverInfoToAC(info *mcpv1beta1.MCPServerInfo) *acv1beta1.MCPServerInfoApplyConfiguration {
-	si := acv1beta1.MCPServerInfo()
+func serverInfoToAC(info *mcpv1.MCPServerInfo) *acv1.MCPServerInfoApplyConfiguration {
+	si := acv1.MCPServerInfo()
 	if info.Name != "" {
 		si = si.WithName(info.Name)
 	}
@@ -438,11 +438,10 @@ func serverInfoToAC(info *mcpv1beta1.MCPServerInfo) *acv1beta1.MCPServerInfoAppl
 		si = si.WithInstructions(info.Instructions)
 	}
 	if info.Capabilities != nil {
-		si = si.WithCapabilities(acv1beta1.MCPServerCapabilities().
+		si = si.WithCapabilities(acv1.MCPServerCapabilities().
 			WithTools(info.Capabilities.Tools).
 			WithResources(info.Capabilities.Resources).
 			WithPrompts(info.Capabilities.Prompts).
-			WithLogging(info.Capabilities.Logging). //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 			WithCompletions(info.Capabilities.Completions))
 	}
 	return si
@@ -451,7 +450,7 @@ func serverInfoToAC(info *mcpv1beta1.MCPServerInfo) *acv1beta1.MCPServerInfoAppl
 // shouldSkipReconciliation returns true when the MCPServer is being deleted or
 // its namespace is terminating / already gone. This lets Reconcile return early
 // and avoid noisy errors from resource creation in a dying namespace (see #300).
-func (r *MCPServerReconciler) shouldSkipReconciliation(ctx context.Context, mcpServer *mcpv1beta1.MCPServer, namespace string) (bool, error) {
+func (r *MCPServerReconciler) shouldSkipReconciliation(ctx context.Context, mcpServer *mcpv1.MCPServer, namespace string) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	if mcpServer.DeletionTimestamp != nil {
@@ -480,7 +479,7 @@ func (r *MCPServerReconciler) shouldSkipReconciliation(ctx context.Context, mcpS
 // in check.
 func (r *MCPServerReconciler) handleDeploymentReconcileError(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	acceptedCondition metav1.Condition,
 	err error,
 ) (ctrl.Result, error) {
@@ -530,7 +529,7 @@ func (r *MCPServerReconciler) handleDeploymentReconcileError(
 
 	if mcpServer.Status.GatewayBinding != nil {
 		status.WithGatewayBinding(
-			acv1beta1.GatewayBindingStatus().
+			acv1.GatewayBindingStatus().
 				WithName(mcpServer.Status.GatewayBinding.Name).
 				WithProvider(mcpServer.Status.GatewayBinding.Provider),
 		)
@@ -548,7 +547,7 @@ func (r *MCPServerReconciler) handleDeploymentReconcileError(
 
 func (r *MCPServerReconciler) reconcilePermanentValidationError(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	validationErr *ValidationError,
 ) error {
 	logger := log.FromContext(ctx)
@@ -594,7 +593,7 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 
 	if mcpServer.Status.GatewayBinding != nil {
 		status.WithGatewayBinding(
-			acv1beta1.GatewayBindingStatus().
+			acv1.GatewayBindingStatus().
 				WithName(mcpServer.Status.GatewayBinding.Name).
 				WithProvider(mcpServer.Status.GatewayBinding.Provider),
 		)
@@ -618,7 +617,7 @@ func (r *MCPServerReconciler) reconcilePermanentValidationError(
 	return nil
 }
 
-func (r *MCPServerReconciler) emitConfigurationInvalid(mcpServer *mcpv1beta1.MCPServer, validationErr *ValidationError) {
+func (r *MCPServerReconciler) emitConfigurationInvalid(mcpServer *mcpv1.MCPServer, validationErr *ValidationError) {
 	if r.Recorder == nil {
 		return
 	}
@@ -626,7 +625,7 @@ func (r *MCPServerReconciler) emitConfigurationInvalid(mcpServer *mcpv1beta1.MCP
 		"MCPServer %s: %s", mcpServer.Name, validationErr.Message)
 }
 
-func (r *MCPServerReconciler) emitConfigurationAccepted(mcpServer *mcpv1beta1.MCPServer) {
+func (r *MCPServerReconciler) emitConfigurationAccepted(mcpServer *mcpv1.MCPServer) {
 	if r.Recorder == nil {
 		return
 	}
@@ -634,7 +633,7 @@ func (r *MCPServerReconciler) emitConfigurationAccepted(mcpServer *mcpv1beta1.MC
 		"MCPServer %s configuration is valid; Accepted=True", mcpServer.Name)
 }
 
-func (r *MCPServerReconciler) emitServerReady(mcpServer *mcpv1beta1.MCPServer) {
+func (r *MCPServerReconciler) emitServerReady(mcpServer *mcpv1.MCPServer) {
 	if r.Recorder == nil {
 		return
 	}
@@ -644,7 +643,7 @@ func (r *MCPServerReconciler) emitServerReady(mcpServer *mcpv1beta1.MCPServer) {
 // emitInsecureTLSWarning records a Warning event when a user has opted into
 // disabling TLS certificate verification via spec.transport.tls.insecureSkipVerify.
 // This makes the intentionally insecure configuration visible in `kubectl describe`.
-func (r *MCPServerReconciler) emitInsecureTLSWarning(mcpServer *mcpv1beta1.MCPServer) {
+func (r *MCPServerReconciler) emitInsecureTLSWarning(mcpServer *mcpv1.MCPServer) {
 	if r.Recorder == nil {
 		return
 	}
@@ -659,7 +658,7 @@ func (r *MCPServerReconciler) emitInsecureTLSWarning(mcpServer *mcpv1beta1.MCPSe
 // confirmed because the unauthenticated operator cannot complete the handshake.
 // Surfacing this as a Warning makes the unverified-but-published state visible in
 // `kubectl describe`, not just the audit log.
-func (r *MCPServerReconciler) emitHandshakeAuthSkip(mcpServer *mcpv1beta1.MCPServer, mcpURL string) {
+func (r *MCPServerReconciler) emitHandshakeAuthSkip(mcpServer *mcpv1.MCPServer, mcpURL string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -669,7 +668,7 @@ func (r *MCPServerReconciler) emitHandshakeAuthSkip(mcpServer *mcpv1beta1.MCPSer
 }
 
 func (r *MCPServerReconciler) maybeEmitWorkloadUnavailableEvent(
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	availableCondition metav1.Condition,
 ) {
 	if availableCondition.Status == metav1.ConditionFalse &&
@@ -691,17 +690,17 @@ func (r *MCPServerReconciler) maybeEmitWorkloadUnavailableEvent(
 // auth-protected servers would never publish an address. Verification only runs
 // when the workload is Available, so Verified=True implies Available=True.
 func withAddressWhenVerified(
-	status *acv1beta1.MCPServerStatusApplyConfiguration,
+	status *acv1.MCPServerStatusApplyConfiguration,
 	verifiedCondition metav1.Condition,
 	mcpURL string,
-) *acv1beta1.MCPServerStatusApplyConfiguration {
+) *acv1.MCPServerStatusApplyConfiguration {
 	if verifiedCondition.Status == metav1.ConditionTrue {
-		return status.WithAddress(acv1beta1.MCPServerAddress().WithURL(mcpURL))
+		return status.WithAddress(acv1.MCPServerAddress().WithURL(mcpURL))
 	}
 	return status
 }
 
-func (r *MCPServerReconciler) emitWorkloadUnavailable(mcpServer *mcpv1beta1.MCPServer, message string) {
+func (r *MCPServerReconciler) emitWorkloadUnavailable(mcpServer *mcpv1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -709,7 +708,7 @@ func (r *MCPServerReconciler) emitWorkloadUnavailable(mcpServer *mcpv1beta1.MCPS
 		"MCPServer %s: %s", mcpServer.Name, message)
 }
 
-func (r *MCPServerReconciler) emitServiceReconcileFailed(mcpServer *mcpv1beta1.MCPServer, message string) {
+func (r *MCPServerReconciler) emitServiceReconcileFailed(mcpServer *mcpv1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -722,7 +721,7 @@ type resourceFailureParams struct {
 	reason      string
 	resource    string
 	isDuplicate func([]metav1.Condition, string) bool
-	emitEvent   func(*mcpv1beta1.MCPServer, string)
+	emitEvent   func(*mcpv1.MCPServer, string)
 	// networkPolicyPosture, when non-nil, is written as the NetworkPolicy posture
 	// condition instead of carrying the last observed value forward. Set it only on
 	// failure paths that run after the NetworkPolicy has already been reconciled
@@ -732,8 +731,8 @@ type resourceFailureParams struct {
 
 func (r *MCPServerReconciler) handleResourceFailure(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
-	status *acv1beta1.MCPServerStatusApplyConfiguration,
+	mcpServer *mcpv1.MCPServer,
+	status *acv1.MCPServerStatusApplyConfiguration,
 	acceptedCondition metav1.Condition,
 	reconcileErr error,
 	params resourceFailureParams,
@@ -784,7 +783,7 @@ func (r *MCPServerReconciler) handleResourceFailure(
 
 	if mcpServer.Status.GatewayBinding != nil {
 		status.WithGatewayBinding(
-			acv1beta1.GatewayBindingStatus().
+			acv1.GatewayBindingStatus().
 				WithName(mcpServer.Status.GatewayBinding.Name).
 				WithProvider(mcpServer.Status.GatewayBinding.Provider),
 		)
@@ -800,7 +799,7 @@ func (r *MCPServerReconciler) handleResourceFailure(
 	return ctrl.Result{}, reconcileErr
 }
 
-func (r *MCPServerReconciler) emitNetworkPolicyReconcileFailed(mcpServer *mcpv1beta1.MCPServer, message string) {
+func (r *MCPServerReconciler) emitNetworkPolicyReconcileFailed(mcpServer *mcpv1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -808,7 +807,7 @@ func (r *MCPServerReconciler) emitNetworkPolicyReconcileFailed(mcpServer *mcpv1b
 		"MCPServer %s: %s", mcpServer.Name, message)
 }
 
-func (r *MCPServerReconciler) emitGatewayBindingReconcileFailed(mcpServer *mcpv1beta1.MCPServer, message string) {
+func (r *MCPServerReconciler) emitGatewayBindingReconcileFailed(mcpServer *mcpv1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -816,7 +815,7 @@ func (r *MCPServerReconciler) emitGatewayBindingReconcileFailed(mcpServer *mcpv1
 		"MCPServer %s: %s", mcpServer.Name, message)
 }
 
-func (r *MCPServerReconciler) emitMCPHandshakeFailed(mcpServer *mcpv1beta1.MCPServer, message string) {
+func (r *MCPServerReconciler) emitMCPHandshakeFailed(mcpServer *mcpv1.MCPServer, message string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -824,7 +823,7 @@ func (r *MCPServerReconciler) emitMCPHandshakeFailed(mcpServer *mcpv1beta1.MCPSe
 		"MCP handshake failed for MCPServer %s: %s", mcpServer.Name, message)
 }
 
-func (r *MCPServerReconciler) emitMCPHandshakeRetriesExhausted(mcpServer *mcpv1beta1.MCPServer, retryCount int32) {
+func (r *MCPServerReconciler) emitMCPHandshakeRetriesExhausted(mcpServer *mcpv1.MCPServer, retryCount int32) {
 	if r.Recorder == nil {
 		return
 	}
@@ -833,7 +832,7 @@ func (r *MCPServerReconciler) emitMCPHandshakeRetriesExhausted(mcpServer *mcpv1b
 		mcpServer.Name, retryCount)
 }
 
-func capabilityChangeMessage(mcpServer *mcpv1beta1.MCPServer, serverInfo *mcpv1beta1.MCPServerInfo) string {
+func capabilityChangeMessage(mcpServer *mcpv1.MCPServer, serverInfo *mcpv1.MCPServerInfo) string {
 	if serverInfo == nil || mcpServer.Status.ServerInfo == nil {
 		return ""
 	}
@@ -843,7 +842,7 @@ func capabilityChangeMessage(mcpServer *mcpv1beta1.MCPServer, serverInfo *mcpv1b
 	return capabilityDiffMessage(mcpServer.Status.ServerInfo.Capabilities, serverInfo.Capabilities)
 }
 
-func (r *MCPServerReconciler) emitCapabilityChangeDetected(mcpServer *mcpv1beta1.MCPServer, diff string) {
+func (r *MCPServerReconciler) emitCapabilityChangeDetected(mcpServer *mcpv1.MCPServer, diff string) {
 	if r.Recorder == nil {
 		return
 	}
@@ -853,11 +852,11 @@ func (r *MCPServerReconciler) emitCapabilityChangeDetected(mcpServer *mcpv1beta1
 
 func (r *MCPServerReconciler) applyStatus(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
-	status *acv1beta1.MCPServerStatusApplyConfiguration,
+	mcpServer *mcpv1.MCPServer,
+	status *acv1.MCPServerStatusApplyConfiguration,
 ) error {
 	return r.Status().Apply(ctx,
-		acv1beta1.MCPServer(mcpServer.Name, mcpServer.Namespace).WithStatus(status),
+		acv1.MCPServer(mcpServer.Name, mcpServer.Namespace).WithStatus(status),
 		client.FieldOwner(fieldManager),
 		client.ForceOwnership,
 	)
@@ -879,7 +878,7 @@ func (r *MCPServerReconciler) applyStatus(
 // freshly computed posture in freshPosture so the reported value matches the
 // applied policy instead of lagging until the next successful reconcile.
 func (r *MCPServerReconciler) appendPersistentConditions(
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	conditions []*v1ac.ConditionApplyConfiguration,
 	freshPosture *metav1.Condition,
 ) []*v1ac.ConditionApplyConfiguration {
@@ -904,7 +903,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Register ConfigMap index for efficient lookups
 	if err := mgr.GetFieldIndexer().IndexField(
 		ctx,
-		&mcpv1beta1.MCPServer{},
+		&mcpv1.MCPServer{},
 		configMapIndexKey,
 		extractConfigMapNames,
 	); err != nil {
@@ -914,7 +913,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Register Secret index for efficient lookups
 	if err := mgr.GetFieldIndexer().IndexField(
 		ctx,
-		&mcpv1beta1.MCPServer{},
+		&mcpv1.MCPServer{},
 		secretIndexKey,
 		extractSecretNames,
 	); err != nil {
@@ -924,7 +923,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Register workloadRef index for BYO workload lookups
 	if err := mgr.GetFieldIndexer().IndexField(
 		ctx,
-		&mcpv1beta1.MCPServer{},
+		&mcpv1.MCPServer{},
 		workloadRefIndexKey,
 		extractWorkloadRefNames,
 	); err != nil {
@@ -934,7 +933,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Register serviceRef index for BYO Service lookups
 	if err := mgr.GetFieldIndexer().IndexField(
 		ctx,
-		&mcpv1beta1.MCPServer{},
+		&mcpv1.MCPServer{},
 		serviceRefIndexKey,
 		extractServiceRefNames,
 	); err != nil {
@@ -942,7 +941,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&mcpv1beta1.MCPServer{}, builder.WithPredicates(predicate.Or(
+		For(&mcpv1.MCPServer{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
 			predicate.AnnotationChangedPredicate{},
 			predicate.LabelChangedPredicate{},

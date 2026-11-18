@@ -29,7 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 // applyConfigHash computes the config hash and sets it as a pod template
@@ -37,7 +37,7 @@ import (
 // to keep cyclomatic complexity in check.
 func (r *MCPServerReconciler) applyConfigHash(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	deployment *appsv1.Deployment,
 ) error {
 	configHash, err := r.computeConfigHash(ctx, mcpServer)
@@ -59,7 +59,7 @@ func (r *MCPServerReconciler) applyConfigHash(
 // Returns "" if no refs are listed or all referenced resources are not found.
 func (r *MCPServerReconciler) computeConfigHash(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 ) (string, error) {
 	configMapNames := extractConfigMapNames(mcpServer)
 	secretNames := extractPodSecretNames(mcpServer)
@@ -146,7 +146,7 @@ func (r *MCPServerReconciler) findMCPServersForResource(
 	indexKey string,
 ) []reconcile.Request {
 	logger := log.FromContext(ctx)
-	var mcpServers mcpv1beta1.MCPServerList
+	var mcpServers mcpv1.MCPServerList
 
 	// Use the index to find MCPServers that reference this resource
 	if err := r.List(ctx, &mcpServers,
@@ -194,7 +194,7 @@ func (r *MCPServerReconciler) findMCPServersForPod(ctx context.Context, pod clie
 
 // extractWorkloadRefNames returns the BYO workloadRef name for field indexing.
 func extractWorkloadRefNames(obj client.Object) []string {
-	mcpServer := obj.(*mcpv1beta1.MCPServer)
+	mcpServer := obj.(*mcpv1.MCPServer)
 	if mcpServer.Spec.WorkloadRef != nil {
 		return []string{mcpServer.Spec.WorkloadRef.Name}
 	}
@@ -203,7 +203,7 @@ func extractWorkloadRefNames(obj client.Object) []string {
 
 // extractServiceRefNames returns the BYO serviceRef name for field indexing.
 func extractServiceRefNames(obj client.Object) []string {
-	mcpServer := obj.(*mcpv1beta1.MCPServer)
+	mcpServer := obj.(*mcpv1.MCPServer)
 	if mcpServer.Spec.ServiceRef != nil {
 		return []string{mcpServer.Spec.ServiceRef.Name}
 	}
@@ -227,13 +227,13 @@ func (r *MCPServerReconciler) findMCPServersForBYOService(ctx context.Context, o
 // This returns both required and optional ConfigMap references, matching Kubernetes
 // semantics where optional resources are still used when available.
 func extractConfigMapNames(obj client.Object) []string {
-	mcpServer := obj.(*mcpv1beta1.MCPServer)
+	mcpServer := obj.(*mcpv1.MCPServer)
 	var configMaps []string
 	seen := make(map[string]bool)
 
 	// Extract from storage mounts
 	for _, storage := range mcpServer.Spec.Config.Storage {
-		if storage.Source.Type == mcpv1beta1.StorageTypeConfigMap &&
+		if storage.Source.Type == mcpv1.StorageTypeConfigMap &&
 			storage.Source.ConfigMap != nil {
 			name := storage.Source.ConfigMap.Name
 			if !seen[name] {
@@ -290,7 +290,7 @@ func extractSecretNames(obj client.Object) []string {
 		seen[s] = true
 	}
 
-	mcpServer := obj.(*mcpv1beta1.MCPServer)
+	mcpServer := obj.(*mcpv1.MCPServer)
 	if mcpServer.Spec.Transport != nil &&
 		mcpServer.Spec.Transport.TLS != nil &&
 		mcpServer.Spec.Transport.TLS.CABundleSecret != nil {
@@ -307,12 +307,12 @@ func extractSecretNames(obj client.Object) []string {
 // or references via env. Used for the deployment config hash so that CA
 // bundle rotation (an operator-only concern) does not roll pods.
 func extractPodSecretNames(obj client.Object) []string {
-	mcpServer := obj.(*mcpv1beta1.MCPServer)
+	mcpServer := obj.(*mcpv1.MCPServer)
 	var secrets []string
 	seen := make(map[string]bool)
 
 	for _, storage := range mcpServer.Spec.Config.Storage {
-		if storage.Source.Type == mcpv1beta1.StorageTypeSecret &&
+		if storage.Source.Type == mcpv1.StorageTypeSecret &&
 			storage.Source.Secret != nil {
 			name := storage.Source.Secret.SecretName
 			if !seen[name] {

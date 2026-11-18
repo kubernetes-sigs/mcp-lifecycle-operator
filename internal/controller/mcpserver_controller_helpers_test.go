@@ -27,58 +27,58 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 var _ = Describe("isSameGroupKind", func() {
 	It("should return true for same group and kind with v1beta1", func() {
 		ownerRef := &metav1.OwnerReference{
-			APIVersion: mcpv1beta1.GroupVersion.String(),
-			Kind:       mcpv1beta1.MCPServerKind,
+			APIVersion: mcpv1.GroupVersion.String(),
+			Kind:       mcpv1.MCPServerKind,
 			Name:       "test-server",
 			UID:        types.UID("test-uid"),
 		}
-		Expect(isSameGroupKind(ownerRef, mcpv1beta1.GroupVersion.Group, mcpv1beta1.MCPServerKind)).To(BeTrue())
+		Expect(isSameGroupKind(ownerRef, mcpv1.GroupVersion.Group, mcpv1.MCPServerKind)).To(BeTrue())
 	})
 
 	It("should return true for same group and kind with different version (v1alpha2)", func() {
 		ownerRef := &metav1.OwnerReference{
-			APIVersion: mcpv1beta1.GroupVersion.Group + "/v1alpha2",
-			Kind:       mcpv1beta1.MCPServerKind,
+			APIVersion: mcpv1.GroupVersion.Group + "/v1alpha2",
+			Kind:       mcpv1.MCPServerKind,
 			Name:       "test-server",
 			UID:        types.UID("test-uid"),
 		}
-		Expect(isSameGroupKind(ownerRef, mcpv1beta1.GroupVersion.Group, mcpv1beta1.MCPServerKind)).To(BeTrue())
+		Expect(isSameGroupKind(ownerRef, mcpv1.GroupVersion.Group, mcpv1.MCPServerKind)).To(BeTrue())
 	})
 
 	It("should return true for same group and kind with stable version (v1)", func() {
 		ownerRef := &metav1.OwnerReference{
-			APIVersion: mcpv1beta1.GroupVersion.Group + "/v1",
-			Kind:       mcpv1beta1.MCPServerKind,
+			APIVersion: mcpv1.GroupVersion.Group + "/v1",
+			Kind:       mcpv1.MCPServerKind,
 			Name:       "test-server",
 			UID:        types.UID("test-uid"),
 		}
-		Expect(isSameGroupKind(ownerRef, mcpv1beta1.GroupVersion.Group, mcpv1beta1.MCPServerKind)).To(BeTrue())
+		Expect(isSameGroupKind(ownerRef, mcpv1.GroupVersion.Group, mcpv1.MCPServerKind)).To(BeTrue())
 	})
 
 	It("should return false for different group with same kind", func() {
 		ownerRef := &metav1.OwnerReference{
 			APIVersion: "evil.io/v1",
-			Kind:       mcpv1beta1.MCPServerKind,
+			Kind:       mcpv1.MCPServerKind,
 			Name:       "test-server",
 			UID:        types.UID("test-uid"),
 		}
-		Expect(isSameGroupKind(ownerRef, mcpv1beta1.GroupVersion.Group, mcpv1beta1.MCPServerKind)).To(BeFalse())
+		Expect(isSameGroupKind(ownerRef, mcpv1.GroupVersion.Group, mcpv1.MCPServerKind)).To(BeFalse())
 	})
 
 	It("should return false for different kind with same group", func() {
 		ownerRef := &metav1.OwnerReference{
-			APIVersion: mcpv1beta1.GroupVersion.String(),
+			APIVersion: mcpv1.GroupVersion.String(),
 			Kind:       "OtherResource",
 			Name:       "test-server",
 			UID:        types.UID("test-uid"),
 		}
-		Expect(isSameGroupKind(ownerRef, mcpv1beta1.GroupVersion.Group, mcpv1beta1.MCPServerKind)).To(BeFalse())
+		Expect(isSameGroupKind(ownerRef, mcpv1.GroupVersion.Group, mcpv1.MCPServerKind)).To(BeFalse())
 	})
 
 	It("should return false for both different group and kind", func() {
@@ -88,17 +88,17 @@ var _ = Describe("isSameGroupKind", func() {
 			Name:       "test-server",
 			UID:        types.UID("test-uid"),
 		}
-		Expect(isSameGroupKind(ownerRef, mcpv1beta1.GroupVersion.Group, mcpv1beta1.MCPServerKind)).To(BeFalse())
+		Expect(isSameGroupKind(ownerRef, mcpv1.GroupVersion.Group, mcpv1.MCPServerKind)).To(BeFalse())
 	})
 
 	It("should return false for invalid APIVersion format", func() {
 		ownerRef := &metav1.OwnerReference{
 			APIVersion: "invalid/format/extra",
-			Kind:       mcpv1beta1.MCPServerKind,
+			Kind:       mcpv1.MCPServerKind,
 			Name:       "test-server",
 			UID:        types.UID("test-uid"),
 		}
-		Expect(isSameGroupKind(ownerRef, mcpv1beta1.GroupVersion.Group, mcpv1beta1.MCPServerKind)).To(BeFalse())
+		Expect(isSameGroupKind(ownerRef, mcpv1.GroupVersion.Group, mcpv1.MCPServerKind)).To(BeFalse())
 	})
 
 	It("should return true for core API resource with empty group", func() {
@@ -114,17 +114,17 @@ var _ = Describe("isSameGroupKind", func() {
 
 var _ = Describe("findMCPServersForResource", func() {
 	It("should return reconcile requests for MCPServers referencing a ConfigMap", func() {
-		mcpServer := &mcpv1beta1.MCPServer{
+		mcpServer := &mcpv1.MCPServer{
 			Name:      "test-server",
 			Namespace: "default",
-			Spec: mcpv1beta1.MCPServerSpec{
-				Source: mcpv1beta1.Source{
-					Type: mcpv1beta1.SourceTypeContainerImage,
-					ContainerImage: &mcpv1beta1.ContainerImageSource{
+			Spec: mcpv1.MCPServerSpec{
+				Source: mcpv1.Source{
+					Type: mcpv1.SourceTypeContainerImage,
+					ContainerImage: &mcpv1.ContainerImageSource{
 						Ref: "test:latest",
 					},
 				},
-				Config: mcpv1beta1.ServerConfig{
+				Config: mcpv1.ServerConfig{
 					Port: 8080,
 					EnvFrom: []corev1.EnvFromSource{
 						{
@@ -140,7 +140,7 @@ var _ = Describe("findMCPServersForResource", func() {
 		fakeClient := fake.NewClientBuilder().
 			WithScheme(k8sClient.Scheme()).
 			WithObjects(mcpServer).
-			WithIndex(&mcpv1beta1.MCPServer{}, configMapIndexKey, extractConfigMapNames).
+			WithIndex(&mcpv1.MCPServer{}, configMapIndexKey, extractConfigMapNames).
 			Build()
 
 		r := &MCPServerReconciler{Client: fakeClient, Scheme: k8sClient.Scheme(), APIReader: fakeClient}
@@ -156,17 +156,17 @@ var _ = Describe("findMCPServersForResource", func() {
 	})
 
 	It("should return reconcile requests for MCPServers referencing a Secret", func() {
-		mcpServer := &mcpv1beta1.MCPServer{
+		mcpServer := &mcpv1.MCPServer{
 			Name:      "test-server",
 			Namespace: "default",
-			Spec: mcpv1beta1.MCPServerSpec{
-				Source: mcpv1beta1.Source{
-					Type: mcpv1beta1.SourceTypeContainerImage,
-					ContainerImage: &mcpv1beta1.ContainerImageSource{
+			Spec: mcpv1.MCPServerSpec{
+				Source: mcpv1.Source{
+					Type: mcpv1.SourceTypeContainerImage,
+					ContainerImage: &mcpv1.ContainerImageSource{
 						Ref: "test:latest",
 					},
 				},
-				Config: mcpv1beta1.ServerConfig{
+				Config: mcpv1.ServerConfig{
 					Port: 8080,
 					EnvFrom: []corev1.EnvFromSource{
 						{
@@ -182,7 +182,7 @@ var _ = Describe("findMCPServersForResource", func() {
 		fakeClient := fake.NewClientBuilder().
 			WithScheme(k8sClient.Scheme()).
 			WithObjects(mcpServer).
-			WithIndex(&mcpv1beta1.MCPServer{}, secretIndexKey, extractSecretNames).
+			WithIndex(&mcpv1.MCPServer{}, secretIndexKey, extractSecretNames).
 			Build()
 
 		r := &MCPServerReconciler{Client: fakeClient, Scheme: k8sClient.Scheme(), APIReader: fakeClient}
@@ -200,7 +200,7 @@ var _ = Describe("findMCPServersForResource", func() {
 	It("should return empty list when no MCPServers reference the resource", func() {
 		fakeClient := fake.NewClientBuilder().
 			WithScheme(k8sClient.Scheme()).
-			WithIndex(&mcpv1beta1.MCPServer{}, configMapIndexKey, extractConfigMapNames).
+			WithIndex(&mcpv1.MCPServer{}, configMapIndexKey, extractConfigMapNames).
 			Build()
 
 		r := &MCPServerReconciler{Client: fakeClient, Scheme: k8sClient.Scheme(), APIReader: fakeClient}
@@ -232,13 +232,13 @@ var _ = Describe("findMCPServersForResource", func() {
 var _ = Describe("ConfigMap/Secret index extractors", func() {
 	Context("extractConfigMapNames", func() {
 		It("should extract ConfigMap names from storage mounts", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
-						Storage: []mcpv1beta1.StorageMount{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
+						Storage: []mcpv1.StorageMount{
 							{
-								Source: mcpv1beta1.StorageSource{
-									Type: mcpv1beta1.StorageTypeConfigMap,
+								Source: mcpv1.StorageSource{
+									Type: mcpv1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
 										Name: "my-config",
 									},
@@ -254,9 +254,9 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should extract ConfigMap names from envFrom", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								ConfigMapRef: &corev1.ConfigMapEnvSource{
@@ -273,9 +273,9 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should extract ConfigMap names from env valueFrom", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
 						Env: []corev1.EnvVar{
 							{
 								Name: "MY_VAR",
@@ -296,13 +296,13 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should extract and deduplicate ConfigMap names from multiple locations", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
-						Storage: []mcpv1beta1.StorageMount{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
+						Storage: []mcpv1.StorageMount{
 							{
-								Source: mcpv1beta1.StorageSource{
-									Type: mcpv1beta1.StorageTypeConfigMap,
+								Source: mcpv1.StorageSource{
+									Type: mcpv1.StorageTypeConfigMap,
 									ConfigMap: &corev1.ConfigMapVolumeSource{
 										Name: "config-a",
 									},
@@ -343,9 +343,9 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should extract the gateway ConfigRef so gateway ConfigMap changes trigger re-reconcile", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Gateway: &mcpv1beta1.GatewaySpec{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Gateway: &mcpv1.GatewaySpec{
 						Provider:  "httproute",
 						ConfigRef: "gw-config",
 					},
@@ -357,9 +357,9 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should not duplicate the gateway ConfigRef when it also appears elsewhere", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								ConfigMapRef: &corev1.ConfigMapEnvSource{
@@ -368,7 +368,7 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 							},
 						},
 					},
-					Gateway: &mcpv1beta1.GatewaySpec{
+					Gateway: &mcpv1.GatewaySpec{
 						Provider:  "httproute",
 						ConfigRef: "shared-config",
 					},
@@ -380,9 +380,9 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should return empty slice when no ConfigMaps are referenced", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
 						Port: 8080,
 					},
 				},
@@ -395,13 +395,13 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 
 	Context("extractSecretNames", func() {
 		It("should extract Secret names from storage mounts", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
-						Storage: []mcpv1beta1.StorageMount{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
+						Storage: []mcpv1.StorageMount{
 							{
-								Source: mcpv1beta1.StorageSource{
-									Type: mcpv1beta1.StorageTypeSecret,
+								Source: mcpv1.StorageSource{
+									Type: mcpv1.StorageTypeSecret,
 									Secret: &corev1.SecretVolumeSource{
 										SecretName: "my-secret",
 									},
@@ -417,9 +417,9 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should extract Secret names from envFrom", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
 						EnvFrom: []corev1.EnvFromSource{
 							{
 								SecretRef: &corev1.SecretEnvSource{
@@ -436,9 +436,9 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should extract Secret names from env valueFrom", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
 						Env: []corev1.EnvVar{
 							{
 								Name: "MY_VAR",
@@ -459,13 +459,13 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should extract and deduplicate Secret names from multiple locations", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
-						Storage: []mcpv1beta1.StorageMount{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
+						Storage: []mcpv1.StorageMount{
 							{
-								Source: mcpv1beta1.StorageSource{
-									Type: mcpv1beta1.StorageTypeSecret,
+								Source: mcpv1.StorageSource{
+									Type: mcpv1.StorageTypeSecret,
 									Secret: &corev1.SecretVolumeSource{
 										SecretName: "secret-a",
 									},
@@ -506,9 +506,9 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should return empty slice when no Secrets are referenced", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
 						Port: 8080,
 					},
 				},
@@ -519,15 +519,15 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should include TLS CA bundle Secret", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
 						Port: 8080,
 					},
-					Transport: &mcpv1beta1.TransportConfig{
-						TLS: &mcpv1beta1.TLSClientConfig{
+					Transport: &mcpv1.TransportConfig{
+						TLS: &mcpv1.TLSClientConfig{
 							Enabled: true,
-							CABundleSecret: &mcpv1beta1.SecretReference{
+							CABundleSecret: &mcpv1.SecretReference{
 								Name: "my-ca",
 							},
 						},
@@ -540,9 +540,9 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 		})
 
 		It("should deduplicate TLS CA Secret with other Secret references", func() {
-			mcpServer := &mcpv1beta1.MCPServer{
-				Spec: mcpv1beta1.MCPServerSpec{
-					Config: mcpv1beta1.ServerConfig{
+			mcpServer := &mcpv1.MCPServer{
+				Spec: mcpv1.MCPServerSpec{
+					Config: mcpv1.ServerConfig{
 						Port: 8080,
 						EnvFrom: []corev1.EnvFromSource{
 							{
@@ -552,10 +552,10 @@ var _ = Describe("ConfigMap/Secret index extractors", func() {
 							},
 						},
 					},
-					Transport: &mcpv1beta1.TransportConfig{
-						TLS: &mcpv1beta1.TLSClientConfig{
+					Transport: &mcpv1.TransportConfig{
+						TLS: &mcpv1.TLSClientConfig{
 							Enabled: true,
-							CABundleSecret: &mcpv1beta1.SecretReference{
+							CABundleSecret: &mcpv1.SecretReference{
 								Name: "shared-secret",
 							},
 						},

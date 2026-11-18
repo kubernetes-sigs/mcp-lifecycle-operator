@@ -28,17 +28,17 @@ import (
 	v1ac "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/utils/ptr"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 // postureTestServer builds a minimal MCPServer with the given network config.
 // createNetworkPolicy only reads Name, Namespace, Config.Port and Network, so a
 // full source/image spec is not needed here.
-func postureTestServer(name string, network *mcpv1beta1.NetworkConfig) *mcpv1beta1.MCPServer {
-	return &mcpv1beta1.MCPServer{
+func postureTestServer(name string, network *mcpv1.NetworkConfig) *mcpv1.MCPServer {
+	return &mcpv1.MCPServer{
 		Name: name, Namespace: "default",
-		Spec: mcpv1beta1.MCPServerSpec{
-			Config:  mcpv1beta1.ServerConfig{Port: 8080},
+		Spec: mcpv1.MCPServerSpec{
+			Config:  mcpv1.ServerConfig{Port: 8080},
 			Network: network,
 		},
 	}
@@ -56,7 +56,7 @@ func TestNetworkPolicyPostureCondition(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		network        *mcpv1beta1.NetworkConfig
+		network        *mcpv1.NetworkConfig
 		wantStatus     metav1.ConditionStatus
 		wantReason     string
 		wantMsgKeyword string // substring that must appear so an admin sees the open direction
@@ -64,21 +64,21 @@ func TestNetworkPolicyPostureCondition(t *testing.T) {
 	}{
 		{
 			name:           "both restricted",
-			network:        &mcpv1beta1.NetworkConfig{IngressFrom: restrictedIngress, EgressTo: restrictedEgress},
+			network:        &mcpv1.NetworkConfig{IngressFrom: restrictedIngress, EgressTo: restrictedEgress},
 			wantStatus:     metav1.ConditionTrue,
 			wantReason:     ReasonNetworkPolicyRestricted,
 			wantMsgKeyword: "restricts",
 		},
 		{
 			name:           "ingress restricted, egress open",
-			network:        &mcpv1beta1.NetworkConfig{IngressFrom: restrictedIngress},
+			network:        &mcpv1.NetworkConfig{IngressFrom: restrictedIngress},
 			wantStatus:     metav1.ConditionFalse,
 			wantReason:     ReasonNetworkPolicyEgressUnrestricted,
 			wantMsgKeyword: "egress",
 		},
 		{
 			name:           "egress restricted, ingress open",
-			network:        &mcpv1beta1.NetworkConfig{EgressTo: restrictedEgress},
+			network:        &mcpv1.NetworkConfig{EgressTo: restrictedEgress},
 			wantStatus:     metav1.ConditionFalse,
 			wantReason:     ReasonNetworkPolicyIngressUnrestricted,
 			wantMsgKeyword: "ingress",
@@ -95,7 +95,7 @@ func TestNetworkPolicyPostureCondition(t *testing.T) {
 			// DNS rule + a user rule constraining ports. hasEgressDestinationRestriction
 			// treats this as restricted, so posture must agree (spec Edge Cases).
 			name: "dns-only egress counts as restricted",
-			network: &mcpv1beta1.NetworkConfig{
+			network: &mcpv1.NetworkConfig{
 				IngressFrom: restrictedIngress,
 				EgressPorts: []networkingv1.NetworkPolicyPort{
 					{Port: ptrIntStr(443), Protocol: ptr.To(corev1.ProtocolTCP)},
@@ -114,7 +114,7 @@ func TestNetworkPolicyPostureCondition(t *testing.T) {
 			// claim application egress destinations are restricted - the user's
 			// egress still reaches any destination on the given ports.
 			name: "ports-only egress with DNS peer does not overstate destinations",
-			network: &mcpv1beta1.NetworkConfig{
+			network: &mcpv1.NetworkConfig{
 				IngressFrom: restrictedIngress,
 				EgressPorts: []networkingv1.NetworkPolicyPort{
 					{Port: ptrIntStr(443), Protocol: ptr.To(corev1.ProtocolTCP)},
@@ -187,7 +187,7 @@ func TestNetworkPolicyPostureConditionPreservesTransitionTime(t *testing.T) {
 	}
 
 	// Transition to restricted -> timestamp advances.
-	restricted := &mcpv1beta1.NetworkConfig{
+	restricted := &mcpv1.NetworkConfig{
 		IngressFrom: []networkingv1.NetworkPolicyPeer{
 			{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"a": "b"}}},
 		},
@@ -213,8 +213,8 @@ func TestAppendPersistentConditionsPosture(t *testing.T) {
 		Status: metav1.ConditionFalse,
 		Reason: ReasonNetworkPolicyUnrestricted,
 	}
-	mcpServer := &mcpv1beta1.MCPServer{
-		Status: mcpv1beta1.MCPServerStatus{Conditions: []metav1.Condition{stale}},
+	mcpServer := &mcpv1.MCPServer{
+		Status: mcpv1.MCPServerStatus{Conditions: []metav1.Condition{stale}},
 	}
 
 	postureReason := func(conds []*v1ac.ConditionApplyConfiguration) string {

@@ -27,14 +27,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
-	acv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1/applyconfiguration/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
+	acv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1/applyconfiguration/api/v1"
 )
 
 // workloadStatusConfiguration builds identity and replica status for either
 // workload mode. Both successful and failed reconciliations use this base.
-func workloadStatusConfiguration(server *mcpv1beta1.MCPServer, replicas, readyReplicas int32) *acv1beta1.MCPServerStatusApplyConfiguration {
-	status := acv1beta1.MCPServerStatus().
+func workloadStatusConfiguration(server *mcpv1.MCPServer, replicas, readyReplicas int32) *acv1.MCPServerStatusApplyConfiguration {
+	status := acv1.MCPServerStatus().
 		WithObservedGeneration(server.Generation).
 		WithServiceName(serviceNameFor(server)).
 		WithReplicas(replicas).
@@ -51,7 +51,7 @@ func workloadStatusConfiguration(server *mcpv1beta1.MCPServer, replicas, readyRe
 }
 
 // mcpServiceURL builds the cluster-local MCP endpoint URL used for handshake verification and status publication.
-func mcpServiceURL(mcpServer *mcpv1beta1.MCPServer, endpoint ServiceEndpoint, clusterDomain, path string) string {
+func mcpServiceURL(mcpServer *mcpv1.MCPServer, endpoint ServiceEndpoint, clusterDomain, path string) string {
 	clusterDomain = strings.TrimSpace(clusterDomain)
 	if clusterDomain == "" {
 		clusterDomain = DefaultClusterDomain
@@ -63,9 +63,9 @@ func mcpServiceURL(mcpServer *mcpv1beta1.MCPServer, endpoint ServiceEndpoint, cl
 // status publication after the managed or referenced workload has been observed.
 func (r *MCPServerReconciler) reconcileEndpoint(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	acceptedCondition, availableCondition metav1.Condition,
-	status *acv1beta1.MCPServerStatusApplyConfiguration,
+	status *acv1.MCPServerStatusApplyConfiguration,
 	endpoint ServiceEndpoint,
 	networkPolicyCondition *metav1.Condition,
 ) (ctrl.Result, error) {

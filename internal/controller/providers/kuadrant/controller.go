@@ -44,8 +44,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers"
 	kuadrantapi "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant/api"
@@ -213,7 +213,7 @@ type publicEndpoint struct {
 	scheme string
 }
 
-func (r *Reconciler) parseConfig(ctx context.Context, binding *mcpv1alpha1.MCPGatewayBinding, mcpServer *mcpv1beta1.MCPServer) (*parsedConfig, error) {
+func (r *Reconciler) parseConfig(ctx context.Context, binding *mcpv1alpha1.MCPGatewayBinding, mcpServer *mcpv1.MCPServer) (*parsedConfig, error) {
 	configMap := &corev1.ConfigMap{}
 	if binding.Spec.ConfigRef == "" {
 		return nil, r.setNotRegistered(ctx, binding,
@@ -312,7 +312,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	logger.Info("Reconciling MCPGatewayBinding", "name", binding.Name, "namespace", binding.Namespace)
 
-	mcpServer := &mcpv1beta1.MCPServer{}
+	mcpServer := &mcpv1.MCPServer{}
 	if err := r.Get(ctx, client.ObjectKey{Name: binding.Spec.MCPServerRef, Namespace: binding.Namespace}, mcpServer); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -446,7 +446,7 @@ func isExtensionReady(ext *kuadrantapi.MCPGatewayExtension) bool {
 func (r *Reconciler) reconcileHTTPRoute(
 	ctx context.Context,
 	binding *mcpv1alpha1.MCPGatewayBinding,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	gwName, gwNamespace, hostname, sectionName, path string,
 ) error {
 	logger := log.FromContext(ctx)
@@ -660,7 +660,7 @@ func (r *Reconciler) deleteStaleResources(ctx context.Context, binding *mcpv1alp
 func (r *Reconciler) resolveRouteHostname(
 	ctx context.Context,
 	binding *mcpv1alpha1.MCPGatewayBinding,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	cfg *parsedConfig,
 	gwName, gwNamespace, sectionName string,
 ) (string, string, error) {
@@ -870,7 +870,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
 		).
 		Watches(
-			&mcpv1beta1.MCPServer{},
+			&mcpv1.MCPServer{},
 			handler.EnqueueRequestsFromMapFunc(r.findBindingsForMCPServer),
 			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).

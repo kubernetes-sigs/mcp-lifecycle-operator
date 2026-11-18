@@ -31,7 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 // reconcileHandshake performs the MCP handshake when the workload is available,
@@ -39,11 +39,11 @@ import (
 // Returns a Verified condition and the server info (if handshake succeeded).
 func (r *MCPServerReconciler) reconcileHandshake(
 	ctx context.Context,
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	mcpURL string,
 	availableCondition metav1.Condition,
 	tlsCABundleHash string,
-) (metav1.Condition, *mcpv1beta1.MCPServerInfo) {
+) (metav1.Condition, *mcpv1.MCPServerInfo) {
 	logger := log.FromContext(ctx)
 
 	metricLabels := prometheus.Labels{
@@ -135,7 +135,7 @@ func (r *MCPServerReconciler) reconcileHandshake(
 				mcpServer.Generation,
 			)
 			preserveLastTransitionTime(&cond, mcpServer.Status.Conditions)
-			return cond, &mcpv1beta1.MCPServerInfo{}
+			return cond, &mcpv1.MCPServerInfo{}
 		}
 		handshakeTotal.With(withResult(metricLabels, "failure")).Inc()
 		logger.Info("MCP endpoint handshake failed", "url", mcpURL, "error", err)
@@ -186,7 +186,7 @@ func withResult(labels prometheus.Labels, result string) prometheus.Labels {
 // It uses a dedicated context for the connection so that cancelling it tears
 // down the transport without sending an HTTP DELETE to the server (which some
 // MCP servers do not handle gracefully).
-func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string, httpTransport *http.Transport) (*mcpv1beta1.MCPServerInfo, error) {
+func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string, httpTransport *http.Transport) (*mcpv1.MCPServerInfo, error) {
 	connCtx, connCancel := context.WithCancel(ctx)
 
 	mcpClient := mcp.NewClient(
@@ -226,11 +226,11 @@ func (r *MCPServerReconciler) verifyMCPEndpoint(ctx context.Context, url string,
 }
 
 // extractServerInfo converts an MCP InitializeResult into our CRD type.
-func extractServerInfo(res *mcp.InitializeResult) *mcpv1beta1.MCPServerInfo {
+func extractServerInfo(res *mcp.InitializeResult) *mcpv1.MCPServerInfo {
 	if res == nil {
 		return nil
 	}
-	info := &mcpv1beta1.MCPServerInfo{
+	info := &mcpv1.MCPServerInfo{
 		ProtocolVersion: res.ProtocolVersion,
 		Instructions:    res.Instructions,
 	}
@@ -239,11 +239,10 @@ func extractServerInfo(res *mcp.InitializeResult) *mcpv1beta1.MCPServerInfo {
 		info.Version = res.ServerInfo.Version
 	}
 	if res.Capabilities != nil {
-		info.Capabilities = &mcpv1beta1.MCPServerCapabilities{
+		info.Capabilities = &mcpv1.MCPServerCapabilities{
 			Tools:       res.Capabilities.Tools != nil,
 			Resources:   res.Capabilities.Resources != nil,
 			Prompts:     res.Capabilities.Prompts != nil,
-			Logging:     res.Capabilities.Logging != nil, //nolint:staticcheck // TODO: remove after SEP-2577 deprecation window (mid-2027)
 			Completions: res.Capabilities.Completions != nil,
 		}
 	}
@@ -267,7 +266,7 @@ func mcpHandshakeBackoff(retryCount int) time.Duration {
 // returns the appropriate result. If the endpoint is unavailable, it either
 // stops requeuing (retries exhausted) or computes an exponential backoff delay.
 // Returns (result, true) when the caller should return early, or (_, false) to continue.
-func handshakeRequeue(ctx context.Context, mcpServer *mcpv1beta1.MCPServer,
+func handshakeRequeue(ctx context.Context, mcpServer *mcpv1.MCPServer,
 	verifiedCondition metav1.Condition, retryCount int) (ctrl.Result, bool) {
 	if verifiedCondition.Status != metav1.ConditionFalse || verifiedCondition.Reason != ReasonEndpointUnavailable {
 		return ctrl.Result{}, false
@@ -288,8 +287,8 @@ func handshakeRequeue(ctx context.Context, mcpServer *mcpv1beta1.MCPServer,
 // capabilityDiffMessage compares two MCPServerCapabilities and returns a
 // human-readable message describing the differences. Nil is treated as
 // all-false. Returns an empty string when nothing changed.
-func capabilityDiffMessage(old, new *mcpv1beta1.MCPServerCapabilities) string {
-	var oldCaps, newCaps mcpv1beta1.MCPServerCapabilities
+func capabilityDiffMessage(old, new *mcpv1.MCPServerCapabilities) string {
+	var oldCaps, newCaps mcpv1.MCPServerCapabilities
 	if old != nil {
 		oldCaps = *old
 	}
@@ -332,7 +331,7 @@ func isHTTPAuthError(err error) bool {
 // Retry state is tracked in-memory, not persisted to status. When retries are exhausted it also augments
 // verifiedCondition.Message in place so the persisted status tells users that automatic retries have stopped.
 func (r *MCPServerReconciler) reconcileHandshakeEventsAndRetryCount(
-	mcpServer *mcpv1beta1.MCPServer,
+	mcpServer *mcpv1.MCPServer,
 	mcpURL string,
 	verifiedCondition *metav1.Condition,
 ) int32 {
