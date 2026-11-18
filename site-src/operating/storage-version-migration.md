@@ -151,6 +151,15 @@ Before disabling `v1alpha1` MCPServer, move its validating webhook marker and
 handler to a remaining served version and verify CREATE and UPDATE admission
 still works for `v1` and `v1beta1`. This is tracked in
 [#556](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/issues/556).
+When upgrading from a release whose validating webhook targets `v1alpha1` to
+one targeting `v1`, coordinate the webhook configuration and manager rollout.
+The old manager does not serve the new validation path, and the new manager
+does not serve the old path. With `failurePolicy: Fail`, MCPServer writes can be
+rejected during this transition. Pause MCPServer writes for the upgrade, wait
+for the new manager to be ready, and verify the validating webhook configuration
+targets `v1` before resuming them. Do not set `v1alpha1` to `served: false`
+before the `v1` rule is active: a rule targeting an unserved version no longer
+matches requests to the remaining versions.
 Keep the `api/v1alpha1` package for `MCPGatewayBinding`, which still uses it.
 Keep `v1beta1` served for its deprecation window; this migration alone is not a
 reason to disable it.

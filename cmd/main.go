@@ -383,11 +383,9 @@ func main() {
 		setupLog.Error(err, "unable to set up gateway providers")
 		os.Exit(1)
 	}
+	var v1Validator *mcpv1.MCPServerCustomValidator
 	if enableWebhook {
-		if err := mcpv1alpha1.SetupWebhookWithManager(mgr, admissionPolicy); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "MCPServer")
-			os.Exit(1)
-		}
+		v1Validator = &mcpv1.MCPServerCustomValidator{Policy: admissionPolicy, Reader: mgr.GetAPIReader()}
 		if !admissionPolicy.HasActiveRules() {
 			// The webhook is registered but no admission rules are configured, so it
 			// admits every spec unvalidated. Warn once at startup so this is not a
@@ -406,7 +404,7 @@ func main() {
 			"image allowlist, digest pinning, storage-mount and securityContext admission policies are " +
 			"NOT enforced. Enable the webhook in production to validate MCPServer specs.")
 	}
-	if err := (&mcpv1.MCPServer{}).SetupWebhookWithManager(mgr); err != nil {
+	if err := (&mcpv1.MCPServer{}).SetupWebhookWithManager(mgr, v1Validator); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "MCPServer")
 		os.Exit(1)
 	}

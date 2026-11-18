@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1
 
 import (
 	"context"
@@ -31,7 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	v1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	webhookpolicy "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/webhook"
 )
 
@@ -57,8 +56,8 @@ func newMCPServer(imageRef string) *MCPServer {
 }
 
 func TestValidateUpdate_AlphaReferenceLossWarning(t *testing.T) {
-	alphaKind := metav1.GroupVersionKind{Group: GroupVersion.Group, Version: GroupVersion.Version, Kind: MCPServerKind}
-	betaKind := metav1.GroupVersionKind{Group: v1beta1.GroupVersion.Group, Version: v1beta1.GroupVersion.Version, Kind: MCPServerKind}
+	alphaKind := metav1.GroupVersionKind{Group: GroupVersion.Group, Version: "v1alpha1", Kind: MCPServerKind}
+	betaKind := metav1.GroupVersionKind{Group: GroupVersion.Group, Version: "v1beta1", Kind: MCPServerKind}
 	for _, tc := range []struct {
 		name        string
 		serviceRef  bool
@@ -72,7 +71,7 @@ func TestValidateUpdate_AlphaReferenceLossWarning(t *testing.T) {
 	}{
 		{name: "alpha service reference", serviceRef: true, requestKind: &alphaKind, wantWarning: true},
 		{name: "alpha workload reference", workloadRef: true, requestKind: &alphaKind, wantWarning: true},
-		{name: "original kind omitted", serviceRef: true, wantWarning: true},
+		{name: "native v1 request", serviceRef: true},
 		{name: "beta converted for equivalent admission", serviceRef: true, requestKind: &betaKind},
 		{name: "alpha without beta references", requestKind: &alphaKind},
 		{name: "dry run also warns", serviceRef: true, requestKind: &alphaKind, dryRun: true, wantWarning: true},
@@ -82,14 +81,14 @@ func TestValidateUpdate_AlphaReferenceLossWarning(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			scheme := runtime.NewScheme()
-			require.NoError(t, v1beta1.AddToScheme(scheme))
+			require.NoError(t, AddToScheme(scheme))
 			server := newMCPServer("docker.io/any:latest")
-			stored := &v1beta1.MCPServer{ObjectMeta: server.ObjectMeta}
+			stored := &MCPServer{ObjectMeta: server.ObjectMeta}
 			if tc.serviceRef {
-				stored.Spec.ServiceRef = &v1beta1.ServiceReference{Name: "external"}
+				stored.Spec.ServiceRef = &ServiceReference{Name: "external"}
 			}
 			if tc.workloadRef {
-				stored.Spec.WorkloadRef = &v1beta1.WorkloadReference{Name: "external", Kind: v1beta1.WorkloadKindDeployment}
+				stored.Spec.WorkloadRef = &WorkloadReference{Name: "external", Kind: WorkloadKindDeployment}
 			}
 			builder := fake.NewClientBuilder().WithScheme(scheme)
 			if !tc.missing {
@@ -104,7 +103,7 @@ func TestValidateUpdate_AlphaReferenceLossWarning(t *testing.T) {
 				operation = admissionv1.Create
 			}
 			ctx := admission.NewContextWithRequest(testContext(), admission.Request{
-				Kind: alphaKind, RequestKind: tc.requestKind, Operation: operation, DryRun: new(tc.dryRun)})
+				Kind: metav1.GroupVersionKind{Group: GroupVersion.Group, Version: "v1", Kind: MCPServerKind}, RequestKind: tc.requestKind, Operation: operation, DryRun: new(tc.dryRun)})
 			var err error
 			var warnings admission.Warnings
 			if tc.create {
@@ -119,7 +118,7 @@ func TestValidateUpdate_AlphaReferenceLossWarning(t *testing.T) {
 			}
 			if tc.wantWarning {
 				assert.Equal(t, admission.Warnings{
-					"Updating through mcp.x-k8s.io/v1alpha1 may discard workloadRef or serviceRef; use mcp.x-k8s.io/v1beta1 instead",
+					"Updating through mcp.x-k8s.io/v1alpha1 may discard workloadRef or serviceRef; use mcp.x-k8s.io/v1 instead",
 				}, warnings)
 			} else {
 				assert.Empty(t, warnings)
