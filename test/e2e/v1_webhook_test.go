@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
@@ -68,6 +69,9 @@ func TestV1WebhookWiring(t *testing.T) {
 			var crd *apiextensionsv1.CustomResourceDefinition
 			var configuration *admissionv1.ValidatingWebhookConfiguration
 			var validator *admissionv1.ValidatingWebhook
+			var lastAdmissionErr error
+			ns := ctx.Value(f.NsKey).(string)
+			probe := webhookTestMCPServer("v1", ns, "webhook-admission-ready", true)
 			err = wait.PollUntilContextTimeout(ctx, time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
 				currentCRD, getErr := extensions.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, "mcpservers.mcp.x-k8s.io", metav1.GetOptions{})
 				if getErr != nil {
@@ -87,16 +91,26 @@ func TestV1WebhookWiring(t *testing.T) {
 						break
 					}
 				}
-				return crd.Spec.Conversion != nil && crd.Spec.Conversion.Webhook != nil &&
+				caReady := crd.Spec.Conversion != nil && crd.Spec.Conversion.Webhook != nil &&
 					len(crd.Spec.Conversion.Webhook.ClientConfig.CABundle) > 0 &&
 					validator != nil && len(validator.ClientConfig.CABundle) > 0 &&
-					bytes.Equal(crd.Spec.Conversion.Webhook.ClientConfig.CABundle, validator.ClientConfig.CABundle), nil
+					bytes.Equal(crd.Spec.Conversion.Webhook.ClientConfig.CABundle, validator.ClientConfig.CABundle)
+				if !caReady {
+					return false, nil
+				}
+				lastAdmissionErr = cfg.Client().Resources().Create(ctx, probe.DeepCopy(), dryRunCreate)
+				return lastAdmissionErr != nil && strings.Contains(lastAdmissionErr.Error(), "privileged containers are not allowed"), nil
 			})
 			if err != nil {
-				t.Fatalf("wait for cert-manager CA injection into both webhooks: %v", err)
+				t.Fatalf("wait for CA injection and admission readiness: %v (last admission result: %v)", err, lastAdmissionErr)
 			}
 
 			conversion := crd.Spec.Conversion
+			if !slices.ContainsFunc(crd.Spec.Versions, func(version apiextensionsv1.CustomResourceDefinitionVersion) bool {
+				return version.Name == "v1" && version.Served && version.Storage
+			}) {
+				t.Errorf("deployed MCPServer CRD does not serve and store v1: %+v", crd.Spec.Versions)
+			}
 			if conversion.Strategy != apiextensionsv1.WebhookConverter ||
 				conversion.Webhook.ClientConfig.Service == nil ||
 				conversion.Webhook.ClientConfig.Service.Name != webhookService ||
@@ -151,7 +165,7 @@ func TestV1WebhookWiring(t *testing.T) {
 			r := cfg.Client().Resources()
 			for _, version := range []string{"v1", "v1beta1"} {
 				badCreate := webhookTestMCPServer(version, ns, "webhook-"+version+"-create", true)
-				if err := r.Create(ctx, badCreate); err == nil || !strings.Contains(err.Error(), "privileged containers are not allowed") {
+				if err := r.Create(ctx, badCreate, dryRunCreate); err == nil || !strings.Contains(err.Error(), "privileged containers are not allowed") {
 					t.Errorf("%s CREATE: want validating webhook rejection for privileged container, got %v", version, err)
 				}
 				valid := webhookTestMCPServer(version, ns, "webhook-"+version+"-update", false)
@@ -172,10 +186,19 @@ func TestV1WebhookWiring(t *testing.T) {
 				if err != nil || image != f.DefaultMCPServerImage {
 					t.Errorf("%s to %s conversion lost image: got %q, err %v", version, otherVersion, image, err)
 				}
-				if err := unstructured.SetNestedField(valid.Object, true, "spec", "runtime", "security", "securityContext", "privileged"); err != nil {
-					t.Fatal(err)
-				}
-				if err := r.Update(ctx, valid); err == nil || !strings.Contains(err.Error(), "privileged containers are not allowed") {
+				err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+					current := &unstructured.Unstructured{}
+					current.SetAPIVersion("mcp.x-k8s.io/" + version)
+					current.SetKind("MCPServer")
+					if err := r.Get(ctx, valid.GetName(), ns, current); err != nil {
+						return err
+					}
+					if err := unstructured.SetNestedField(current.Object, true, "spec", "runtime", "security", "securityContext", "privileged"); err != nil {
+						return err
+					}
+					return r.Update(ctx, current, dryRunUpdate)
+				})
+				if err == nil || !strings.Contains(err.Error(), "privileged containers are not allowed") {
 					t.Errorf("%s UPDATE: want validating webhook rejection for privileged container, got %v", version, err)
 				}
 			}
@@ -210,4 +233,12 @@ func webhookTestMCPServer(version, namespace, name string, privileged bool) *uns
 		}
 	}
 	return server
+}
+
+func dryRunCreate(options *metav1.CreateOptions) {
+	options.DryRun = []string{metav1.DryRunAll}
+}
+
+func dryRunUpdate(options *metav1.UpdateOptions) {
+	options.DryRun = []string{metav1.DryRunAll}
 }
