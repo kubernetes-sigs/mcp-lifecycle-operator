@@ -174,6 +174,43 @@ func TestV1RoundTripsRepresentativeObjects(t *testing.T) {
 	assertV1RoundTrips(t, byo)
 }
 
+func TestV1RoundTripsStorageSources(t *testing.T) {
+	sizeLimit := resource.MustParse("64Mi")
+	tests := []struct {
+		name   string
+		source StorageSource
+	}{
+		{
+			name: "Secret",
+			source: StorageSource{
+				Type: StorageTypeSecret,
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: "credentials",
+					Items:      []corev1.KeyToPath{{Key: "token", Path: "token"}},
+				},
+			},
+		},
+		{
+			name: "EmptyDir",
+			source: StorageSource{
+				Type: StorageTypeEmptyDir,
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium:    corev1.StorageMediumMemory,
+					SizeLimit: &sizeLimit,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := roundTripFixture()
+			server.Spec.Config.Storage[0].Source = tt.source
+			assertV1RoundTrips(t, server)
+		})
+	}
+}
+
 func FuzzV1RoundTrip(f *testing.F) {
 	f.Add("example", "ghcr.io/example/server:v1", "/mcp", "Use the tools", int32(8080), int32(0), true, false)
 	f.Add("unicode", "ghcr.io/example/server:v2", "/api/mcp", "Tools, ресурсы, 提示", int32(65535), int32(3), false, true)
