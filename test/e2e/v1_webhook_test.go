@@ -21,6 +21,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -30,6 +31,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -49,26 +51,34 @@ const (
 	webhookCert      = webhookNamespace + "/mcp-lifecycle-operator-serving-cert"
 )
 
+func isPrivilegedWebhookDenial(err error) bool {
+	var statusErr *apierrors.StatusError
+	return errors.As(err, &statusErr) &&
+		strings.Contains(statusErr.ErrStatus.Message, `admission webhook "vmcpserver.mcp.x-k8s.io" denied the request`) &&
+		strings.Contains(statusErr.ErrStatus.Message, "privileged containers are not allowed")
+}
+
 // TestV1WebhookWiring verifies the installed conversion and validating webhook
 // configurations, then checks admission through both served API versions.
 func TestV1WebhookWiring(t *testing.T) {
 	t.Parallel()
+	var crd *apiextensionsv1.CustomResourceDefinition
+	var configuration *admissionv1.ValidatingWebhookConfiguration
+	var validator *admissionv1.ValidatingWebhook
+	var kube *kubernetes.Clientset
 	feature := features.New("v1 webhook service, CA injection, and admission are wired").
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Moderate).
-		Assess("conversion and validation use the deployed webhook service and injected CA", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			extensions, err := apiextensionsclient.NewForConfig(cfg.Client().RESTConfig())
 			if err != nil {
 				t.Fatal(err)
 			}
-			kube, err := kubernetes.NewForConfig(cfg.Client().RESTConfig())
+			kube, err = kubernetes.NewForConfig(cfg.Client().RESTConfig())
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			var crd *apiextensionsv1.CustomResourceDefinition
-			var configuration *admissionv1.ValidatingWebhookConfiguration
-			var validator *admissionv1.ValidatingWebhook
 			var lastAdmissionErr error
 			ns := ctx.Value(f.NsKey).(string)
 			probe := webhookTestMCPServer("v1", ns, "webhook-admission-ready", true)
@@ -99,12 +109,14 @@ func TestV1WebhookWiring(t *testing.T) {
 					return false, nil
 				}
 				lastAdmissionErr = cfg.Client().Resources().Create(ctx, probe.DeepCopy(), dryRunCreate)
-				return lastAdmissionErr != nil && strings.Contains(lastAdmissionErr.Error(), "privileged containers are not allowed"), nil
+				return isPrivilegedWebhookDenial(lastAdmissionErr), nil
 			})
 			if err != nil {
 				t.Fatalf("wait for CA injection and admission readiness: %v (last admission result: %v)", err, lastAdmissionErr)
 			}
-
+			return ctx
+		}).
+		Assess("conversion and validation use the deployed webhook service and injected CA", func(ctx context.Context, t *testing.T, _ *envconf.Config) context.Context {
 			conversion := crd.Spec.Conversion
 			if !slices.ContainsFunc(crd.Spec.Versions, func(version apiextensionsv1.CustomResourceDefinitionVersion) bool {
 				return version.Name == "v1" && version.Served && version.Storage
@@ -165,7 +177,7 @@ func TestV1WebhookWiring(t *testing.T) {
 			r := cfg.Client().Resources()
 			for _, version := range []string{"v1", "v1beta1"} {
 				badCreate := webhookTestMCPServer(version, ns, "webhook-"+version+"-create", true)
-				if err := r.Create(ctx, badCreate, dryRunCreate); err == nil || !strings.Contains(err.Error(), "privileged containers are not allowed") {
+				if err := r.Create(ctx, badCreate, dryRunCreate); !isPrivilegedWebhookDenial(err) {
 					t.Errorf("%s CREATE: want validating webhook rejection for privileged container, got %v", version, err)
 				}
 				valid := webhookTestMCPServer(version, ns, "webhook-"+version+"-update", false)
@@ -198,7 +210,7 @@ func TestV1WebhookWiring(t *testing.T) {
 					}
 					return r.Update(ctx, current, dryRunUpdate)
 				})
-				if err == nil || !strings.Contains(err.Error(), "privileged containers are not allowed") {
+				if !isPrivilegedWebhookDenial(err) {
 					t.Errorf("%s UPDATE: want validating webhook rejection for privileged container, got %v", version, err)
 				}
 			}
