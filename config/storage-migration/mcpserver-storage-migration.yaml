@@ -1,6 +1,7 @@
 # StorageVersionMigration rewrites every stored MCPServer object at the current
-# CRD storage version (v1beta1). Apply this AFTER v1beta1 is the storage version
-# (already the case on main) and BEFORE removing v1alpha1 as a served version.
+# CRD storage version (v1). Apply this AFTER v1 is the storage version and
+# BEFORE removing either old served version. It rewrites objects stored as
+# v1alpha1 or v1beta1 to the current storage version.
 #
 # Requires a storage-version-migrator controller in the cluster AND its
 # migration.k8s.io/v1alpha1 API. OpenShift ships this as the
@@ -10,12 +11,12 @@
 apiVersion: migration.k8s.io/v1alpha1
 kind: StorageVersionMigration
 metadata:
-  name: mcpservers-v1beta1
+  name: mcpservers-v1
   labels:
     app.kubernetes.io/name: mcp-lifecycle-operator
     app.kubernetes.io/component: storage-version-migration
 spec:
   resource:
     group: mcp.x-k8s.io
-    version: v1beta1
+    version: v1
     resource: mcpservers

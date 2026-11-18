@@ -1,31 +1,40 @@
 # Storage Version Migration
 
-The `MCPServer` CRD serves both `v1alpha1` and `v1beta1`, with **`v1beta1` as the
-storage version**. The conversion webhook converts objects on read, so every
-`MCPServer` is always readable as `v1beta1` today.
-
-However, objects written to etcd *before* `v1beta1` became the storage version are
-still physically stored as `v1alpha1` bytes. They are only rewritten when something
-updates them. Until every stored object is at `v1beta1`:
-
-- the CRD's `status.storedVersions` keeps listing `v1alpha1`, and
-- `v1alpha1` **cannot be safely removed** as a served version - the API server
-  could no longer decode the stale records.
+The `MCPServer` CRD serves `v1alpha1`, `v1beta1`, and `v1`, with **`v1` as the
+storage version**. The conversion webhook makes objects readable through each
+served version, but reading an object does not rewrite its bytes in etcd. Objects
+written before the promotion may still be stored as `v1alpha1` or `v1beta1`.
+The CRD's `status.storedVersions` records versions that may still exist in
+storage. Do not remove an older version from the CRD while objects may still be
+stored in that version.
 
 Storage version migration force-rewrites all stored `MCPServer` objects at the
 current storage version.
 
+Existing `v1alpha1` MCPServers do not need a separate migration to `v1beta1`
+first: conversion uses `v1alpha1` → `v1beta1` → `v1` while the migrator rewrites
+them. The `v1alpha1` endpoint remains served after storage migration until it
+is retired separately, so clients can still read those objects. Deprecated
+status data omitted from `v1`, including `status.handshakeRetryCount` and
+`status.serverInfo.capabilities.logging`, is lost during the rewrite.
+
 ## Prerequisites
 
 A storage-version-migrator controller must be running in the cluster, and its
-`migration.k8s.io/v1alpha1` API must be registered. OpenShift ships this as the
-`openshift-kube-storage-version-migrator` operator. On a cluster where that API
-is not installed, `kubectl apply` fails with `no matches for kind
-"StorageVersionMigration"` - install a storage-version-migrator first.
+`migration.k8s.io/v1alpha1` API must be registered to use the bundled manifest
+or `make migrate-storage`. OpenShift ships this as the
+`openshift-kube-storage-version-migrator` operator. On clusters with the native
+`storagemigration.k8s.io/v1` API instead, use the alternative below. See the
+[Kubernetes storage migration guide](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/storage-version-migration/)
+for native API availability.
+
+Install the operator release that marks `v1` as the CRD storage version before
+starting. Check `spec.versions` on the live `mcpservers.mcp.x-k8s.io` CRD;
+`v1` must have `storage: true`.
 
 The operator's **conversion webhook must stay available for the entire run**. The
-migrator reads each stored object (still `v1alpha1` bytes), and the API server
-routes it through the conversion webhook to re-encode it as `v1beta1`. If the
+migrator reads each stored object (possibly `v1alpha1` or `v1beta1` bytes), and
+the API server routes it through the conversion webhook to re-encode it as `v1`. If the
 webhook is unreachable or its serving certificate is invalid while the migration
 runs, those writes fail and the migration reports `Failed`. Confirm the operator
 is healthy before starting.
@@ -43,23 +52,55 @@ migration.
 
 ## Running the migration
 
+On clusters with the `migration.k8s.io/v1alpha1` API:
+
 ```bash
 make migrate-storage
 # equivalently:
 kubectl apply -k config/storage-migration
 ```
 
+If an earlier `v1beta1` migration left a `mcpservers-v1beta1` request behind, it
+is harmless and separate from the new `mcpservers-v1` request. After checking
+its result, you can remove the stale request:
+
+```bash
+kubectl delete storageversionmigration.migration.k8s.io mcpservers-v1beta1 --ignore-not-found
+```
+
+On clusters with the native `storagemigration.k8s.io/v1` API, create a separate
+one-shot request. The native API identifies the resource by group and resource;
+it does not take a version in `spec.resource`:
+
+```yaml
+apiVersion: storagemigration.k8s.io/v1
+kind: StorageVersionMigration
+metadata:
+  name: mcpservers-v1
+spec:
+  resource:
+    group: mcp.x-k8s.io
+    resource: mcpservers
+```
+
+Apply this manifest after the `v1` CRD storage version is installed. Use the
+fully qualified API name when inspecting either migration if both APIs are
+available on the cluster.
+
 ## Verifying completion
 
 ```bash
-# Wait for the migration to succeed:
-kubectl get storageversionmigration mcpservers-v1beta1 -o yaml
-# Look for a status condition of type "Succeeded".
+# For the bundled migration.k8s.io request:
+kubectl get storageversionmigration.migration.k8s.io mcpservers-v1 -o yaml
+# For the native request:
+kubectl get storageversionmigration.storagemigration.k8s.io mcpservers-v1 -o yaml
+# Wait for status.conditions to report Succeeded=True.
 ```
 
-The migrator rewrites the stored objects but does **not** update the CRD's
-`status.storedVersions`. That field keeps listing `v1alpha1` until it is pruned
-explicitly - see below.
+After success, inspect the CRD's `status.storedVersions`. The legacy migrator
+does **not** prune old entries; follow the procedure below. The native migrator
+may update this field automatically, but still verify it before retiring an old
+served version.
 
 ## Retrying a failed migration
 
@@ -69,61 +110,47 @@ against the unchanged object is a no-op and does **not** re-trigger it. To retry
 after a `Failed` result, delete the object and apply it again:
 
 ```bash
-kubectl delete storageversionmigration mcpservers-v1beta1
+kubectl delete storageversionmigration.migration.k8s.io mcpservers-v1
 make migrate-storage
 ```
 
-## Removing v1alpha1
+For the native API, delete its `storageversionmigration.storagemigration.k8s.io`
+object and reapply the native manifest instead.
 
-Dropping `v1alpha1` as a served version is **gated on this migration completing**
-on every cluster that ever stored `v1alpha1` objects. The steps below must run
-**in this order**: the API server rejects a CRD whose `spec.versions` drops a
-version still listed in `status.storedVersions` (`status.storedVersions[0]:
-Invalid value: "v1alpha1": missing from spec.versions`), so the stored version has
-to be pruned first; and the validating webhook has to be moved to `v1beta1` before
-the `v1alpha1` type is deleted, or admission validation is silently lost. Once the
-migration reports `Succeeded`:
+## Pruning old stored versions
 
-1. Prune `v1alpha1` from `status.storedVersions` (the migrator does not do this).
-   This is safe only after the migration succeeded, because no object is stored as
-   `v1alpha1` any more:
+Once the `v1` migration reports `Succeeded=True`, check the CRD:
 
-   ```bash
-   kubectl patch crd mcpservers.mcp.x-k8s.io --subresource=status --type=merge \
-     -p '{"status":{"storedVersions":["v1beta1"]}}'
-   ```
+```bash
+kubectl get crd mcpservers.mcp.x-k8s.io -o jsonpath='{.status.storedVersions}'
+```
 
-2. **Re-register the validating webhook at `v1beta1` first.** The only
-   `+kubebuilder:webhook` marker lives on the MCPServer `v1alpha1` type
-   (`api/v1alpha1/mcpserver_webhook.go`), and `v1beta1`'s
-   `SetupWebhookWithManager` currently wires **conversion only** (no
-   `WithValidator`). If you remove the `v1alpha1` type before moving the
-   validator, `make manifests` regenerates a `ValidatingWebhookConfiguration`
-   with **no `mcpservers` rule** - `MCPServerCustomValidator` silently stops
-   enforcing the image allowlist, digest, and label policy, and no test turns
-   red. Move `MCPServerCustomValidator` (and its `+kubebuilder:webhook` marker)
-   to `v1beta1`, wire it via `WithValidator` in the `v1beta1`
-   `SetupWebhookWithManager`, and confirm the regenerated manifest still carries
-   the `mcpservers` validating rule before continuing.
+If `v1alpha1` or `v1beta1` is still listed, prune both entries only after the
+migration succeeded on that cluster:
 
-3. Drop `v1alpha1` as a served version **in code**, not with a live `kubectl edit
-   crd`. The CRD is generated by controller-gen from the kubebuilder markers on
-   the API types, so a hand edit to `spec.versions` is reverted on the next `make
-   manifests` or operator upgrade. Remove the **MCPServer** `v1alpha1` type and its
-   `+kubebuilder` markers only - do **not** delete the whole `api/v1alpha1`
-   package: it also holds `MCPGatewayBinding`, whose CRD still has `v1alpha1` as its
-   only served and storage version, so removing the package would break it.
-   Regenerate the manifests and ship the change so the MCPServer CRD serves
-   `v1beta1` only.
+```bash
+kubectl patch crd mcpservers.mcp.x-k8s.io --subresource=status --type=merge \
+  -p '{"status":{"storedVersions":["v1"]}}'
+kubectl get crd mcpservers.mcp.x-k8s.io -o jsonpath='{.status.storedVersions}'
+# Expected: ["v1"]
+```
 
-4. Confirm only `v1beta1` remains served and stored:
+Do not prune `storedVersions` before completion: the API server must still be
+able to decode every stored object. Pruning this status field does **not** stop
+serving `v1alpha1` or `v1beta1` to clients; `spec.versions[*].served` controls
+that separately.
 
-   ```bash
-   kubectl get crd mcpservers.mcp.x-k8s.io \
-     -o jsonpath='{range .spec.versions[*]}{.name}{" "}{end}{"\n"}{.status.storedVersions}'
-   # Expected: v1beta1
-   #           ["v1beta1"]
-   ```
+## Retiring older served versions
 
-Do not prune `storedVersions` before the migration has succeeded - the API server
-must still be able to decode every stored object at a version that remains.
+Only remove an old version from `spec.versions` after migration has succeeded
+and that version is absent from `status.storedVersions` on every affected
+cluster. The CRD is generated from the API types, so make the served-version
+change in code and regenerate the manifest; a live edit will be overwritten.
+
+Before disabling `v1alpha1` MCPServer, move its validating webhook marker and
+handler to a remaining served version and verify CREATE and UPDATE admission
+still works for `v1` and `v1beta1`. This is tracked in
+[#556](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/issues/556).
+Keep the `api/v1alpha1` package for `MCPGatewayBinding`, which still uses it.
+Keep `v1beta1` served for its deprecation window; this migration alone is not a
+reason to disable it.

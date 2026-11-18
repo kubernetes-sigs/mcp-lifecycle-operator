@@ -147,16 +147,16 @@ deploy-certmanager: ## Install cert-manager in the cluster (required for convers
 	$(KUBECTL) wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
 
 .PHONY: migrate-storage
-migrate-storage: ## Rewrite stored MCPServer objects to the v1beta1 storage version (requires a cluster storage-version-migrator).
+migrate-storage: ## Rewrite stored MCPServer objects to the v1 storage version (requires a cluster storage-version-migrator).
 	$(KUBECTL) apply -k config/storage-migration
-	@echo "Applied StorageVersionMigration 'mcpservers-v1beta1' (accepted, not yet complete)."
+	@echo "Applied StorageVersionMigration 'mcpservers-v1' (accepted, not yet complete)."
 	@echo "Migration is complete only once status.conditions reports Succeeded=True."
-	@echo "Check status: $(KUBECTL) get storageversionmigration mcpservers-v1beta1 -o yaml"
+	@echo "Check status: $(KUBECTL) get storageversionmigration.migration.k8s.io mcpservers-v1 -o yaml"
 	@echo "When Succeeded, the migrator has rewritten stored objects, but the CRD"
-	@echo "status.storedVersions still lists v1alpha1 until pruned - see the docs:"
-	@echo "  site-src/operating/storage-version-migration.md (Removing v1alpha1)"
+	@echo "status.storedVersions may still list v1alpha1 and v1beta1 - see the docs:"
+	@echo "  site-src/operating/storage-version-migration.md (Pruning old stored versions)"
 	@echo "This object is one-shot: to retry after a Failed result, first run"
-	@echo "  $(KUBECTL) delete storageversionmigration mcpservers-v1beta1"
+	@echo "  $(KUBECTL) delete storageversionmigration.migration.k8s.io mcpservers-v1"
 	@echo "then re-run 'make migrate-storage' (re-applying alone will not re-trigger)."
 
 .PHONY: setup-test-e2e
