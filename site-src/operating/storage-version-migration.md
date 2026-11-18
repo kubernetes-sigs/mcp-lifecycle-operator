@@ -151,15 +151,30 @@ Before disabling `v1alpha1` MCPServer, move its validating webhook marker and
 handler to a remaining served version and verify CREATE and UPDATE admission
 still works for `v1` and `v1beta1`. This is tracked in
 [#556](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/issues/556).
-When upgrading from a release whose validating webhook targets `v1alpha1` to
-one targeting `v1`, coordinate the webhook configuration and manager rollout.
-The old manager does not serve the new validation path, and the new manager
-does not serve the old path. With `failurePolicy: Fail`, MCPServer writes can be
-rejected during this transition. Pause MCPServer writes for the upgrade, wait
-for the new manager to be ready, and verify the validating webhook configuration
-targets `v1` before resuming them. Do not set `v1alpha1` to `served: false`
-before the `v1` rule is active: a rule targeting an unserved version no longer
-matches requests to the remaining versions.
+
+The manager temporarily serves both the old alpha validation endpoint and the
+new v1 endpoint. To switch admission without sending requests to an endpoint
+that an old manager pod cannot serve:
+
+1. Roll out the new manager image while retaining the existing validating
+   webhook configuration and keeping `v1alpha1` served.
+2. Wait until all manager pods run the new image and are ready.
+3. Update the validating webhook configuration to target `v1` and its validation
+   path. Verify CREATE and UPDATE admission through the remaining served versions.
+4. Disable serving `v1alpha1` only after the v1 webhook rule is active.
+
+Applying the whole manifest bundle at once does not enforce this order. If the
+installation mechanism cannot stage these steps, plan a maintenance window for
+MCPServer writes: calls can be rejected while old pods receive the new path.
+This sequence addresses the admission endpoint switch; upgrades that also
+introduce v1 CRDs or change storage versions must coordinate those changes with
+conversion support separately. Storage migration alone does not switch the
+admission endpoint.
+
+The alpha validation handler can be removed in a later release once supported
+upgrade paths no longer depend on the old endpoint. This does not imply removal
+of alpha conversion support for objects still stored in that version.
+
 Keep the `api/v1alpha1` package for `MCPGatewayBinding`, which still uses it.
 Keep `v1beta1` served for its deprecation window; this migration alone is not a
 reason to disable it.

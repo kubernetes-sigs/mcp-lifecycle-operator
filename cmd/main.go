@@ -386,6 +386,13 @@ func main() {
 	var v1Validator *mcpv1.MCPServerCustomValidator
 	if enableWebhook {
 		v1Validator = &mcpv1.MCPServerCustomValidator{Policy: admissionPolicy, Reader: mgr.GetAPIReader()}
+		// Upgrade compatibility: keep the old endpoint until the v1 webhook rollout
+		// is complete. Then remove this block and api/v1alpha1/mcpserver_webhook*.go
+		// once supported upgrade paths no longer require the alpha endpoint.
+		if err := mcpv1alpha1.SetupWebhookWithManager(mgr, admissionPolicy); err != nil {
+			setupLog.Error(err, "unable to create compatibility webhook", "webhook", "MCPServer v1alpha1")
+			os.Exit(1)
+		}
 		if !admissionPolicy.HasActiveRules() {
 			// The webhook is registered but no admission rules are configured, so it
 			// admits every spec unvalidated. Warn once at startup so this is not a
