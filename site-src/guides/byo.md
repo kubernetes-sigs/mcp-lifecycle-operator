@@ -4,7 +4,7 @@ In the default **managed mode** shown in the [quickstart](quickstart.md), the op
 
 Bring your own (BYO) is an alternative when another tool or team already manages a workload or Service. The operator observes referenced workloads and verifies their MCP endpoint while you retain control of their configuration and lifecycle. Gateway integration remains available.
 
-Use `apiVersion: mcp.x-k8s.io/v1beta1`. The `workloadRef` and `serviceRef` fields are not available in `v1alpha1`. Referenced resources must already exist in the same namespace as the MCPServer.
+Use `apiVersion: mcp.x-k8s.io/v1` for new MCPServers. Existing `v1beta1` clients remain supported while that version is served. The `workloadRef` and `serviceRef` fields are not available in `v1alpha1`. Referenced resources must already exist in the same namespace as the MCPServer.
 
 ## Choose what the operator manages
 
@@ -66,7 +66,7 @@ The server listens on container port `8080`, named `http`. The Service exposes p
 Reference both resources from an MCPServer in the same namespace:
 
 ```yaml
-apiVersion: mcp.x-k8s.io/v1beta1
+apiVersion: mcp.x-k8s.io/v1
 kind: MCPServer
 metadata:
   name: byo-mcp-server
@@ -92,7 +92,7 @@ See the [runnable BYO example](https://github.com/kubernetes-sigs/mcp-lifecycle-
 For the existing Deployment above, omit `serviceRef` to let the operator create its own Service:
 
 ```yaml
-apiVersion: mcp.x-k8s.io/v1beta1
+apiVersion: mcp.x-k8s.io/v1
 kind: MCPServer
 metadata:
   name: byo-mcp-server
@@ -131,7 +131,7 @@ spec:
 The MCPServer configures the container to listen on `8080` and references that Service:
 
 ```yaml
-apiVersion: mcp.x-k8s.io/v1beta1
+apiVersion: mcp.x-k8s.io/v1
 kind: MCPServer
 metadata:
   name: managed-mcp-server

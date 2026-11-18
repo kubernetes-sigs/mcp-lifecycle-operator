@@ -25,7 +25,7 @@ The operator creates a `NetworkPolicy` for every managed MCP server pod. Out of 
 For an [existing workload referenced through `workloadRef`](../guides/byo.md), the operator does not create a NetworkPolicy and `spec.network` is rejected. Manage isolation separately and permit the operator's endpoint verification traffic, along with required client and gateway traffic.
 
 ```yaml
-apiVersion: mcp.x-k8s.io/v1beta1
+apiVersion: mcp.x-k8s.io/v1
 kind: MCPServer
 metadata:
   name: my-mcp-server

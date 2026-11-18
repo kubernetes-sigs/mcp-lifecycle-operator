@@ -2,7 +2,9 @@
 
 A Kubernetes operator that provides a declarative API to deploy, manage, and safely roll out MCP Servers, handling their full lifecycle with production-grade automation and ecosystem integrations.
 
-> **Note:** This project is currently in **beta** (`v1beta1`). APIs and behavior may change in future releases.
+`MCPServer` has a GA `mcp.x-k8s.io/v1` API. The older `v1beta1` and `v1alpha1` versions remain served for existing clients; use `v1` for new manifests. `MCPGatewayBinding` remains `v1alpha1`.
+
+Existing beta manifests are available in [config/samples](./config/samples/); the sample Kustomization uses v1.
 
 ## Documentation
 
@@ -11,9 +13,9 @@ A Kubernetes operator that provides a declarative API to deploy, manage, and saf
 - [Gateway Integration](https://mcp-lifecycle-operator.sigs.k8s.io/guides/gateway/) - Expose MCP servers through external gateways
 - [Metrics](https://mcp-lifecycle-operator.sigs.k8s.io/operating/metrics/) - Prometheus metrics reference
 - [TLS Configuration](https://mcp-lifecycle-operator.sigs.k8s.io/operating/tls/) - Min version, cipher suites, and TLS 1.3 named groups
-- [Storage Version Migration](https://mcp-lifecycle-operator.sigs.k8s.io/operating/storage-version-migration/) - Rewrite stored objects to v1beta1 before removing v1alpha1
+- [Storage Version Migration](https://mcp-lifecycle-operator.sigs.k8s.io/operating/storage-version-migration/) - Migrate stored MCPServers to v1 and verify the upgrade before retiring older versions
 - [API Reference](https://mcp-lifecycle-operator.sigs.k8s.io/reference/) - Full MCPServer API documentation
-- [Complete managed MCPServer example](./config/samples/mcp_v1beta1_mcpserver_complete.yaml) - YAML showing managed-mode configuration
+- [Complete managed MCPServer example](./config/samples/mcp_v1_mcpserver_complete.yaml) - YAML showing managed-mode configuration
 - [Use an Existing Workload or Service](https://mcp-lifecycle-operator.sigs.k8s.io/main/guides/byo/) - Reference resources managed outside the operator
 - [Contributing](https://mcp-lifecycle-operator.sigs.k8s.io/contributing/) - How to contribute to the project
 
@@ -67,7 +69,7 @@ In a new terminal, create a test `MCPServer` resource:
 
 ```bash
 kubectl apply -f - <<EOF
-apiVersion: mcp.x-k8s.io/v1beta1
+apiVersion: mcp.x-k8s.io/v1
 kind: MCPServer
 metadata:
   name: test-server

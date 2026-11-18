@@ -1,0 +1,11 @@
+processor:
+  ignoreFields:
+    - "TypeMeta$"
+    - "ObjectMeta$"
+    - "ListMeta$"
+  ignoreTypes:
+    - "()List$"
+    - "MCPServer$"
+
+render:
+  kubernetesVersion: "1.28"

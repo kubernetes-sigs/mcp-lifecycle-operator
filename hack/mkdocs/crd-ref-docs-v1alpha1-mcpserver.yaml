@@ -1,0 +1,11 @@
+processor:
+  ignoreFields:
+    - "TypeMeta$"
+    - "ObjectMeta$"
+    - "ListMeta$"
+  ignoreTypes:
+    - "()List$"
+    - "MCPGatewayBinding$"
+
+render:
+  kubernetesVersion: "1.28"

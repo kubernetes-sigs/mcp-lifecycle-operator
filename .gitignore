@@ -43,7 +43,9 @@ __pycache__/
 # MkDocs generated site
 site/
 site-src/reference/index.md
+site-src/reference/v1beta1.md
 site-src/reference/v1alpha1.md
+site-src/reference/mcpgatewaybinding.md
 .venv-mkdocs/
 
 # Do not set GOMODCACHE/GOCACHE to these paths; a module cache inside the repo
