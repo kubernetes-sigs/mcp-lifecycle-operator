@@ -145,7 +145,7 @@ func TestV1WebhookWiring(t *testing.T) {
 			if validator.ClientConfig.Service == nil || validator.ClientConfig.Service.Name != webhookService ||
 				validator.ClientConfig.Service.Namespace != webhookNamespace ||
 				validator.ClientConfig.Service.Path == nil ||
-				*validator.ClientConfig.Service.Path != "/validate-mcp-x-k8s-io-v1alpha1-mcpserver" {
+				*validator.ClientConfig.Service.Path != "/validate-mcp-x-k8s-io-v1-mcpserver" {
 				t.Fatalf("unexpected MCPServer validating webhook service: %+v", validator.ClientConfig.Service)
 			}
 			if validator.MatchPolicy == nil || *validator.MatchPolicy != admissionv1.Equivalent ||
@@ -154,7 +154,7 @@ func TestV1WebhookWiring(t *testing.T) {
 			}
 			if !slices.ContainsFunc(validator.Rules, func(rule admissionv1.RuleWithOperations) bool {
 				return slices.Contains(rule.APIGroups, "mcp.x-k8s.io") &&
-					slices.Contains(rule.APIVersions, "v1alpha1") &&
+					slices.Contains(rule.APIVersions, "v1") &&
 					slices.Contains(rule.Resources, "mcpservers") &&
 					slices.Contains(rule.Operations, admissionv1.Create) &&
 					slices.Contains(rule.Operations, admissionv1.Update)
