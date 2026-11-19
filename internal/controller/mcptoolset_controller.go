@@ -340,8 +340,8 @@ func unresolvedMessage(unresolved []UnresolvedServer) string {
 // SetupWithManager wires the controller into the manager. It watches MCPToolset
 // resources, the dispatcher resources it owns, and MCPServers so a toolset
 // re-reconciles when a referenced server becomes ready.
-func (r *MCPToolsetReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+func (r *MCPToolsetReconciler) SetupWithManager(mgr ctrl.Manager, backendObjects ...client.Object) error {
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.MCPToolset{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
 			predicate.AnnotationChangedPredicate{},
@@ -356,8 +356,11 @@ func (r *MCPToolsetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&mcpv1.MCPServer{},
 			handler.EnqueueRequestsFromMapFunc(r.toolsetsForServer),
 		).
-		Named("mcptoolset").
-		Complete(r)
+		Named("mcptoolset")
+	for _, obj := range backendObjects {
+		b.Owns(obj, builder.WithPredicates(predicate.GenerationChangedPredicate{}))
+	}
+	return b.Complete(r)
 }
 
 // toolsetsForServer maps an MCPServer to the toolsets in the same namespace that

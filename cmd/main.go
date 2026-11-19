@@ -30,12 +30,14 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	sandboxv1beta1 "sigs.k8s.io/agent-sandbox/api/v1beta1"
 	extv1beta1 "sigs.k8s.io/agent-sandbox/extensions/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -183,7 +185,7 @@ func main() {
 		"Image for the code-mode execute_code dispatcher the MCPToolset controller deploys. "+
 			"Falls back to the DISPATCHER_IMAGE env var. Required to reconcile MCPToolsets.")
 	flag.StringVar(&runnerImage, "runner-image", os.Getenv("RUNNER_IMAGE"),
-		"Portable code-mode runner image the dispatcher launches per execution. "+
+		"Agent-sandbox image containing sandboxd and the code-mode runner (make docker-build-agentsandbox). "+
 			"Falls back to the RUNNER_IMAGE env var.")
 
 	opts := zap.Options{}
@@ -410,12 +412,34 @@ func main() {
 		setupLog.Error(err, "unable to set up gateway providers")
 		os.Exit(1)
 	}
+	var sandboxObjects []client.Object
+	if dispatcherImage != "" && runnerImage != "" {
+		// Install agent-sandbox before starting a Code Mode deployment. Keep
+		// its optional APIs out of the controller's watches when absent.
+		for _, resource := range []struct {
+			kind string
+			obj  client.Object
+		}{
+			{kind: "SandboxTemplate", obj: &extv1beta1.SandboxTemplate{}},
+			{kind: "SandboxWarmPool", obj: &extv1beta1.SandboxWarmPool{}},
+		} {
+			gvk := extv1beta1.GroupVersion.WithKind(resource.kind)
+			if _, err := mgr.GetRESTMapper().RESTMapping(gvk.GroupKind(), gvk.Version); err != nil {
+				if !meta.IsNoMatchError(err) {
+					setupLog.Error(err, "unable to discover agent-sandbox resource", "kind", resource.kind)
+					os.Exit(1)
+				}
+				continue
+			}
+			sandboxObjects = append(sandboxObjects, resource.obj)
+		}
+	}
 	if err := (&controller.MCPToolsetReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		DispatcherImage: dispatcherImage,
 		RunnerImage:     runnerImage,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, sandboxObjects...); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MCPToolset")
 		os.Exit(1)
 	}

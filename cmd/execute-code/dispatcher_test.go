@@ -400,6 +400,21 @@ func TestExecuteCodeOverMCP(t *testing.T) {
 	if out.Result != float64(7) {
 		t.Errorf("result = %v; want 7", out.Result)
 	}
+
+	res, err = clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "execute_code",
+		Arguments: map[string]any{"code": "return 7;", "toolset": "unknown"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool with unknown toolset: %v", err)
+	}
+	var failed executeCodeOutput
+	if err := remarshal(res.StructuredContent, &failed); err != nil {
+		t.Fatalf("decode structured error: %v", err)
+	}
+	if !res.IsError || failed.Error == nil || failed.Error.Type != errTypeInvalid {
+		t.Fatalf("expected MCP error with structured InvalidRequest, got %+v and %+v", res, failed)
+	}
 }
 
 // remarshal round-trips an arbitrary value through JSON into target.

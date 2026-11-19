@@ -213,9 +213,10 @@ kubectl -n codemode get mcptoolset ops-toolset -o jsonpath='{.status.executeEndp
 - Example: **[mcptoolset-ops.yaml](./examples/mcptoolset-ops.yaml)**
 
 Use this experimental feature in a trusted cluster environment. The dispatcher
-accepts requests from clients that can reach its Service. The operator creates
-dispatchers without backend credentials. The agent-sandbox provider isolates
-executions in separate pods and permits network egress from those pods.
+accepts requests from clients that can reach its Service. Use backends that
+accept unauthenticated MCP requests from the dispatcher and runner. The
+agent-sandbox provider isolates executions in separate pods and permits
+network egress from those pods.
 
 ## Development
 

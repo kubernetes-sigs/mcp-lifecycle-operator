@@ -114,13 +114,13 @@ func (e *Engine) Run(ctx context.Context, code string) (any, error) {
 	}
 
 	val, err := e.vm.RunString("(function () {\n" + code + "\n})()")
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, timeoutError("execution exceeded the time budget")
+	}
+	if e.hostErr != nil {
+		return nil, e.hostErr
+	}
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return nil, timeoutError("execution exceeded the time budget")
-		}
-		if e.hostErr != nil {
-			return nil, e.hostErr
-		}
 		if _, ok := errors.AsType[*goja.InterruptedError](err); ok {
 			return nil, timeoutError("execution exceeded the time budget")
 		}
@@ -138,6 +138,9 @@ func (e *Engine) Run(ctx context.Context, code string) (any, error) {
 // containment or backend failure aborts the script via a JS throw while
 // recording the typed error in hostErr for Run to return.
 func (e *Engine) hostCall(call goja.FunctionCall) goja.Value {
+	if e.hostErr != nil {
+		e.fail(e.hostErr)
+	}
 	server := call.Argument(0).String()
 	tool := call.Argument(1).String()
 

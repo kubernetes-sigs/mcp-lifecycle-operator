@@ -47,9 +47,11 @@ const maxTimeout = 60 * time.Minute
 
 // maxConcurrentExecutions bounds how many sandboxes one dispatcher claims at
 // once. Each execution provisions a sandbox pod, so an unbounded burst of
-// execute_code calls could exhaust node capacity; excess calls wait for a slot
-// (bounded by the execution timeout) rather than piling on.
-const maxConcurrentExecutions = 10
+// execute_code calls could exhaust node capacity.
+const (
+	maxConcurrentExecutions = 10
+	maxExecutionSlotWait    = 5 * time.Second
+)
 
 // Discovery (list_toolsets / describe_tool) dials each backend MCP server to read
 // its own tools/list. backendListTimeout bounds a single backend lookup so one
@@ -171,17 +173,17 @@ func (d *dispatcher) run(ctx context.Context, in executeCodeInput) executeCodeOu
 
 	timeout := d.timeoutFor(in.Timeout)
 
-	// Bound concurrent sandboxes: wait for a slot before starting the execution
-	// clock, so time spent queued is not charged against the script's own time
-	// budget. The wait is bounded by the caller's context (cancelled on client
-	// disconnect); slots always free as in-flight executions complete.
+	// Wait briefly for capacity before starting the sandbox execution clock.
 	if d.sem != nil {
+		waitCtx, cancel := context.WithTimeout(ctx, min(timeout, maxExecutionSlotWait))
 		select {
 		case d.sem <- struct{}{}:
-			defer func() { <-d.sem }()
-		case <-ctx.Done():
+		case <-waitCtx.Done():
+			cancel()
 			return timeoutOutput("timed out waiting for an execution slot")
 		}
+		cancel()
+		defer func() { <-d.sem }()
 	}
 
 	// The claim/await budget is the execution timeout plus slack for scheduling
@@ -236,6 +238,9 @@ func (d *dispatcher) run(ctx context.Context, in executeCodeInput) executeCodeOu
 func (d *dispatcher) timeoutFor(seconds int) time.Duration {
 	t := d.defaultTimeout
 	if seconds > 0 {
+		if seconds > int(maxTimeout/time.Second) {
+			return maxTimeout
+		}
 		t = time.Duration(seconds) * time.Second
 	}
 	if t > maxTimeout {
@@ -384,7 +389,8 @@ func (d *dispatcher) register(s *mcp.Server) {
 			"assign it to a variable and use it directly. Discover the servers and tools you " +
 			"can call with list_toolsets, and a tool's input schema with describe_tool.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in executeCodeInput) (*mcp.CallToolResult, executeCodeOutput, error) {
-		return nil, d.run(ctx, in), nil
+		out := d.run(ctx, in)
+		return &mcp.CallToolResult{IsError: out.Error != nil}, out, nil
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -402,7 +408,8 @@ func (d *dispatcher) register(s *mcp.Server) {
 			"schema - so you can build a correct tools.call(server, tool, args) in " +
 			"execute_code. Use list_toolsets first to find server and tool names.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in describeToolInput) (*mcp.CallToolResult, describeToolOutput, error) {
-		return nil, d.describeTool(ctx, in), nil
+		out := d.describeTool(ctx, in)
+		return &mcp.CallToolResult{IsError: out.Error != nil}, out, nil
 	})
 }
 

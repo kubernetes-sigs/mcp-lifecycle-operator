@@ -128,6 +128,7 @@ type MCPToolsetStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:ac:generate=true
 // +kubebuilder:subresource:status
+// +kubebuilder:validation:XValidation:rule="self.metadata.name.matches('^[a-z]([a-z0-9-]{0,53}[a-z0-9])?$')",message="name must be a DNS label starting with a letter and at most 55 characters long to fit the dispatcher Service name"
 // +kubebuilder:printcolumn:name="Provider",type=string,JSONPath=`.spec.provider`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Endpoint",type=string,JSONPath=`.status.executeEndpoint`

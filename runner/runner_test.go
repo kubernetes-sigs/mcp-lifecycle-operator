@@ -135,7 +135,7 @@ func TestTimeoutIsTimeoutError(t *testing.T) {
 func TestBackendErrorKeepsType(t *testing.T) {
 	caller := &fakeCaller{err: backendError("connection refused")}
 	_, err := runEngine(t, caller, []string{"k8s"},
-		`return tools.k8s.listPods({});`, 5*time.Second)
+		`try { tools.k8s.listPods({}); } catch (err) {} return 1;`, 5*time.Second)
 
 	var re *RunnerError
 	if !errors.As(err, &re) || re.Type != ErrorTypeBackend {

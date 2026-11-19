@@ -24,7 +24,7 @@ RUNNER_IMG ?= $(IMAGE_TAG_BASE)-runner:$(IMAGE_TAG)
 AGENTSANDBOX_IMG ?= $(IMAGE_TAG_BASE)-agentsandbox:$(IMAGE_TAG)
 # AGENT_SANDBOX_VERSION pins the sandboxd daemon built into AGENTSANDBOX_IMG; keep
 # it in step with the sigs.k8s.io/agent-sandbox version in go.mod.
-AGENT_SANDBOX_VERSION ?= v1.0.4
+AGENT_SANDBOX_VERSION ?= v1.0.10
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))

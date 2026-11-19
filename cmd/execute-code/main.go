@@ -74,7 +74,7 @@ func main() {
 		s := mcp.NewServer(&mcp.Implementation{Name: serverName, Version: serverVersion}, nil)
 		d.register(s)
 		return s
-	}, nil)
+	}, &mcp.StreamableHTTPOptions{SessionTimeout: 5 * time.Minute})
 
 	mux := http.NewServeMux()
 	mux.Handle(mcpPath, handler)
@@ -83,6 +83,7 @@ func main() {
 		Addr:              addr,
 		Handler:           mux,
 		ReadHeaderTimeout: readHeaderTimeoutSec * time.Second,
+		ReadTimeout:       30 * time.Second,
 	}
 	logger.Info("serving execute_code", "toolset", d.toolset, "provider", d.provider.Name(), "addr", addr)
 	if err := srv.ListenAndServe(); err != nil {

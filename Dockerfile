@@ -142,12 +142,11 @@ ENTRYPOINT ["/runner"]
 # run it. sandboxd lives in the sigs.k8s.io/agent-sandbox module we already depend
 # on; `go install <pkg>@<version>` resolves that module's own build graph in
 # isolation (it does NOT touch this repo's go.mod/go.sum, which omit sandboxd's
-# server-side deps). GOTOOLCHAIN=local reuses the image's Go toolchain instead of
-# fetching agent-sandbox's pinned 1.26.x.
+# server-side deps). GOTOOLCHAIN=local uses the toolchain in the builder image.
 FROM --platform=${BUILDPLATFORM} golang:1.27.4 AS sandboxd-builder
 ARG TARGETOS
 ARG TARGETARCH
-ARG AGENT_SANDBOX_VERSION=v1.0.4
+ARG AGENT_SANDBOX_VERSION=v1.0.10
 
 ENV GOTOOLCHAIN=local
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} GOBIN=/out \

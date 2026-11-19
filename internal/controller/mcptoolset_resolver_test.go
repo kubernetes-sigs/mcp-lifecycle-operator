@@ -36,12 +36,13 @@ func resolverScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-// readyServer builds a verified MCPServer with a published address URL.
+// readyServer builds a verified MCPServer with internal and gateway addresses.
 func readyServer(namespace, name, url string) *mcpv1.MCPServer {
 	return &mcpv1.MCPServer{
 		Namespace: namespace, Name: name,
 		Status: mcpv1.MCPServerStatus{
-			Address: &mcpv1.MCPServerAddress{URL: url},
+			Address:             &mcpv1.MCPServerAddress{URL: "https://gateway.example.test/mcp"},
+			VerifiedEndpointURL: url,
 			Conditions: []metav1.Condition{{
 				Type:   ConditionTypeVerified,
 				Status: metav1.ConditionTrue,
@@ -81,6 +82,7 @@ func TestResolveServersMissing(t *testing.T) {
 	s := resolverScheme(t)
 	c := fake.NewClientBuilder().WithScheme(s).WithObjects(
 		readyServer("demo", "kubernetes", "http://kubernetes.demo.svc.cluster.local:8080/mcp"),
+		readyServer("other", "ghost", "http://ghost.other.svc.cluster.local:8080/mcp"),
 	).Build()
 
 	endpoints, unresolved, err := ResolveServers(context.Background(), c, "demo", []string{"kubernetes", "ghost"})
@@ -109,7 +111,7 @@ func TestResolveServersNotReady(t *testing.T) {
 	staleAddr := &mcpv1.MCPServer{
 		Namespace: "demo", Name: "github",
 		Status: mcpv1.MCPServerStatus{
-			Address: &mcpv1.MCPServerAddress{URL: "http://github.demo.svc.cluster.local:8080/mcp"},
+			VerifiedEndpointURL: "http://github.demo.svc.cluster.local:8080/mcp",
 			Conditions: []metav1.Condition{{
 				Type:   ConditionTypeVerified,
 				Status: metav1.ConditionFalse,
@@ -118,21 +120,23 @@ func TestResolveServersNotReady(t *testing.T) {
 		},
 	}
 
-	c := fake.NewClientBuilder().WithScheme(s).WithObjects(pending, staleAddr).Build()
+	oldVerification := readyServer("demo", "old", "http://old.demo.svc.cluster.local:8080/mcp")
+	oldVerification.Generation++
+	c := fake.NewClientBuilder().WithScheme(s).WithObjects(pending, staleAddr, oldVerification).Build()
 
-	endpoints, unresolved, err := ResolveServers(context.Background(), c, "demo", []string{"kubernetes", "github"})
+	endpoints, unresolved, err := ResolveServers(context.Background(), c, "demo", []string{"kubernetes", "github", "old"})
 	if err != nil {
 		t.Fatalf("ResolveServers: %v", err)
 	}
 	if len(endpoints) != 0 {
 		t.Fatalf("endpoints = %v; want none", endpoints)
 	}
-	if len(unresolved) != 2 {
-		t.Fatalf("unresolved len = %d; want 2", len(unresolved))
+	if len(unresolved) != 3 {
+		t.Fatalf("unresolved len = %d; want 3", len(unresolved))
 	}
-	for _, u := range unresolved {
-		if u.Reason != ResolveReasonNotReady {
-			t.Errorf("unresolved %q reason = %q; want NotReady", u.Server, u.Reason)
+	for i, want := range []string{ResolveReasonNotReady, ResolveReasonNotReady, ResolveReasonVerificationStale} {
+		if unresolved[i].Reason != want {
+			t.Errorf("unresolved %q reason = %q; want %q", unresolved[i].Server, unresolved[i].Reason, want)
 		}
 	}
 }

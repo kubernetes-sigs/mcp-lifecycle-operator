@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
+	"sigs.k8s.io/e2e-framework/klient/wait"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
@@ -69,7 +70,7 @@ const (
 	// Applying examples/mcptoolset-ops.yaml produces "ops-toolset-execute".
 	codeModeDispatcherDeploymentEnv = "CODEMODE_DISPATCHER_DEPLOYMENT"
 	// codeModeDispatcherNamespaceEnv is the dispatcher Deployment's namespace
-	// (defaults to "default", matching the example).
+	// (defaults to "codemode", matching the example).
 	codeModeDispatcherNamespaceEnv = "CODEMODE_DISPATCHER_NAMESPACE"
 	// operatorDeploymentName is the operator's controller-manager Deployment.
 	operatorDeploymentName = "mcp-lifecycle-operator-controller-manager"
@@ -99,7 +100,7 @@ const (
 // of the invariant: it scales the operator to zero and asserts the dispatcher
 // Deployment keeps its available replicas (the data plane survives operator-down).
 func TestCodeModeOperatorOffHotPath(t *testing.T) {
-	t.Parallel()
+	// This scenario stops the shared operator, so it must run serially.
 	feature := features.New("Code mode: operator off the execution hot path (SC-006)").
 		WithLabel(category.Label, category.Resilience).
 		WithLabel(speed.Label, speed.Slow).
@@ -117,7 +118,7 @@ func TestCodeModeOperatorOffHotPath(t *testing.T) {
 			}
 			dispatcherNs := os.Getenv(codeModeDispatcherNamespaceEnv)
 			if dispatcherNs == "" {
-				dispatcherNs = "default"
+				dispatcherNs = "codemode"
 			}
 
 			opRef := f.MustDiscoverOperatorOnce(ctx, cfg, t)
@@ -143,14 +144,25 @@ func TestCodeModeOperatorOffHotPath(t *testing.T) {
 				original = *operator.Spec.Replicas
 			}
 			t.Cleanup(func() {
+				restoreCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
 				restore := &appsv1.Deployment{}
-				if err := r.Get(context.Background(), operatorDeploymentName, opRef.Namespace, restore); err != nil {
-					t.Logf("could not reload operator Deployment to restore replicas: %v", err)
+				if err := r.Get(restoreCtx, operatorDeploymentName, opRef.Namespace, restore); err != nil {
+					t.Errorf("could not reload operator Deployment to restore replicas: %v", err)
 					return
 				}
 				restore.Spec.Replicas = &original
-				if err := r.Update(context.Background(), restore); err != nil {
-					t.Logf("could not restore operator replicas to %d: %v", original, err)
+				if err := r.Update(restoreCtx, restore); err != nil {
+					t.Errorf("could not restore operator replicas to %d: %v", original, err)
+					return
+				}
+				if err := wait.For(func(ctx context.Context) (bool, error) {
+					if err := r.Get(ctx, operatorDeploymentName, opRef.Namespace, restore); err != nil {
+						return false, err
+					}
+					return restore.Status.ObservedGeneration >= restore.Generation && restore.Status.AvailableReplicas >= original, nil
+				}, wait.WithContext(restoreCtx)); err != nil {
+					t.Errorf("waiting for restored operator to become available: %v", err)
 				}
 			})
 

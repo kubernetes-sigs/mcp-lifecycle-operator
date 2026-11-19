@@ -25,10 +25,10 @@ import (
 	"time"
 )
 
-func TestEndpointHTTPClientRestrictsRequestsToBackendOrigin(t *testing.T) {
-	var offOriginCalls atomic.Int32
+func TestEndpointHTTPClientRestrictsRequestsToBackendEndpoint(t *testing.T) {
+	var unexpectedCalls atomic.Int32
 	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		offOriginCalls.Add(1)
+		unexpectedCalls.Add(1)
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer other.Close()
@@ -37,7 +37,7 @@ func TestEndpointHTTPClientRestrictsRequestsToBackendOrigin(t *testing.T) {
 			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/same-origin":
-					http.Redirect(w, r, "/mcp", http.StatusTemporaryRedirect)
+					http.Redirect(w, r, "/different-path", http.StatusTemporaryRedirect)
 				case "/off-origin":
 					http.Redirect(w, r, other.URL, http.StatusTemporaryRedirect)
 				case "/mcp":
@@ -49,29 +49,39 @@ func TestEndpointHTTPClientRestrictsRequestsToBackendOrigin(t *testing.T) {
 						t.Error("unexpected authorization header on the configured origin")
 					}
 					w.WriteHeader(http.StatusNoContent)
+				default:
+					unexpectedCalls.Add(1)
 				}
 			}))
 			defer backend.Close()
 
-			client, err := EndpointHTTPClient(backend.URL, time.Second, credential)
+			endpoint := backend.URL + "/mcp"
+			client, err := EndpointHTTPClient(endpoint, time.Second, credential)
 			if err != nil {
 				t.Fatal(err)
 			}
-			resp, err := client.Get(backend.URL + "/same-origin")
+			resp, err := client.Get(endpoint)
 			if err != nil {
-				t.Fatalf("following same-origin redirect: %v", err)
+				t.Fatalf("requesting configured endpoint: %v", err)
 			}
 			_ = resp.Body.Close()
 			if resp.StatusCode != http.StatusNoContent {
-				t.Fatalf("same-origin redirect returned status %d", resp.StatusCode)
+				t.Fatalf("configured endpoint returned status %d", resp.StatusCode)
 			}
-			resp, err = client.Get(backend.URL + "/off-origin")
-			if err == nil {
-				_ = resp.Body.Close()
-				t.Fatal("client accepted an off-origin redirect")
+			for _, path := range []string{"/same-origin", "/off-origin"} {
+				endpoint := backend.URL + path
+				client, err := EndpointHTTPClient(endpoint, time.Second, credential)
+				if err != nil {
+					t.Fatal(err)
+				}
+				resp, err := client.Get(endpoint)
+				if err == nil {
+					_ = resp.Body.Close()
+					t.Fatalf("client accepted redirect from %s", path)
+				}
 			}
-			if calls := offOriginCalls.Load(); calls != 0 {
-				t.Fatalf("off-origin backend saw %d requests", calls)
+			if calls := unexpectedCalls.Load(); calls != 0 {
+				t.Fatalf("redirect targets saw %d requests", calls)
 			}
 		})
 	}

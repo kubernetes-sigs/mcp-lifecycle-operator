@@ -224,7 +224,8 @@ func TestSetupSetsOwnerReference(t *testing.T) {
 	key := types.NamespacedName{Namespace: "team-a", Name: "codemode-ops"}
 	assertControlledBy := func(kind string, refs []metav1.OwnerReference) {
 		for _, ref := range refs {
-			if ref.Kind == "MCPToolset" && ref.Name == "ops" && ref.Controller != nil && *ref.Controller {
+			if ref.Kind == "MCPToolset" && ref.Name == owner.Name && ref.UID == owner.UID &&
+				ref.APIVersion == mcpv1alpha1.GroupVersion.String() && ref.Controller != nil && *ref.Controller {
 				return
 			}
 		}

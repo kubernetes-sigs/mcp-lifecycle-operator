@@ -22,6 +22,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -35,9 +36,10 @@ const (
 	// ResolveReasonNotFound: the referenced MCPServer does not exist in the
 	// toolset namespace.
 	ResolveReasonNotFound = "NotFound"
-	// ResolveReasonNotReady: the MCPServer exists but has not published a
-	// verified, reachable endpoint yet (no status.address.url).
+	// ResolveReasonNotReady: the MCPServer exists but has no verified internal endpoint.
 	ResolveReasonNotReady = "NotReady"
+	// ResolveReasonVerificationStale: verification describes an earlier spec.
+	ResolveReasonVerificationStale = "VerificationStale"
 )
 
 // UnresolvedServer records why a referenced server could not be resolved to a
@@ -45,7 +47,7 @@ const (
 type UnresolvedServer struct {
 	// Server is the toolset-local server name (an MCPServer resource name).
 	Server string
-	// Reason is a stable machine token (ResolveReasonNotFound/NotReady).
+	// Reason is a stable machine token.
 	Reason string
 	// Message is a human-readable explanation.
 	Message string
@@ -55,9 +57,8 @@ type UnresolvedServer struct {
 // endpoint URL by reading the corresponding v1.MCPServer in the same
 // namespace.
 //
-// A server resolves only when its MCPServer exists and has published
-// status.address.url, which the MCPServer controller sets only after the
-// endpoint is verified and ready. The returned endpoints preserve the input
+// A server resolves only when its current generation has a verified internal
+// endpoint. The returned endpoints preserve the input
 // order for the servers that resolved; every server that did not resolve is
 // reported in unresolved (also in input order). A non-nil error is returned
 // only for unexpected API failures (not for a missing or not-ready server),
@@ -78,8 +79,16 @@ func ResolveServers(ctx context.Context, c client.Client, namespace string, serv
 			return nil, nil, fmt.Errorf("getting MCPServer %q: %w", name, getErr)
 		}
 
-		url := serverEndpointURL(&srv)
-		if url == "" {
+		verified := meta.FindStatusCondition(srv.Status.Conditions, ConditionTypeVerified)
+		if verified != nil && verified.ObservedGeneration != srv.Generation {
+			unresolved = append(unresolved, UnresolvedServer{
+				Server:  name,
+				Reason:  ResolveReasonVerificationStale,
+				Message: fmt.Sprintf("MCPServer %q has not been verified for its current generation", name),
+			})
+			continue
+		}
+		if verified == nil || verified.Status != metav1.ConditionTrue || srv.Status.VerifiedEndpointURL == "" {
 			unresolved = append(unresolved, UnresolvedServer{
 				Server:  name,
 				Reason:  ResolveReasonNotReady,
@@ -88,22 +97,8 @@ func ResolveServers(ctx context.Context, c client.Client, namespace string, serv
 			continue
 		}
 
-		endpoints = append(endpoints, sandbox.Endpoint{Server: name, URL: url})
+		endpoints = append(endpoints, sandbox.Endpoint{Server: name, URL: srv.Status.VerifiedEndpointURL})
 	}
 
 	return endpoints, unresolved, nil
-}
-
-// serverEndpointURL returns the reachable in-cluster URL for an MCPServer, or
-// "" when the server is not ready to receive traffic. It requires both a
-// published status.address.url and a Verified=True condition so a stale address
-// left over from a previous ready state is not treated as reachable.
-func serverEndpointURL(srv *mcpv1.MCPServer) string {
-	if srv.Status.Address == nil || srv.Status.Address.URL == "" {
-		return ""
-	}
-	if !meta.IsStatusConditionTrue(srv.Status.Conditions, ConditionTypeVerified) {
-		return ""
-	}
-	return srv.Status.Address.URL
 }

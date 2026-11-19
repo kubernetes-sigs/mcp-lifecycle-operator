@@ -37,9 +37,8 @@
 #   LOAD_KIND      if set, kind-load instead of push
 #   KIND_CLUSTER   kind cluster name               (default: codemode)
 #   CONTAINER_TOOL podman|docker                   (default: podman)
-#   NAMESPACE      demo namespace                  (default: default)
 #   RUN_OPERATOR   if set, run the operator locally (make run) at the end
-#   AGENT_SANDBOX_VERSION       agent-sandbox release to install (default: v1.0.4)
+#   AGENT_SANDBOX_VERSION       agent-sandbox release to install (default: v1.0.10)
 #   SKIP_AGENT_SANDBOX_INSTALL  if set, assume agent-sandbox is already installed
 set -euo pipefail
 
@@ -47,10 +46,11 @@ REGISTRY="${REGISTRY:-quay.io/matzew}"
 TAG="${TAG:-demo}"
 CONTAINER_TOOL="${CONTAINER_TOOL:-podman}"
 KIND_CLUSTER="${KIND_CLUSTER:-codemode}"
-NAMESPACE="${NAMESPACE:-default}"
+# Match the namespace and ServiceAccount binding in the example manifest.
+NAMESPACE=codemode
 # Keep this default in lockstep with AGENT_SANDBOX_VERSION in the Makefile so the
 # installed controller matches the sandboxd baked into AGENTSANDBOX_IMG.
-AGENT_SANDBOX_VERSION="${AGENT_SANDBOX_VERSION:-v1.0.4}"
+AGENT_SANDBOX_VERSION="${AGENT_SANDBOX_VERSION:-v1.0.10}"
 
 DISPATCHER_IMG="${REGISTRY}/mcplo-execute-code:${TAG}"
 # The sandbox image the operator bakes into the SandboxTemplate (passed as
@@ -64,7 +64,7 @@ say() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
 say "Building data-plane images with ${CONTAINER_TOOL}"
 make docker-build-dispatcher   DISPATCHER_IMG="$DISPATCHER_IMG"     CONTAINER_TOOL="$CONTAINER_TOOL"
-make docker-build-agentsandbox AGENTSANDBOX_IMG="$AGENTSANDBOX_IMG" CONTAINER_TOOL="$CONTAINER_TOOL"
+make docker-build-agentsandbox AGENTSANDBOX_IMG="$AGENTSANDBOX_IMG" CONTAINER_TOOL="$CONTAINER_TOOL" AGENT_SANDBOX_VERSION="$AGENT_SANDBOX_VERSION"
 
 if [[ -n "${LOAD_KIND:-}" ]]; then
   say "Loading images into kind cluster '${KIND_CLUSTER}'"

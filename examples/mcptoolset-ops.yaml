@@ -3,12 +3,13 @@
 # isolated sandbox (the "agentsandbox" provider runs each execution in a
 # dedicated agent-sandbox Sandbox) and only the final result is returned.
 #
-# Prerequisite: the agent-sandbox controller and its CRDs must be installed in
-# the cluster (see https://github.com/kubernetes-sigs/agent-sandbox).
+# Prerequisites: install the agent-sandbox controller and its CRDs, then
+# configure the operator with cluster-accessible images for --dispatcher-image
+# and --runner-image (or DISPATCHER_IMAGE and RUNNER_IMAGE). Build them with
+# make docker-build-dispatcher and make docker-build-agentsandbox, respectively.
 #
-# Apply the MCPServer first, wait for it to become Verified, then apply the
-# MCPToolset. Once the toolset reports Ready=True, submit code to the URL in
-# status.executeEndpoint.
+# Apply the example and wait for the MCPToolset to become Ready. Submit code
+# to the URL in status.executeEndpoint.
 #
 #   kubectl apply -f examples/mcptoolset-ops.yaml
 #   kubectl -n codemode wait --for=condition=Ready mcptoolset/ops-toolset
@@ -24,6 +25,34 @@ kind: Namespace
 metadata:
   name: codemode
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: codemode-backend
+  namespace: codemode
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mcplo-codemode-example-reader
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcplo-codemode-example-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mcplo-codemode-example-reader
+subjects:
+  - kind: ServiceAccount
+    name: codemode-backend
+    namespace: codemode
+---
 apiVersion: mcp.x-k8s.io/v1
 kind: MCPServer
 metadata:
@@ -36,6 +65,10 @@ spec:
       ref: quay.io/containers/kubernetes_mcp_server:latest
   config:
     port: 8080
+    arguments: ["--read-only"]
+  runtime:
+    security:
+      serviceAccountName: codemode-backend
 ---
 apiVersion: mcp.x-k8s.io/v1alpha1
 kind: MCPToolset

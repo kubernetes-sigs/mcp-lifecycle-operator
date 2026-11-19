@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -102,7 +101,9 @@ func (m *mcpToolCaller) session(ctx context.Context, server string) (*mcp.Client
 	}
 
 	client := mcp.NewClient(&mcp.Implementation{Name: runnerClientName, Version: runnerClientVersion}, nil)
-	httpClient, err := sandbox.EndpointHTTPClient(url, 30*time.Second, m.credential)
+	// Connect and CallTool use the execution context. The SDK separately bounds
+	// session cleanup, so the HTTP client needs no shorter request timeout.
+	httpClient, err := sandbox.EndpointHTTPClient(url, 0, m.credential)
 	if err != nil {
 		return nil, err
 	}

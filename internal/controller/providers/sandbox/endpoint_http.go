@@ -24,7 +24,7 @@ import (
 )
 
 // EndpointHTTPClient keeps MCP traffic and any bearer token on the configured
-// backend's origin, including when the backend returns a redirect.
+// backend endpoint, including when the backend returns a redirect.
 func EndpointHTTPClient(endpoint string, timeout time.Duration, bearerToken string) (*http.Client, error) {
 	origin, err := url.Parse(endpoint)
 	if err != nil {
@@ -35,18 +35,19 @@ func EndpointHTTPClient(endpoint string, timeout time.Duration, bearerToken stri
 	}
 	return &http.Client{
 		Timeout:   timeout,
-		Transport: endpointTransport{origin: origin, bearerToken: bearerToken},
+		Transport: endpointTransport{endpoint: origin, bearerToken: bearerToken},
 	}, nil
 }
 
 type endpointTransport struct {
-	origin      *url.URL
+	endpoint    *url.URL
 	bearerToken string
 }
 
 func (t endpointTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Scheme != t.origin.Scheme || req.URL.Host != t.origin.Host {
-		return nil, fmt.Errorf("backend request leaves the permitted endpoint origin")
+	if req.URL.Scheme != t.endpoint.Scheme || req.URL.Host != t.endpoint.Host ||
+		req.URL.EscapedPath() != t.endpoint.EscapedPath() || req.URL.RawQuery != t.endpoint.RawQuery {
+		return nil, fmt.Errorf("backend request leaves the permitted endpoint")
 	}
 	if t.bearerToken != "" {
 		req = req.Clone(req.Context())

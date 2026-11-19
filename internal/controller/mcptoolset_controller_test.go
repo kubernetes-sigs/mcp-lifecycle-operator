@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -62,12 +63,13 @@ func createReadyServer(ctx context.Context, name, url string) {
 	Expect(k8sClient.Create(ctx, server)).To(Succeed())
 
 	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: toolsetTestNamespace}, server)).To(Succeed())
-	server.Status.Address = &mcpv1.MCPServerAddress{URL: url}
+	server.Status.VerifiedEndpointURL = url
 	meta.SetStatusCondition(&server.Status.Conditions, metav1.Condition{
-		Type:    ConditionTypeVerified,
-		Status:  metav1.ConditionTrue,
-		Reason:  ReasonVerified,
-		Message: "ready for test",
+		Type:               ConditionTypeVerified,
+		Status:             metav1.ConditionTrue,
+		Reason:             ReasonVerified,
+		Message:            "ready for test",
+		ObservedGeneration: server.Generation,
 	})
 	Expect(k8sClient.Status().Update(ctx, server)).To(Succeed())
 }
@@ -91,6 +93,18 @@ func deleteToolsetResources(ctx context.Context, toolset string, servers ...stri
 
 var _ = Describe("MCPToolset Controller", func() {
 	ctx := context.Background()
+
+	DescribeTable("rejects names that cannot produce a dispatcher Service",
+		func(name string) {
+			toolset := &mcpv1alpha1.MCPToolset{
+				Name: name, Namespace: toolsetTestNamespace,
+				Spec: mcpv1alpha1.MCPToolsetSpec{Servers: []string{"backend"}, Provider: "agentsandbox"},
+			}
+			Expect(k8sClient.Create(ctx, toolset)).To(MatchError(ContainSubstring("to fit the dispatcher Service name")))
+		},
+		Entry("contains a dot", "team.ops"),
+		Entry("is too long", strings.Repeat("a", 56)),
+	)
 
 	Context("When reconciling a valid toolset (US1, quickstart S1)", func() {
 		const (
@@ -193,7 +207,7 @@ var _ = Describe("MCPToolset Controller", func() {
 			By("keeping the existing dispatcher during a backend outage")
 			server := &mcpv1.MCPServer{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: toolsetTestNamespace, Name: serverName}, server)).To(Succeed())
-			server.Status.Address = nil
+			server.Status.VerifiedEndpointURL = ""
 			Expect(k8sClient.Status().Update(ctx, server)).To(Succeed())
 			_, err = newToolsetReconciler().Reconcile(ctx, reconcile.Request{NamespacedName: toolsetKey})
 			Expect(err).NotTo(HaveOccurred())
