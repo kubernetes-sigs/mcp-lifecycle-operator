@@ -54,5 +54,5 @@ spec:
   # is satisfied by the agentsandbox provider.
   policy:
     minIsolation: baseline
-  # Default per-execution time budget (also caps the scoped credential lifetime).
+  # Default per-execution time budget.
   timeoutSeconds: 120

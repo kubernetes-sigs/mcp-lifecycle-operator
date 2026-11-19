@@ -18,8 +18,64 @@ package sandbox
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+func TestEndpointHTTPClientRestrictsRequestsToBackendOrigin(t *testing.T) {
+	var offOriginCalls atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		offOriginCalls.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer other.Close()
+	for _, credential := range []string{"", "test-token"} {
+		t.Run("credential="+credential, func(t *testing.T) {
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/same-origin":
+					http.Redirect(w, r, "/mcp", http.StatusTemporaryRedirect)
+				case "/off-origin":
+					http.Redirect(w, r, other.URL, http.StatusTemporaryRedirect)
+				case "/mcp":
+					want := ""
+					if credential != "" {
+						want = "Bearer " + credential
+					}
+					if r.Header.Get("Authorization") != want {
+						t.Error("unexpected authorization header on the configured origin")
+					}
+					w.WriteHeader(http.StatusNoContent)
+				}
+			}))
+			defer backend.Close()
+
+			client, err := EndpointHTTPClient(backend.URL, time.Second, credential)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := client.Get(backend.URL + "/same-origin")
+			if err != nil {
+				t.Fatalf("following same-origin redirect: %v", err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusNoContent {
+				t.Fatalf("same-origin redirect returned status %d", resp.StatusCode)
+			}
+			resp, err = client.Get(backend.URL + "/off-origin")
+			if err == nil {
+				_ = resp.Body.Close()
+				t.Fatal("client accepted an off-origin redirect")
+			}
+			if calls := offOriginCalls.Load(); calls != 0 {
+				t.Fatalf("off-origin backend saw %d requests", calls)
+			}
+		})
+	}
+}
 
 // fakeProvider is a minimal SandboxProvider for registry tests.
 type fakeProvider struct {

@@ -199,23 +199,23 @@ reconciled, publishes a `status.executeEndpoint`. The operator reconciles only
 the long-lived dispatcher infrastructure; it is never on the per-execution path
 (the dispatcher claims sandboxes directly from the provider).
 
-**Prerequisite:** the agent-sandbox controller and its CRDs must be installed in
-the cluster, and the `mcplo-agentsandbox` sandbox image (sandboxd + the runner,
-built via `make docker-build-agentsandbox`) must be reachable as the operator's
-`--runner-image`.
+**Prerequisites:** install the agent-sandbox controller and its CRDs. Configure
+the operator with `--dispatcher-image` and `--runner-image` pointing to the
+images built by `make docker-build-dispatcher` and `make docker-build-agentsandbox`,
+respectively.
 
 ```bash
 kubectl apply -f examples/mcptoolset-ops.yaml
-kubectl wait --for=condition=Ready mcptoolset/ops-toolset
-kubectl get mcptoolset ops-toolset -o jsonpath='{.status.executeEndpoint}'
+kubectl -n codemode wait --for=condition=Ready mcptoolset/ops-toolset
+kubectl -n codemode get mcptoolset ops-toolset -o jsonpath='{.status.executeEndpoint}'
 ```
 
 - Example: **[mcptoolset-ops.yaml](./examples/mcptoolset-ops.yaml)**
-- Design: [Code Mode MVP design](./docs/superpowers/specs/2026-09-30-code-mode-design.md)
-- Validation walkthrough: [quickstart](./specs/013-code-mode-mvp/quickstart.md)
 
-The MVP credential model is a single static, non-production scoped credential;
-per-execution identity (RFC 8693 token exchange) is deferred. See the design doc.
+Use this experimental feature in a trusted cluster environment. The dispatcher
+accepts requests from clients that can reach its Service. The operator creates
+dispatchers without backend credentials. The agent-sandbox provider isolates
+executions in separate pods and permits network egress from those pods.
 
 ## Development
 

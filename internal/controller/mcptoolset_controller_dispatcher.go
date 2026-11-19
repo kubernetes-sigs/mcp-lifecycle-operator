@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -58,8 +59,6 @@ const (
 	envDispProvider       = "MCPTOOLSET_PROVIDER"
 	envDispRunnerImage    = "MCPTOOLSET_RUNNER_IMAGE"
 	envDispEndpoints      = "MCPTOOLSET_ENDPOINTS"
-	envDispCredSecret     = "MCPTOOLSET_CREDENTIAL_SECRET"
-	envDispCredKey        = "MCPTOOLSET_CREDENTIAL_KEY"
 	envDispDefaultTimeout = "MCPTOOLSET_DEFAULT_TIMEOUT_SECONDS"
 	envDispListenAddr     = "MCPTOOLSET_LISTEN_ADDR"
 )
@@ -102,8 +101,7 @@ func dispatcherSelector(toolset string) map[string]string {
 
 // reconcileDispatcher creates or updates every resource the dispatcher needs:
 // a ServiceAccount, a namespace-scoped Role + RoleBinding granting the call-time
-// sandbox permissions (sandboxclaims create/delete, sandboxes + pods read, and the
-// credential secret read), the Deployment, and the Service. All are
+// sandbox permissions, the Deployment, and the Service. All are
 // owner-referenced to the toolset for garbage collection.
 func (r *MCPToolsetReconciler) reconcileDispatcher(
 	ctx context.Context,
@@ -121,7 +119,7 @@ func (r *MCPToolsetReconciler) reconcileDispatcher(
 	sa := &corev1.ServiceAccount{Name: name, Namespace: toolset.Namespace}
 	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, sa, func() error {
 		sa.Labels = dispatcherLabels(toolset.Name)
-		return controllerutil.SetControllerReference(toolset, sa, r.Scheme)
+		return r.setDispatcherOwner(toolset, sa)
 	}); err != nil {
 		return nil, fmt.Errorf("service account: %w", err)
 	}
@@ -135,13 +133,13 @@ func (r *MCPToolsetReconciler) reconcileDispatcher(
 				// deletes it on Release.
 				APIGroups: []string{"extensions.agents.x-k8s.io"},
 				Resources: []string{"sandboxclaims"},
-				Verbs:     []string{verbGet, verbList, "create", "delete"},
+				Verbs:     []string{verbGet, verbList, "watch", "create", "delete"},
 			},
 			{
 				// The SDK reads the materialized Sandbox to learn the backing pod.
 				APIGroups: []string{"agents.x-k8s.io"},
 				Resources: []string{"sandboxes"},
-				Verbs:     []string{verbGet, verbList},
+				Verbs:     []string{verbGet, verbList, "watch"},
 			},
 			{
 				// InClusterPodIP connectivity reaches sandboxd on the sandbox pod's
@@ -150,15 +148,8 @@ func (r *MCPToolsetReconciler) reconcileDispatcher(
 				Resources: []string{"pods"},
 				Verbs:     []string{verbGet, verbList},
 			},
-			{
-				// The static scoped credential (MVP) is read from its Secret at
-				// call time and written into the sandbox.
-				APIGroups: []string{""},
-				Resources: []string{"secrets"},
-				Verbs:     []string{verbGet},
-			},
 		}
-		return controllerutil.SetControllerReference(toolset, role, r.Scheme)
+		return r.setDispatcherOwner(toolset, role)
 	}); err != nil {
 		return nil, fmt.Errorf("role: %w", err)
 	}
@@ -176,7 +167,7 @@ func (r *MCPToolsetReconciler) reconcileDispatcher(
 			Name:      name,
 			Namespace: toolset.Namespace,
 		}}
-		return controllerutil.SetControllerReference(toolset, rb, r.Scheme)
+		return r.setDispatcherOwner(toolset, rb)
 	}); err != nil {
 		return nil, fmt.Errorf("role binding: %w", err)
 	}
@@ -189,7 +180,7 @@ func (r *MCPToolsetReconciler) reconcileDispatcher(
 	deploy := &appsv1.Deployment{Name: name, Namespace: toolset.Namespace}
 	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, deploy, func() error {
 		mutateDispatcherDeployment(deploy, toolset, name, r.DispatcherImage, r.RunnerImage, providerName, endpointsJSON, timeout)
-		return controllerutil.SetControllerReference(toolset, deploy, r.Scheme)
+		return r.setDispatcherOwner(toolset, deploy)
 	}); err != nil {
 		return nil, fmt.Errorf("deployment: %w", err)
 	}
@@ -205,7 +196,7 @@ func (r *MCPToolsetReconciler) reconcileDispatcher(
 			TargetPort: intstr.FromString(dispatcherPortName),
 			Protocol:   corev1.ProtocolTCP,
 		}}
-		return controllerutil.SetControllerReference(toolset, svc, r.Scheme)
+		return r.setDispatcherOwner(toolset, svc)
 	}); err != nil {
 		return nil, fmt.Errorf("service: %w", err)
 	}
@@ -215,25 +206,90 @@ func (r *MCPToolsetReconciler) reconcileDispatcher(
 
 // dispatcherPropagation tears the dispatcher workload down with foreground
 // propagation (ReplicaSet and pods included) when execution must be disabled.
-var dispatcherPropagation = metav1.DeletePropagationForeground
+const dispatcherPropagation = metav1.DeletePropagationForeground
+
+func (r *MCPToolsetReconciler) setDispatcherOwner(toolset *mcpv1alpha1.MCPToolset, obj client.Object) error {
+	if obj.GetResourceVersion() != "" && !metav1.IsControlledBy(obj, toolset) {
+		return fmt.Errorf("resource %s is not controlled by MCPToolset %s", client.ObjectKeyFromObject(obj), toolset.Name)
+	}
+	return controllerutil.SetControllerReference(toolset, obj, r.Scheme)
+}
+
+// dispatcherHasCurrentEndpoints permits the existing dispatcher to survive a
+// temporary outage when the configured names and all resolved addresses still
+// match the allow-list it is serving.
+func (r *MCPToolsetReconciler) dispatcherHasCurrentEndpoints(ctx context.Context, toolset *mcpv1alpha1.MCPToolset, resolved []sandbox.Endpoint, unresolved []UnresolvedServer) (bool, error) {
+	key := client.ObjectKey{Namespace: toolset.Namespace, Name: dispatcherName(toolset.Name)}
+	var deploy appsv1.Deployment
+	if err := r.Get(ctx, key, &deploy); err != nil {
+		return apierrors.IsNotFound(err), client.IgnoreNotFound(err)
+	}
+	if !metav1.IsControlledBy(&deploy, toolset) {
+		return true, nil
+	}
+	if !deploy.DeletionTimestamp.IsZero() {
+		return false, nil
+	}
+	currentURLs := make(map[string]string, len(toolset.Spec.Servers))
+	for _, server := range unresolved {
+		if server.Reason == ResolveReasonNotReady {
+			currentURLs[server.Server] = ""
+		}
+	}
+	for _, endpoint := range resolved {
+		currentURLs[endpoint.Server] = endpoint.URL
+	}
+	for _, container := range deploy.Spec.Template.Spec.Containers {
+		if container.Name != "dispatcher" {
+			continue
+		}
+		for _, env := range container.Env {
+			if env.Name != envDispEndpoints {
+				continue
+			}
+			endpoints, err := sandbox.UnmarshalEndpoints(env.Value)
+			if err != nil || len(endpoints) != len(currentURLs) {
+				return false, nil
+			}
+			for _, endpoint := range endpoints {
+				url, ok := currentURLs[endpoint.Server]
+				if !ok || (url != "" && url != endpoint.URL) {
+					return false, nil
+				}
+				delete(currentURLs, endpoint.Server)
+			}
+			return len(currentURLs) == 0, nil
+		}
+	}
+	return false, nil
+}
 
 // deleteDispatcherWorkload stops the dispatcher from serving by deleting its
 // Deployment and Service. It tolerates already-absent resources so it is
 // idempotent. The ServiceAccount/Role/RoleBinding are left in place: they grant
 // no serving capability on their own and are garbage-collected with the toolset.
 func (r *MCPToolsetReconciler) deleteDispatcherWorkload(ctx context.Context, toolset *mcpv1alpha1.MCPToolset) error {
-	name := dispatcherName(toolset.Name)
-	opts := []client.DeleteOption{client.PropagationPolicy(dispatcherPropagation)}
-
-	deploy := &appsv1.Deployment{Name: name, Namespace: toolset.Namespace}
-	if err := r.Delete(ctx, deploy, opts...); err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("deleting dispatcher Deployment: %w", err)
+	key := client.ObjectKey{Namespace: toolset.Namespace, Name: dispatcherName(toolset.Name)}
+	var errs []error
+	for _, obj := range []client.Object{&corev1.Service{}, &appsv1.Deployment{}} {
+		if err := r.Get(ctx, key, obj); err != nil {
+			if !apierrors.IsNotFound(err) {
+				errs = append(errs, fmt.Errorf("getting dispatcher %T: %w", obj, err))
+			}
+			continue
+		}
+		if !metav1.IsControlledBy(obj, toolset) || !obj.GetDeletionTimestamp().IsZero() {
+			continue
+		}
+		opts := []client.DeleteOption{client.Preconditions{UID: new(obj.GetUID()), ResourceVersion: new(obj.GetResourceVersion())}}
+		if _, ok := obj.(*appsv1.Deployment); ok {
+			opts = append(opts, client.PropagationPolicy(dispatcherPropagation))
+		}
+		if err := r.Delete(ctx, obj, opts...); client.IgnoreNotFound(err) != nil {
+			errs = append(errs, fmt.Errorf("deleting dispatcher %T: %w", obj, err))
+		}
 	}
-	svc := &corev1.Service{Name: name, Namespace: toolset.Namespace}
-	if err := r.Delete(ctx, svc, opts...); err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("deleting dispatcher Service: %w", err)
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // dispatcherAvailable reports whether the dispatcher Deployment is Available for
@@ -252,7 +308,7 @@ func dispatcherAvailable(deploy *appsv1.Deployment) bool {
 	if deploy.Spec.Replicas != nil {
 		desired = *deploy.Spec.Replicas
 	}
-	if deploy.Status.AvailableReplicas < desired {
+	if deploy.Status.UpdatedReplicas != desired || deploy.Status.Replicas != desired || deploy.Status.AvailableReplicas != desired {
 		return false
 	}
 	for _, c := range deploy.Status.Conditions {

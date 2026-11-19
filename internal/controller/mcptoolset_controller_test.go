@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
@@ -141,7 +142,7 @@ var _ = Describe("MCPToolset Controller", func() {
 			Expect(container.ReadinessProbe).NotTo(BeNil())
 			Expect(deploy.Spec.Template.Spec.ServiceAccountName).To(Equal(dispKey.Name))
 
-			By("becoming Ready once the dispatcher Deployment reports Available")
+			By("withholding readiness while only an old replica is available")
 			deploy.Status.ObservedGeneration = deploy.Generation
 			deploy.Status.Replicas = 1
 			deploy.Status.AvailableReplicas = 1
@@ -152,6 +153,16 @@ var _ = Describe("MCPToolset Controller", func() {
 				Reason:  "MinimumReplicasAvailable",
 				Message: "available for test",
 			}}
+			Expect(k8sClient.Status().Update(ctx, deploy)).To(Succeed())
+			_, err = newToolsetReconciler().Reconcile(ctx, reconcile.Request{NamespacedName: toolsetKey})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, toolsetKey, got)).To(Succeed())
+			Expect(meta.IsStatusConditionFalse(got.Status.Conditions, ConditionTypeReady)).To(BeTrue())
+			Expect(got.Status.ExecuteEndpoint).To(BeEmpty())
+
+			By("becoming Ready once the updated replica is available")
+			Expect(k8sClient.Get(ctx, dispKey, deploy)).To(Succeed())
+			deploy.Status.UpdatedReplicas = 1
 			Expect(k8sClient.Status().Update(ctx, deploy)).To(Succeed())
 
 			_, err = newToolsetReconciler().Reconcile(ctx, reconcile.Request{NamespacedName: toolsetKey})
@@ -172,8 +183,57 @@ var _ = Describe("MCPToolset Controller", func() {
 
 			By("creating the ServiceAccount, Role, and RoleBinding the dispatcher needs")
 			Expect(k8sClient.Get(ctx, dispKey, &corev1.ServiceAccount{})).To(Succeed())
-			Expect(k8sClient.Get(ctx, dispKey, &rbacv1.Role{})).To(Succeed())
+			role := &rbacv1.Role{}
+			Expect(k8sClient.Get(ctx, dispKey, role)).To(Succeed())
+			for _, rule := range role.Rules {
+				Expect(rule.Resources).NotTo(ContainElement("secrets"))
+			}
 			Expect(k8sClient.Get(ctx, dispKey, &rbacv1.RoleBinding{})).To(Succeed())
+
+			By("keeping the existing dispatcher during a backend outage")
+			server := &mcpv1.MCPServer{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: toolsetTestNamespace, Name: serverName}, server)).To(Succeed())
+			server.Status.Address = nil
+			Expect(k8sClient.Status().Update(ctx, server)).To(Succeed())
+			_, err = newToolsetReconciler().Reconcile(ctx, reconcile.Request{NamespacedName: toolsetKey})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, dispKey, deploy)).To(Succeed())
+			Expect(deploy.DeletionTimestamp.IsZero()).To(BeTrue())
+			Expect(k8sClient.Get(ctx, dispKey, svc)).To(Succeed())
+			Expect(svc.DeletionTimestamp.IsZero()).To(BeTrue())
+
+			By("stopping that dispatcher when the configured backend is replaced by an unresolved one")
+			Expect(k8sClient.Get(ctx, toolsetKey, got)).To(Succeed())
+			got.Spec.Servers = []string{"missing-replacement"}
+			Expect(k8sClient.Update(ctx, got)).To(Succeed())
+			_, err = newToolsetReconciler().Reconcile(ctx, reconcile.Request{NamespacedName: toolsetKey})
+			Expect(err).NotTo(HaveOccurred())
+			// envtest has no garbage collector to finish foreground deletion.
+			Expect(k8sClient.Get(ctx, dispKey, deploy)).To(Succeed())
+			Expect(deploy.DeletionTimestamp.IsZero()).To(BeFalse())
+			Expect(apierrors.IsNotFound(k8sClient.Get(ctx, dispKey, svc))).To(BeTrue())
+			Expect(k8sClient.Get(ctx, toolsetKey, got)).To(Succeed())
+			Expect(got.Status.ExecuteEndpoint).To(BeEmpty())
+		})
+
+		It("rejects an existing unmanaged ServiceAccount before creating a RoleBinding", func() {
+			const name = "toolset-account-collision"
+			key := types.NamespacedName{Name: dispatcherName(name), Namespace: toolsetTestNamespace}
+			DeferCleanup(func() { deleteToolsetResources(ctx, name) })
+			createReadyServer(ctx, serverName, "http://backend.default.svc:8080/mcp")
+			account := &corev1.ServiceAccount{Name: key.Name, Namespace: key.Namespace}
+			Expect(k8sClient.Create(ctx, account)).To(Succeed())
+			toolset := &mcpv1alpha1.MCPToolset{
+				Name: name, Namespace: toolsetTestNamespace,
+				Spec: mcpv1alpha1.MCPToolsetSpec{Servers: []string{serverName}, Provider: "agentsandbox"},
+			}
+			Expect(k8sClient.Create(ctx, toolset)).To(Succeed())
+
+			_, err := newToolsetReconciler().Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(toolset)})
+			Expect(err).To(MatchError(ContainSubstring("is not controlled by MCPToolset")))
+			Expect(k8sClient.Get(ctx, key, account)).To(Succeed())
+			Expect(account.OwnerReferences).To(BeEmpty())
+			Expect(apierrors.IsNotFound(k8sClient.Get(ctx, key, &rbacv1.RoleBinding{}))).To(BeTrue())
 		})
 	})
 
@@ -229,6 +289,11 @@ var _ = Describe("MCPToolset Controller", func() {
 
 		It("reports Ready=False reason UnknownProvider for an unregistered provider", func() {
 			const name = "toolset-unknown-provider"
+			service := &corev1.Service{
+				Name: dispatcherName(name), Namespace: toolsetTestNamespace,
+				Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
+			}
+			Expect(k8sClient.Create(ctx, service)).To(Succeed())
 			got := reconcileToolset(name, mcpv1alpha1.MCPToolsetSpec{
 				Servers:  []string{"ghost-server"},
 				Provider: "does-not-exist",
@@ -241,6 +306,8 @@ var _ = Describe("MCPToolset Controller", func() {
 
 			Expect(got.Status.ExecuteEndpoint).To(BeEmpty())
 			expectNoDispatcher(name)
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(service), service)).To(Succeed())
+			Expect(service.DeletionTimestamp.IsZero()).To(BeTrue())
 		})
 
 		It("reports Ready=False reason InsufficientIsolation when the provider is too weak", func() {

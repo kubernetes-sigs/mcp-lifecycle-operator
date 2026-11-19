@@ -97,8 +97,8 @@ type MCPToolsetReconciler struct {
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcptoolsets,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcptoolsets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=mcp.x-k8s.io,resources=mcptoolsets/finalizers,verbs=update
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles;rolebindings,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;delete
@@ -151,6 +151,19 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	toolset.Status.ResolvedServers = resolvedNames
 
+	current, err := r.dispatcherHasCurrentEndpoints(ctx, &toolset, endpoints, unresolved)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if !current {
+		// Remove the old Service and wait for foreground Deployment deletion
+		// before creating a replacement with the new allow-list.
+		if err := r.disableExecution(ctx, &toolset); err != nil {
+			return r.markTransientFailure(ctx, &toolset, ReasonDispatcherError,
+				fmt.Sprintf("stopping dispatcher with obsolete endpoints: %v", err), err)
+		}
+	}
+
 	if len(unresolved) > 0 {
 		meta.SetStatusCondition(&toolset.Status.Conditions, metav1.Condition{
 			Type:               ConditionTypeServersResolved,
@@ -166,13 +179,8 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			Message:            "one or more referenced servers are missing or not ready",
 			ObservedGeneration: toolset.Generation,
 		})
-		// Servers regressed to not-ready: unpublish the endpoint (it must not be
-		// advertised while Ready is False) but keep the dispatcher workload running.
-		// A not-ready backend is usually a transient blip (a server pod restart);
-		// tearing the dispatcher down would drop every in-flight execution and flap
-		// the data plane, and the dispatcher already degrades gracefully per call
-		// (a down backend surfaces as a typed BackendError). A watch on MCPServer
-		// re-triggers reconcile once the server is ready again.
+		// A dispatcher with a current allow-list can keep serving during a
+		// temporary backend outage. The MCPServer watch handles recovery.
 		toolset.Status.ExecuteEndpoint = ""
 		return r.updateStatus(ctx, &toolset)
 	}
@@ -184,6 +192,9 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		Message:            "all referenced servers resolved to a ready endpoint",
 		ObservedGeneration: toolset.Generation,
 	})
+	if !current {
+		return r.dispatcherProgressing(ctx, &toolset, "waiting for the previous dispatcher to stop")
+	}
 
 	// 4. Establish provider backend state (idempotent; near no-op for pod).
 	timeout := effectiveTimeout(&toolset)
@@ -214,24 +225,7 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// generation. Creating the resources is not enough: an image-pull failure, a
 	// pending pod, or a stalled rollout must keep the toolset out of Ready.
 	if !dispatcherAvailable(deploy) {
-		// Ready is False while the dispatcher rolls out, so the endpoint must not be
-		// advertised (status.executeEndpoint is populated only when Ready is True).
-		toolset.Status.ExecuteEndpoint = ""
-		meta.SetStatusCondition(&toolset.Status.Conditions, metav1.Condition{
-			Type:               ConditionTypeReady,
-			Status:             metav1.ConditionFalse,
-			Reason:             ReasonDispatcherProgressing,
-			Message:            "dispatcher deployed; waiting for it to become available",
-			ObservedGeneration: toolset.Generation,
-		})
-		res, uerr := r.updateStatus(ctx, &toolset)
-		if uerr != nil {
-			return res, uerr
-		}
-		// The owned-Deployment watch re-triggers on status changes; requeue as a
-		// backstop in case availability flips without a further event.
-		res.RequeueAfter = dispatcherRequeueAfter
-		return res, nil
+		return r.dispatcherProgressing(ctx, &toolset, "dispatcher deployed; waiting for it to become available")
 	}
 
 	// 7. Publish the endpoint and Ready=True.
@@ -246,6 +240,21 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return r.updateStatus(ctx, &toolset)
 }
 
+func (r *MCPToolsetReconciler) dispatcherProgressing(ctx context.Context, toolset *mcpv1alpha1.MCPToolset, message string) (ctrl.Result, error) {
+	toolset.Status.ExecuteEndpoint = ""
+	meta.SetStatusCondition(&toolset.Status.Conditions, metav1.Condition{
+		Type:               ConditionTypeReady,
+		Status:             metav1.ConditionFalse,
+		Reason:             ReasonDispatcherProgressing,
+		Message:            message,
+		ObservedGeneration: toolset.Generation,
+	})
+	if _, err := r.updateStatus(ctx, toolset); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{RequeueAfter: dispatcherRequeueAfter}, nil
+}
+
 // markNotReady sets Ready=False for a validation failure (unknown provider or
 // insufficient isolation) where the configuration itself is invalid. It also
 // disables execution - tearing down any dispatcher left from a previously valid
@@ -255,7 +264,7 @@ func (r *MCPToolsetReconciler) markNotReady(
 	ctx context.Context, toolset *mcpv1alpha1.MCPToolset, reason, message string,
 ) (ctrl.Result, error) {
 	if err := r.disableExecution(ctx, toolset); err != nil {
-		return ctrl.Result{}, err
+		return r.markTransientFailure(ctx, toolset, reason, message, err)
 	}
 	meta.SetStatusCondition(&toolset.Status.Conditions, metav1.Condition{
 		Type:               ConditionTypeReady,
@@ -283,8 +292,8 @@ func (r *MCPToolsetReconciler) markTransientFailure(
 		Message:            message,
 		ObservedGeneration: toolset.Generation,
 	})
-	toolset.Status.ObservedGeneration = toolset.Generation
-	if err := r.Status().Update(ctx, toolset); err != nil {
+	toolset.Status.ExecuteEndpoint = ""
+	if _, err := r.updateStatus(ctx, toolset); err != nil {
 		// Surface the status-write error; the reconcile still retries.
 		return ctrl.Result{}, err
 	}

@@ -176,7 +176,7 @@ func TestCodeModeToolsetMissingServerNotReady(t *testing.T) {
 // agent-sandbox controller/CRDs and the dispatcher image reachable in-cluster.
 func TestCodeModeToolsetBecomesReady(t *testing.T) {
 	t.Parallel()
-	feature := features.New("Code mode: toolset reconciles to Ready and publishes the execute endpoint").
+	feature := features.New("Code mode: toolset publishes and withdraws the execute endpoint").
 		WithLabel(category.Label, category.Lifecycle).
 		WithLabel(speed.Label, speed.Slow).
 		WithLabel(scenario.Label, scenario.Deploy).
@@ -227,6 +227,43 @@ func TestCodeModeToolsetBecomesReady(t *testing.T) {
 				t.Fatalf("dispatcher Service not created: %v", err)
 			}
 			t.Logf("dispatcher Deployment and Service %s-execute exist", ts.Name)
+
+			assertStopped := func() {
+				t.Helper()
+				for _, obj := range []k8s.Object{svc, dep} {
+					if err := wait.For(conditions.New(r).ResourceDeleted(obj), wait.WithContext(ctx), wait.WithTimeout(2*time.Minute)); err != nil {
+						t.Fatalf("waiting for dispatcher %T deletion: %v", obj, err)
+					}
+				}
+				waitForToolsetCondition(ctx, t, cfg, ts, conditionReady, metav1.ConditionFalse, 2*time.Minute)
+				if err := r.Get(ctx, ts.Name, ts.Namespace, ts); err != nil {
+					t.Fatalf("get MCPToolset: %v", err)
+				}
+				if ts.Status.ExecuteEndpoint != "" || ts.Status.ObservedGeneration != ts.Generation {
+					t.Fatalf("expected current status with execute endpoint withdrawn, got %+v", ts.Status)
+				}
+			}
+
+			ts.Spec.Servers = []string{"missing-replacement"}
+			if err := r.Update(ctx, ts); err != nil {
+				t.Fatalf("replacing the backend with an unresolved server: %v", err)
+			}
+			assertStopped()
+
+			ts.Spec.Servers = []string{server.Name}
+			if err := r.Update(ctx, ts); err != nil {
+				t.Fatalf("restoring the original backend: %v", err)
+			}
+			waitForToolsetCondition(ctx, t, cfg, ts, conditionReady, metav1.ConditionTrue, 3*time.Minute)
+			if err := r.Get(ctx, ts.Name, ts.Namespace, ts); err != nil {
+				t.Fatalf("get restored MCPToolset: %v", err)
+			}
+
+			ts.Spec.Policy.MinIsolation = mcpv1alpha1.IsolationEgress
+			if err := r.Update(ctx, ts); err != nil {
+				t.Fatalf("requiring egress isolation: %v", err)
+			}
+			assertStopped()
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {

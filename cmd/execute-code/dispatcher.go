@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
@@ -342,10 +341,14 @@ func (d *dispatcher) backendTools(ctx context.Context, ep sandbox.Endpoint) ([]b
 // listed. In-cluster MCP servers that authorize via their own ServiceAccount (the
 // kubernetes-mcp pattern) enumerate fine.
 func liveBackendTools(ctx context.Context, ep sandbox.Endpoint) ([]backendTool, error) {
+	httpClient, err := sandbox.EndpointHTTPClient(ep.URL, backendListTimeout, "")
+	if err != nil {
+		return nil, err
+	}
 	client := mcp.NewClient(&mcp.Implementation{Name: dispatcherClientName, Version: dispatcherClientVersion}, nil)
 	transport := &mcp.StreamableClientTransport{
 		Endpoint:             ep.URL,
-		HTTPClient:           &http.Client{Timeout: backendListTimeout},
+		HTTPClient:           httpClient,
 		DisableStandaloneSSE: true,
 		MaxRetries:           -1,
 	}

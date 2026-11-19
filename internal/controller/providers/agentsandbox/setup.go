@@ -79,8 +79,8 @@ const (
 // core controllers.)
 // +kubebuilder:rbac:groups=extensions.agents.x-k8s.io,resources=sandboxtemplates,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=extensions.agents.x-k8s.io,resources=sandboxwarmpools,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=extensions.agents.x-k8s.io,resources=sandboxclaims,verbs=get;list;create;delete
-// +kubebuilder:rbac:groups=agents.x-k8s.io,resources=sandboxes,verbs=get;list
+// +kubebuilder:rbac:groups=extensions.agents.x-k8s.io,resources=sandboxclaims,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=agents.x-k8s.io,resources=sandboxes,verbs=get;list;watch
 
 // Setup establishes the long-lived per-toolset backend state: a SandboxTemplate
 // (the sandbox blueprint, carrying the runner image and a writable /codemode
@@ -126,6 +126,9 @@ func (p *Provider) Setup(ctx context.Context, tc sandbox.ToolsetContext) error {
 func (p *Provider) setOwner(owner client.Object, obj client.Object) error {
 	if owner == nil {
 		return nil
+	}
+	if obj.GetResourceVersion() != "" && !metav1.IsControlledBy(obj, owner) {
+		return fmt.Errorf("resource %s is not controlled by MCPToolset %s", client.ObjectKeyFromObject(obj), owner.GetName())
 	}
 	return controllerutil.SetControllerReference(owner, obj, p.controllerClient.Scheme())
 }
