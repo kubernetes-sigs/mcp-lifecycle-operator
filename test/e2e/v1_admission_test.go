@@ -20,13 +20,16 @@ package e2e
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	admissionv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
@@ -42,6 +45,26 @@ func TestV1AdmissionWebhook(t *testing.T) {
 		WithLabel(category.Label, category.Configuration).
 		WithLabel(speed.Label, speed.Moderate).
 		Assess("privileged CREATE and UPDATE are denied at all served versions", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			kube, err := kubernetes.NewForConfig(cfg.Client().RESTConfig())
+			if err != nil {
+				t.Fatal(err)
+			}
+			configuration, err := kube.AdmissionregistrationV1().ValidatingWebhookConfigurations().Get(ctx,
+				"mcp-lifecycle-operator-validating-webhook-configuration", metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("get deployed validating webhook configuration: %v", err)
+			}
+			if !slices.ContainsFunc(configuration.Webhooks, func(webhook admissionv1.ValidatingWebhook) bool {
+				return webhook.Name == "vmcpserver.mcp.x-k8s.io" &&
+					webhook.ClientConfig.Service != nil && webhook.ClientConfig.Service.Path != nil &&
+					*webhook.ClientConfig.Service.Path == "/validate-mcp-x-k8s-io-v1-mcpserver" &&
+					slices.ContainsFunc(webhook.Rules, func(rule admissionv1.RuleWithOperations) bool {
+						return slices.Equal(rule.APIVersions, []string{"v1"}) &&
+							slices.Contains(rule.APIGroups, "mcp.x-k8s.io") && slices.Contains(rule.Resources, "mcpservers")
+					})
+			}) {
+				t.Fatalf("deployed validating webhook does not target the v1 MCPServer endpoint: %+v", configuration.Webhooks)
+			}
 			ns := ctx.Value(f.NsKey).(string)
 			r := cfg.Client().Resources()
 			probe := v1AdmissionFixture("v1", ns, "admission-ready", true)

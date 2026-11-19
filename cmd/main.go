@@ -425,6 +425,10 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
+	if err := mgr.AddReadyzCheck("webhook", webhookServer.StartedChecker()); err != nil {
+		setupLog.Error(err, "unable to set up webhook ready check")
+		os.Exit(1)
+	}
 
 	loggingNamespace := resolveLoggingNamespace(loggingConfigMapNamespace)
 	if err := setupLogLevelFromConfigMap(mgr, atomicLevel, loggingNamespace, loggingConfigMapName, loggingConfigMapKey); err != nil {

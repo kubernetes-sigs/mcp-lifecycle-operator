@@ -158,7 +158,8 @@ that an old manager pod cannot serve:
 
 1. Roll out the new manager image while retaining the existing validating
    webhook configuration and keeping `v1alpha1` served.
-2. Wait until all manager pods run the new image and are ready.
+2. Wait until all manager pods run the new image and are ready. The manager's
+   readiness probe checks that its webhook listener is reachable.
 3. Update the validating webhook configuration to target `v1` and its validation
    path. Verify CREATE and UPDATE admission through the remaining served versions.
 4. Disable serving `v1alpha1` only after the v1 webhook rule is active.
