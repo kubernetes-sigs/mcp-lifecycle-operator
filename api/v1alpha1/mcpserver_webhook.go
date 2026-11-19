@@ -30,12 +30,6 @@ import (
 	webhookpolicy "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/webhook"
 )
 
-// matchPolicy=Equivalent lets the API server convert other served versions
-// (e.g. v1beta1) to v1alpha1 before invoking this validator, so admission
-// policy applies to every served version through a single webhook. Do not
-// switch this to Exact without registering a per-version handler.
-// +kubebuilder:webhook:path=/validate-mcp-x-k8s-io-v1alpha1-mcpserver,mutating=false,failurePolicy=fail,matchPolicy=Equivalent,sideEffects=none,groups=mcp.x-k8s.io,resources=mcpservers,verbs=create;update,versions=v1alpha1,name=vmcpserver.mcp.x-k8s.io,admissionReviewVersions=v1
-
 // +kubebuilder:object:generate=false
 
 // MCPServerCustomValidator validates MCPServer resources against admission policy.
@@ -46,7 +40,8 @@ type MCPServerCustomValidator struct {
 
 var _ admission.Validator[*MCPServer] = &MCPServerCustomValidator{}
 
-// SetupWebhookWithManager registers the validating webhook for MCPServer.
+// SetupWebhookWithManager serves the previous validation endpoint during upgrades.
+// Remove this file and its registration once supported upgrades no longer use that endpoint.
 func SetupWebhookWithManager(mgr ctrl.Manager, policy *webhookpolicy.AdmissionPolicy) error {
 	return ctrl.NewWebhookManagedBy(mgr, &MCPServer{}).
 		WithValidator(&MCPServerCustomValidator{

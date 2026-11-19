@@ -383,9 +383,14 @@ func main() {
 		setupLog.Error(err, "unable to set up gateway providers")
 		os.Exit(1)
 	}
+	var v1Validator *mcpv1.MCPServerCustomValidator
 	if enableWebhook {
+		v1Validator = &mcpv1.MCPServerCustomValidator{Policy: admissionPolicy, Reader: mgr.GetAPIReader()}
+		// Upgrade compatibility: keep the old endpoint until the v1 webhook rollout
+		// is complete. Then remove this block and api/v1alpha1/mcpserver_webhook*.go
+		// once supported upgrade paths no longer require the alpha endpoint.
 		if err := mcpv1alpha1.SetupWebhookWithManager(mgr, admissionPolicy); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "MCPServer")
+			setupLog.Error(err, "unable to create compatibility webhook", "webhook", "MCPServer v1alpha1")
 			os.Exit(1)
 		}
 		if !admissionPolicy.HasActiveRules() {
@@ -406,7 +411,7 @@ func main() {
 			"image allowlist, digest pinning, storage-mount and securityContext admission policies are " +
 			"NOT enforced. Enable the webhook in production to validate MCPServer specs.")
 	}
-	if err := (&mcpv1.MCPServer{}).SetupWebhookWithManager(mgr); err != nil {
+	if err := (&mcpv1.MCPServer{}).SetupWebhookWithManager(mgr, v1Validator); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "MCPServer")
 		os.Exit(1)
 	}
@@ -418,6 +423,10 @@ func main() {
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
+	}
+	if err := mgr.AddReadyzCheck("webhook", webhookServer.StartedChecker()); err != nil {
+		setupLog.Error(err, "unable to set up webhook ready check")
 		os.Exit(1)
 	}
 
