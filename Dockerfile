@@ -92,7 +92,7 @@ ENTRYPOINT ["/manager"]
 # stay off the operator's reconcile hot path (design invariant, FR-009).
 
 # Build the code-mode dispatcher (execute_code MCP server).
-FROM --platform=${BUILDPLATFORM} golang:1.27.1 AS dispatcher-builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.4 AS dispatcher-builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -114,7 +114,7 @@ ENTRYPOINT ["/execute-code"]
 
 # Build the portable code-mode runner. The same image runs unchanged under any
 # SandboxProvider (portability contract).
-FROM --platform=${BUILDPLATFORM} golang:1.27.1 AS runner-builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.4 AS runner-builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -142,9 +142,9 @@ ENTRYPOINT ["/runner"]
 # run it. sandboxd lives in the sigs.k8s.io/agent-sandbox module we already depend
 # on; `go install <pkg>@<version>` resolves that module's own build graph in
 # isolation (it does NOT touch this repo's go.mod/go.sum, which omit sandboxd's
-# server-side deps). GOTOOLCHAIN=local reuses this 1.27.1 toolchain instead of
+# server-side deps). GOTOOLCHAIN=local reuses the image's Go toolchain instead of
 # fetching agent-sandbox's pinned 1.26.x.
-FROM --platform=${BUILDPLATFORM} golang:1.27.1 AS sandboxd-builder
+FROM --platform=${BUILDPLATFORM} golang:1.27.4 AS sandboxd-builder
 ARG TARGETOS
 ARG TARGETARCH
 ARG AGENT_SANDBOX_VERSION=v1.0.4
