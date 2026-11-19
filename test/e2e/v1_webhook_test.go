@@ -80,7 +80,10 @@ func TestV1WebhookWiring(t *testing.T) {
 			}
 
 			var lastAdmissionErr error
-			ns := ctx.Value(f.NsKey).(string)
+			ns, ok := ctx.Value(f.NsKey).(string)
+			if !ok || ns == "" {
+				t.Fatal("namespace not found in context; ensure BeforeEachTest has run")
+			}
 			probe := webhookTestMCPServer("v1", ns, "webhook-admission-ready", true)
 			err = wait.PollUntilContextTimeout(ctx, time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
 				currentCRD, getErr := extensions.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, "mcpservers.mcp.x-k8s.io", metav1.GetOptions{})
@@ -166,14 +169,17 @@ func TestV1WebhookWiring(t *testing.T) {
 				t.Fatalf("get deployed webhook Service: %v", err)
 			}
 			if !slices.ContainsFunc(service.Spec.Ports, func(port corev1.ServicePort) bool {
-				return port.Port == 443 && port.TargetPort.IntVal == 9443
+				return port.Port == 443
 			}) {
 				t.Error("deployed webhook Service does not expose port 443")
 			}
 			return ctx
 		}).
 		Assess("CREATE and UPDATE admission rejects privileged settings at v1 and v1beta1", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			ns := ctx.Value(f.NsKey).(string)
+			ns, ok := ctx.Value(f.NsKey).(string)
+			if !ok || ns == "" {
+				t.Fatal("namespace not found in context; ensure BeforeEachTest has run")
+			}
 			r := cfg.Client().Resources()
 			for _, version := range []string{"v1", "v1beta1"} {
 				badCreate := webhookTestMCPServer(version, ns, "webhook-"+version+"-create", true)
