@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/sandbox"
 )
 
@@ -52,7 +52,7 @@ type UnresolvedServer struct {
 }
 
 // ResolveServers resolves each server name in a toolset to its in-cluster MCP
-// endpoint URL by reading the corresponding v1beta1.MCPServer in the same
+// endpoint URL by reading the corresponding v1.MCPServer in the same
 // namespace.
 //
 // A server resolves only when its MCPServer exists and has published
@@ -64,7 +64,7 @@ type UnresolvedServer struct {
 // so callers can distinguish "retry later" from "surface to the user".
 func ResolveServers(ctx context.Context, c client.Client, namespace string, servers []string) (endpoints []sandbox.Endpoint, unresolved []UnresolvedServer, err error) {
 	for _, name := range servers {
-		var srv mcpv1beta1.MCPServer
+		var srv mcpv1.MCPServer
 		getErr := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &srv)
 		if getErr != nil {
 			if apierrors.IsNotFound(getErr) {
@@ -98,7 +98,7 @@ func ResolveServers(ctx context.Context, c client.Client, namespace string, serv
 // "" when the server is not ready to receive traffic. It requires both a
 // published status.address.url and a Verified=True condition so a stale address
 // left over from a previous ready state is not treated as reachable.
-func serverEndpointURL(srv *mcpv1beta1.MCPServer) string {
+func serverEndpointURL(srv *mcpv1.MCPServer) string {
 	if srv.Status.Address == nil || srv.Status.Address.URL == "" {
 		return ""
 	}

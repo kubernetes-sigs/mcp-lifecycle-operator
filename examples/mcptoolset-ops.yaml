@@ -24,7 +24,7 @@ kind: Namespace
 metadata:
   name: codemode
 ---
-apiVersion: mcp.x-k8s.io/v1beta1
+apiVersion: mcp.x-k8s.io/v1
 kind: MCPServer
 metadata:
   name: k8s-mcp

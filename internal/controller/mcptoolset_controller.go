@@ -36,8 +36,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/sandbox"
 )
 
@@ -344,7 +344,7 @@ func (r *MCPToolsetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&rbacv1.Role{}).
 		Owns(&rbacv1.RoleBinding{}).
 		Watches(
-			&mcpv1beta1.MCPServer{},
+			&mcpv1.MCPServer{},
 			handler.EnqueueRequestsFromMapFunc(r.toolsetsForServer),
 		).
 		Named("mcptoolset").

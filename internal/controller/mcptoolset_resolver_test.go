@@ -24,24 +24,24 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 )
 
 func resolverScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
-	if err := mcpv1beta1.AddToScheme(s); err != nil {
+	if err := mcpv1.AddToScheme(s); err != nil {
 		t.Fatalf("AddToScheme: %v", err)
 	}
 	return s
 }
 
 // readyServer builds a verified MCPServer with a published address URL.
-func readyServer(namespace, name, url string) *mcpv1beta1.MCPServer {
-	return &mcpv1beta1.MCPServer{
+func readyServer(namespace, name, url string) *mcpv1.MCPServer {
+	return &mcpv1.MCPServer{
 		Namespace: namespace, Name: name,
-		Status: mcpv1beta1.MCPServerStatus{
-			Address: &mcpv1beta1.MCPServerAddress{URL: url},
+		Status: mcpv1.MCPServerStatus{
+			Address: &mcpv1.MCPServerAddress{URL: url},
 			Conditions: []metav1.Condition{{
 				Type:   ConditionTypeVerified,
 				Status: metav1.ConditionTrue,
@@ -102,14 +102,14 @@ func TestResolveServersNotReady(t *testing.T) {
 	s := resolverScheme(t)
 
 	// Server exists but has no address and no Verified condition.
-	pending := &mcpv1beta1.MCPServer{
+	pending := &mcpv1.MCPServer{
 		Namespace: "demo", Name: "kubernetes",
 	}
 	// Server has a stale address but is not Verified.
-	staleAddr := &mcpv1beta1.MCPServer{
+	staleAddr := &mcpv1.MCPServer{
 		Namespace: "demo", Name: "github",
-		Status: mcpv1beta1.MCPServerStatus{
-			Address: &mcpv1beta1.MCPServerAddress{URL: "http://github.demo.svc.cluster.local:8080/mcp"},
+		Status: mcpv1.MCPServerStatus{
+			Address: &mcpv1.MCPServerAddress{URL: "http://github.demo.svc.cluster.local:8080/mcp"},
 			Conditions: []metav1.Condition{{
 				Type:   ConditionTypeVerified,
 				Status: metav1.ConditionFalse,

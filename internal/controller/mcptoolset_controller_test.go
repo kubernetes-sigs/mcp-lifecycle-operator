@@ -32,8 +32,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
-	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	// The agentsandbox provider is registered (and wired) in suite_test.go, so the
 	// reconciler can resolve the "agentsandbox" provider these tests select.
 )
@@ -61,7 +61,7 @@ func createReadyServer(ctx context.Context, name, url string) {
 	Expect(k8sClient.Create(ctx, server)).To(Succeed())
 
 	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: toolsetTestNamespace}, server)).To(Succeed())
-	server.Status.Address = &mcpv1beta1.MCPServerAddress{URL: url}
+	server.Status.Address = &mcpv1.MCPServerAddress{URL: url}
 	meta.SetStatusCondition(&server.Status.Conditions, metav1.Condition{
 		Type:    ConditionTypeVerified,
 		Status:  metav1.ConditionTrue,
@@ -84,7 +84,7 @@ func deleteToolsetResources(ctx context.Context, toolset string, servers ...stri
 	_ = k8sClient.Delete(ctx, &rbacv1.Role{ObjectMeta: objMeta})
 	_ = k8sClient.Delete(ctx, &rbacv1.RoleBinding{ObjectMeta: objMeta})
 	for _, s := range servers {
-		_ = k8sClient.Delete(ctx, &mcpv1beta1.MCPServer{Name: s, Namespace: toolsetTestNamespace})
+		_ = k8sClient.Delete(ctx, &mcpv1.MCPServer{Name: s, Namespace: toolsetTestNamespace})
 	}
 }
 
