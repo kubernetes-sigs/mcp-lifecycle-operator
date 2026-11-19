@@ -59,9 +59,24 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	By("bootstrapping test environment")
+	// Exercise the retained alpha schema in isolation, even though production
+	// clusters no longer serve this version.
+	crds := envtest.CRDInstallOptions{
+		Paths:              []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		ErrorIfPathMissing: true,
+	}
+	Expect(envtest.ReadCRDFiles(&crds)).To(Succeed())
+	for _, crd := range crds.CRDs {
+		if crd.Name == "mcpservers.mcp.x-k8s.io" {
+			for i := range crd.Spec.Versions {
+				if crd.Spec.Versions[i].Name == "v1alpha1" {
+					crd.Spec.Versions[i].Served = true
+				}
+			}
+		}
+	}
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
-		ErrorIfCRDPathMissing: true,
+		CRDs: crds.CRDs,
 	}
 
 	// Retrieve the first found binary directory to allow running tests from IDEs

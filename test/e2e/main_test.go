@@ -48,9 +48,7 @@ func TestMain(m *testing.M) {
 
 	testenv = env.NewWithConfig(cfg)
 
-	// Register all served MCPServer versions. v1 is the storage version;
-	// v1beta1 remains in use by the bulk of the suite, and v1alpha1 exercises
-	// the deployed conversion webhook.
+	// Register the served MCPServer versions and v1alpha1 MCPGatewayBinding.
 	scheme := cfg.Client().Resources().GetScheme()
 	if err := mcpv1.AddToScheme(scheme); err != nil {
 		panic(err)

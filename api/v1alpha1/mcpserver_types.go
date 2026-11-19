@@ -617,6 +617,7 @@ type MCPServerStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:ac:generate=true
+// +kubebuilder:unservedversion
 // +kubebuilder:deprecatedversion:warning="mcp.x-k8s.io/v1alpha1 MCPServer is deprecated; use mcp.x-k8s.io/v1beta1"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`

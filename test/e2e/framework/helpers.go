@@ -41,6 +41,7 @@ import (
 	"sigs.k8s.io/e2e-framework/klient/wait/conditions"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	mcpcontroller "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
@@ -586,7 +587,7 @@ func DumpDiagnostics(ctx context.Context, t *testing.T, cfg *envconf.Config, ns 
 	t.Log("=== DIAGNOSTICS DUMP (test failed) ===")
 	r := cfg.Client().Resources(ns)
 
-	var servers mcpv1alpha1.MCPServerList
+	var servers mcpv1.MCPServerList
 	if err := r.List(ctx, &servers); err == nil {
 		for _, s := range servers.Items {
 			t.Logf("MCPServer %s/%s generation=%d observedGeneration=%d",
