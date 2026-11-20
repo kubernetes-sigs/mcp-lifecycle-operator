@@ -1,6 +1,11 @@
 # Storage Version Migration
 
-The `MCPServer` CRD serves `v1alpha1`, `v1beta1`, and `v1`, with **`v1` as the
+MCPServer manifests and clients using `mcp.x-k8s.io/v1alpha1` must switch to
+`v1beta1` or `v1`. Alpha requests are no longer accepted. This does not affect
+the separate `v1alpha1` MCPGatewayBinding API. Storage migration does not update
+client manifests. Deploy the v1 admission webhook before disabling alpha serving.
+
+The `MCPServer` CRD serves `v1beta1` and `v1`, with **`v1` as the
 storage version**. The conversion webhook makes objects readable through each
 served version, but reading an object does not rewrite its bytes in etcd. Objects
 written before the promotion may still be stored as `v1alpha1` or `v1beta1`.
@@ -13,8 +18,9 @@ current storage version.
 
 Existing `v1alpha1` MCPServers do not need a separate migration to `v1beta1`
 first: conversion uses `v1alpha1` → `v1beta1` → `v1` while the migrator rewrites
-them. The `v1alpha1` endpoint remains served after storage migration until it
-is retired separately, so clients can still read those objects. Deprecated
+them. The `v1alpha1` endpoint is no longer served. Clients must use `v1beta1` or
+`v1` to access these objects; alpha conversion support remains available for
+objects still stored in that version. Deprecated
 status data omitted from `v1`, including `status.handshakeRetryCount` and
 `status.serverInfo.capabilities.logging`, is lost during the rewrite.
 

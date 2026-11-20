@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/env"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 
+	mcpv1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1"
 	mcpv1alpha1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1alpha1"
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	kuadrantapi "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant/api"
@@ -40,6 +41,9 @@ func TestMain(m *testing.M) {
 		testenv = env.NewWithConfig(cfg)
 
 		scheme := cfg.Client().Resources().GetScheme()
+		if err := mcpv1.AddToScheme(scheme); err != nil {
+			panic(err)
+		}
 		if err := mcpv1beta1.AddToScheme(scheme); err != nil {
 			panic(err)
 		}

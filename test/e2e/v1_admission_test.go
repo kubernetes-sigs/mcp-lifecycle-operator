@@ -75,7 +75,7 @@ func TestV1AdmissionWebhook(t *testing.T) {
 			}); err != nil {
 				t.Fatalf("wait for v1 admission webhook: %v (last response: %v)", err, lastErr)
 			}
-			for _, version := range []string{"v1", "v1beta1", "v1alpha1"} {
+			for _, version := range []string{"v1", "v1beta1"} {
 				bad := v1AdmissionFixture(version, ns, "admission-"+version+"-bad", true)
 				if err := r.Create(ctx, bad, v1AdmissionDryRunCreate); !v1AdmissionDenied(err) {
 					t.Errorf("%s CREATE: want v1 webhook denial, got %v", version, err)
