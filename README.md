@@ -186,6 +186,38 @@ For more examples, see the [examples/](./examples/) directory:
 - **[everything-mcp-server](./examples/everything-mcp-server/)** - Deploy the Everything MCP Server
 - **[gateway-integration](./examples/gateway-integration/)** - Expose an MCP server through a gateway
 
+## Code Mode (experimental)
+
+Code mode lets an agent submit a script that composes many MCP tool calls at
+once. The script runs in an isolated sandbox and only the final result is
+returned, instead of the agent round-tripping every individual tool call.
+
+An `MCPToolset` binds a set of `MCPServer` resources to a sandbox provider (the
+`agentsandbox` provider, built on
+[agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)) and, once
+reconciled, publishes a `status.executeEndpoint`. The operator reconciles only
+the long-lived dispatcher infrastructure; it is never on the per-execution path
+(the dispatcher claims sandboxes directly from the provider).
+
+**Prerequisites:** install the agent-sandbox controller and its CRDs. Configure
+the operator with `--dispatcher-image` and `--runner-image` pointing to the
+images built by `make docker-build-dispatcher` and `make docker-build-agentsandbox`,
+respectively.
+
+```bash
+kubectl apply -f examples/mcptoolset-ops.yaml
+kubectl -n codemode wait --for=condition=Ready mcptoolset/ops-toolset
+kubectl -n codemode get mcptoolset ops-toolset -o jsonpath='{.status.executeEndpoint}'
+```
+
+- Example: **[mcptoolset-ops.yaml](./examples/mcptoolset-ops.yaml)**
+
+Use this experimental feature in a trusted cluster environment. The dispatcher
+accepts requests from clients that can reach its Service. Use backends that
+accept unauthenticated MCP requests from the dispatcher and runner. The
+agent-sandbox provider isolates executions in separate pods and permits
+network egress from those pods.
+
 ## Development
 
 ### Prerequisites

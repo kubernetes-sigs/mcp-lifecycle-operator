@@ -7,6 +7,7 @@
 resources:
 - bases/mcp.x-k8s.io_mcpgatewaybindings.yaml
 - bases/mcp.x-k8s.io_mcpservers.yaml
+- bases/mcp.x-k8s.io_mcptoolsets.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

@@ -30,10 +30,14 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	sandboxv1beta1 "sigs.k8s.io/agent-sandbox/api/v1beta1"
+	extv1beta1 "sigs.k8s.io/agent-sandbox/extensions/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -47,6 +51,7 @@ import (
 	mcpv1beta1 "github.com/kubernetes-sigs/mcp-lifecycle-operator/api/v1beta1"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller"
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers"
+	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/agentsandbox"
 	kuadrantapi "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant/api"
 	webhookpolicy "github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/webhook"
 
@@ -58,6 +63,9 @@ import (
 	// The kuadrant provider is imported by name (not blank) so its opt-in
 	// extension-namespace allowlist can be configured from startup flags.
 	"github.com/kubernetes-sigs/mcp-lifecycle-operator/internal/controller/providers/kuadrant"
+	// The agentsandbox code-mode provider registers itself via init(); it is
+	// imported by name above for the SetConfig/SetControllerClient/SetRunnerImage
+	// wiring in main.
 	// +kubebuilder:scaffold:imports
 )
 
@@ -75,6 +83,10 @@ func init() {
 	utilruntime.Must(gatewayv1.Install(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	utilruntime.Must(kuadrantapi.AddToScheme(scheme))
+	// agent-sandbox types: the agentsandbox provider's reconcile-time Setup/Teardown
+	// create SandboxTemplate + SandboxWarmPool via the controller-runtime client.
+	utilruntime.Must(sandboxv1beta1.AddToScheme(scheme))
+	utilruntime.Must(extv1beta1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -100,6 +112,8 @@ func main() {
 	var httprouteAllowedGatewayNamespaces string
 	var kuadrantAllowedExtensionNamespaces string
 	var clusterDomain string
+	var dispatcherImage string
+	var runnerImage string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -167,6 +181,12 @@ func main() {
 			"Empty means no restriction (any namespace named in a binding's ConfigMap is trusted).")
 	flag.StringVar(&clusterDomain, "cluster-domain", controller.DefaultClusterDomain,
 		"Kubernetes DNS cluster domain used for MCP Service handshakes and status addresses; must be a DNS subdomain.")
+	flag.StringVar(&dispatcherImage, "dispatcher-image", os.Getenv("DISPATCHER_IMAGE"),
+		"Image for the code-mode execute_code dispatcher the MCPToolset controller deploys. "+
+			"Falls back to the DISPATCHER_IMAGE env var. Required to reconcile MCPToolsets.")
+	flag.StringVar(&runnerImage, "runner-image", os.Getenv("RUNNER_IMAGE"),
+		"Agent-sandbox image containing sandboxd and the code-mode runner (make docker-build-agentsandbox). "+
+			"Falls back to the RUNNER_IMAGE env var.")
 
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
@@ -319,6 +339,15 @@ func main() {
 			disallowPrivilegedSecurityContext, disallowPrivilegedFlagSet)
 	}
 
+	// Wire the agentsandbox code-mode provider for its reconcile-time half:
+	// Setup/Teardown create the per-toolset SandboxTemplate + SandboxWarmPool via
+	// the controller-runtime client, baking the sandbox image from --runner-image.
+	// SetConfig is wired for symmetry; the dispatcher half (Claim/Await/Release)
+	// runs in the execute_code process, not here.
+	agentsandbox.SetConfig(mgr.GetConfig())
+	agentsandbox.SetControllerClient(mgr.GetClient())
+	agentsandbox.SetRunnerImage(runnerImage)
+
 	reconciler := &controller.MCPServerReconciler{
 		Client:                      mgr.GetClient(),
 		Scheme:                      mgr.GetScheme(),
@@ -381,6 +410,37 @@ func main() {
 	}
 	if err := providers.SetupAll(mgr); err != nil {
 		setupLog.Error(err, "unable to set up gateway providers")
+		os.Exit(1)
+	}
+	var sandboxObjects []client.Object
+	if dispatcherImage != "" && runnerImage != "" {
+		// Install agent-sandbox before starting a Code Mode deployment. Keep
+		// its optional APIs out of the controller's watches when absent.
+		for _, resource := range []struct {
+			kind string
+			obj  client.Object
+		}{
+			{kind: "SandboxTemplate", obj: &extv1beta1.SandboxTemplate{}},
+			{kind: "SandboxWarmPool", obj: &extv1beta1.SandboxWarmPool{}},
+		} {
+			gvk := extv1beta1.GroupVersion.WithKind(resource.kind)
+			if _, err := mgr.GetRESTMapper().RESTMapping(gvk.GroupKind(), gvk.Version); err != nil {
+				if !meta.IsNoMatchError(err) {
+					setupLog.Error(err, "unable to discover agent-sandbox resource", "kind", resource.kind)
+					os.Exit(1)
+				}
+				continue
+			}
+			sandboxObjects = append(sandboxObjects, resource.obj)
+		}
+	}
+	if err := (&controller.MCPToolsetReconciler{
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		DispatcherImage: dispatcherImage,
+		RunnerImage:     runnerImage,
+	}).SetupWithManager(mgr, sandboxObjects...); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "MCPToolset")
 		os.Exit(1)
 	}
 	var v1Validator *mcpv1.MCPServerCustomValidator
