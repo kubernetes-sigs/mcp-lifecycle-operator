@@ -77,10 +77,9 @@ func SetupMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config, name
 
 	server := NewMCPServer(name, ns, opts...)
 	webhookRestartBackoff := retry.DefaultBackoff
-	webhookRestartBackoff.Steps = 10
+	webhookRestartBackoff.Steps = 8
 	webhookRestartBackoff.Duration = time.Second
 	webhookRestartBackoff.Factor = 1.5
-	webhookRestartBackoff.Cap = 10 * time.Second
 	if err := retry.OnError(webhookRestartBackoff, apierrors.IsInternalError, func() error {
 		return r.Create(ctx, server)
 	}); err != nil {
