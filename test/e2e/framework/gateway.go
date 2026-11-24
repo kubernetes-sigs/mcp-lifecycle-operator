@@ -253,7 +253,11 @@ func AssertMCPReachable(ctx context.Context, t *testing.T, gatewayAddress, route
 			t.Logf("MCP handshake attempt %d/%d failed (address=%s, host=%s, path=%s): %v",
 				i+1, attempts, gatewayAddress, routeHostname, path, err)
 			if i < attempts-1 {
-				time.Sleep(retryDelay)
+				select {
+				case <-ctx.Done():
+					t.Fatalf("context canceled during MCP handshake retry: %v", ctx.Err())
+				case <-time.After(retryDelay):
+				}
 			}
 			continue
 		}
