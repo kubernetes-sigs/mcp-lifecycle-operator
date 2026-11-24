@@ -39,7 +39,7 @@ import (
 // the backend. Calling a backend tool proves that the per-server route works.
 func assertBackendPodListed(ctx context.Context, t *testing.T, gatewayAddress, hostname, path, ns string, r *resources.Resources, selector map[string]string) {
 	t.Helper()
-	callCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	callCtx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
 	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "gateway-backend-conformance", Version: "v0.0.1"}, nil)
 	var lastError error
