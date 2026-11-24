@@ -65,7 +65,8 @@ func ServerFromContext(ctx context.Context) *mcpv1beta1.MCPServer {
 
 // SetupMCPServer creates an MCPServer, optionally waits for it to become available,
 // and stores it in context. Pass waitForReady=true to block until the server reaches
-// Available=True before returning.
+// Available=True before returning. Creation is retried on transient API errors
+// (e.g. conversion-webhook restarts) to avoid flaking on short-lived outages.
 func SetupMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config, name string, waitForReady bool, opts ...MCPServerOption) context.Context {
 	t.Helper()
 	ns, ok := ctx.Value(NsKey).(string)
@@ -75,7 +76,9 @@ func SetupMCPServer(ctx context.Context, t *testing.T, cfg *envconf.Config, name
 	r := cfg.Client().Resources()
 
 	server := NewMCPServer(name, ns, opts...)
-	if err := r.Create(ctx, server); err != nil {
+	if err := retry.OnError(retry.DefaultBackoff, apierrors.IsInternalError, func() error {
+		return r.Create(ctx, server)
+	}); err != nil {
 		t.Fatalf("failed to create MCPServer: %v", err)
 	}
 	t.Logf("created MCPServer %s/%s", ns, server.Name)
