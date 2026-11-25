@@ -37,6 +37,13 @@ spec:
 
 ## Install
 
+The release installation requires cert-manager to provision the metrics and webhook TLS certificates. If your cluster does not have cert-manager, install it and wait for its deployments to become available before continuing.
+
+```bash
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.2/cert-manager.yaml
+kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
+```
+
 Install the operator from the [latest release](https://github.com/kubernetes-sigs/mcp-lifecycle-operator/releases/latest):
 
 ```bash
