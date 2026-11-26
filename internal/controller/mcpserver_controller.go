@@ -444,6 +444,19 @@ func serverInfoToAC(info *mcpv1.MCPServerInfo) *acv1.MCPServerInfoApplyConfigura
 			WithPrompts(info.Capabilities.Prompts).
 			WithCompletions(info.Capabilities.Completions))
 	}
+	if info.CatalogCounts != nil {
+		cc := acv1beta1.CatalogCounts()
+		if info.CatalogCounts.ToolCount != nil {
+			cc = cc.WithToolCount(*info.CatalogCounts.ToolCount)
+		}
+		if info.CatalogCounts.ResourceCount != nil {
+			cc = cc.WithResourceCount(*info.CatalogCounts.ResourceCount)
+		}
+		if info.CatalogCounts.PromptCount != nil {
+			cc = cc.WithPromptCount(*info.CatalogCounts.PromptCount)
+		}
+		si = si.WithCatalogCounts(cc)
+	}
 	return si
 }
 
